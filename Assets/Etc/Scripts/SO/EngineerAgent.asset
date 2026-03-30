@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b31509633d6da3842a28e7791fe6dec8, type: 3}
+  m_Name: EngineerAgent
+  m_EditorClassIdentifier: Assembly-CSharp::AgentStatsSO
+  role: 2
+  moveSpeed: 3.8
+  acceleration: 7
+  stoppingDistance: 0.25
+  angularSpeed: 105
+  viewRadius: 6.5
+  viewAngle: 60
+  dashSpeed: 0
+  dashAcceleration: 0
+  dashDuration: 0
+  reconDuration: 0
+  reconRadius: 0
+  wallSightDuration: 0
+  barricadeLifetime: 14
+  slowTrapDuration: 4
+  slowTrapStrength: 0.6
+  decoyDuration: 0
+  phantomDuration: 0
+  phantomThreatWeight: 0
