@@ -3,19 +3,20 @@ using UnityEngine;
 public class DisruptorAgent : AgentController
 {
     [Header("설치 프리팹")]
-    [SerializeField] private GameObject decoySignalPrefab;
-    [SerializeField] private GameObject phantomPrefab;
+    [SerializeField] private GameObject noisemakerPrefab;
+    [SerializeField] private GameObject hologramPrefab;
     [SerializeField] private Transform deployParent;
 
     [Header("설치 설정")]
     [SerializeField] private float deployYOffset = 0f;
-    [SerializeField] private bool replaceExistingDecoySignal = true;
+    [SerializeField] private bool replaceExistingNoisemaker = true;
 
-    private GameObject currentDecoySignal;
-    private GameObject currentPhantom;
+    private GameObject currentNoisemaker;
+    private GameObject currentHologram;
 
     protected override void Awake()
     {
+        agentID = 3;
         base.Awake();
     }
 
@@ -28,15 +29,15 @@ public class DisruptorAgent : AgentController
 
         Debug.Log($"[Disruptor {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
 
-        if (skill.Contains("decoysignal") || skill.Contains("decoy"))
+        if (skill.Contains("noisemaker") || skill.Contains("noise"))
         {
             ForceStopForSkill();
-            DeployDecoySignal(targetPos);
+            DeployNoisemaker(targetPos);
         }
-        else if (skill.Contains("phantom"))
+        else if (skill.Contains("hologram"))
         {
             ForceStopForSkill();
-            DeployPhantom();
+            DeployHologram();
         }
         else
         {
@@ -56,56 +57,56 @@ public class DisruptorAgent : AgentController
         }
     }
 
-    private void DeployDecoySignal(Vector3 targetPos)
+    private void DeployNoisemaker(Vector3 targetPos)
     {
-        if (decoySignalPrefab == null)
+        if (noisemakerPrefab == null)
         {
-            Debug.LogWarning($"[Disruptor {AgentID}] decoySignalPrefab이 연결되지 않았습니다.");
+            Debug.LogWarning($"[Disruptor {AgentID}] noisemakerPrefab이 연결되지 않았습니다.");
             return;
         }
 
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
 
-        if (replaceExistingDecoySignal && currentDecoySignal != null)
+        if (replaceExistingNoisemaker && currentNoisemaker != null)
         {
-            Destroy(currentDecoySignal);
-            currentDecoySignal = null;
+            Destroy(currentNoisemaker);
+            currentNoisemaker = null;
         }
 
-        currentDecoySignal = Instantiate(
-            decoySignalPrefab,
+        currentNoisemaker = Instantiate(
+            noisemakerPrefab,
             spawnPos,
             Quaternion.identity,
             deployParent != null ? deployParent : null
         );
 
-        Debug.Log($"[Disruptor {AgentID}] 유인 신호 설치: {spawnPos}");
+        Debug.Log($"[Disruptor {AgentID}] 소란 장치 설치: {spawnPos}");
     }
 
-    private void DeployPhantom()
+    private void DeployHologram()
     {
-        if (phantomPrefab == null)
+        if (hologramPrefab == null)
         {
-            Debug.LogWarning($"[Disruptor {AgentID}] phantomPrefab이 연결되지 않았습니다.");
+            Debug.LogWarning($"[Disruptor {AgentID}] hologramPrefab이 연결되지 않았습니다.");
             return;
         }
 
-        if (currentPhantom != null)
+        if (currentHologram != null)
         {
-            Debug.LogWarning($"[Disruptor {AgentID}] Phantom은 하나만 생성할 수 있습니다.");
+            Debug.LogWarning($"[Disruptor {AgentID}] 홀로그램은 하나만 생성할 수 있습니다.");
             return;
         }
 
         Vector3 spawnPos = BuildSpawnPosition(transform.position);
 
-        currentPhantom = Instantiate(
-            phantomPrefab,
+        currentHologram = Instantiate(
+            hologramPrefab,
             spawnPos,
             Quaternion.identity,
             deployParent != null ? deployParent : null
         );
 
-        Debug.Log($"[Disruptor {AgentID}] 가짜 위협 생성: {spawnPos}");
+        Debug.Log($"[Disruptor {AgentID}] 홀로그램 생성: {spawnPos}");
     }
 
     private Vector3 BuildSpawnPosition(Vector3 targetPos)

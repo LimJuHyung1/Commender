@@ -1,34 +1,34 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PhantomThreat : MonoBehaviour
+public class HologramProjection : MonoBehaviour
 {
-    [Header("Phantom Threat Settings")]
+    [Header("Hologram Settings")]
     [SerializeField] private bool showDebugGizmo = true;
     [SerializeField] private float debugRadius = 0.75f;
     [SerializeField] private float threatWeight = 1.5f;
 
-    private static readonly List<PhantomThreat> activeThreats = new List<PhantomThreat>();
+    private static readonly List<HologramProjection> activeHolograms = new List<HologramProjection>();
 
-    public static IReadOnlyList<PhantomThreat> ActiveThreats => activeThreats;
+    public static IReadOnlyList<HologramProjection> ActiveHolograms => activeHolograms;
 
     public Vector3 Position => transform.position;
     public float ThreatWeight => threatWeight;
 
     private void OnEnable()
     {
-        if (!activeThreats.Contains(this))
-            activeThreats.Add(this);
+        if (!activeHolograms.Contains(this))
+            activeHolograms.Add(this);
     }
 
     private void OnDisable()
     {
-        activeThreats.Remove(this);
+        activeHolograms.Remove(this);
     }
 
     private void OnDestroy()
     {
-        activeThreats.Remove(this);
+        activeHolograms.Remove(this);
     }
 
     private void OnDrawGizmos()

@@ -8,6 +8,7 @@ public class PursuerAgent : AgentController
 
     protected override void Awake()
     {
+        agentID = 0;
         base.Awake();
     }
 

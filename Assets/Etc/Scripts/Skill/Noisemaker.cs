@@ -1,24 +1,24 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class DecoySignal : MonoBehaviour
+public class Noisemaker : MonoBehaviour
 {
-    [Header("Decoy Signal Settings")]
+    [Header("Noisemaker Settings")]
     [SerializeField] private float lifetime = 6f;
     [SerializeField] private bool destroyAfterLifetime = true;
     [SerializeField] private bool showDebugGizmo = true;
     [SerializeField] private float debugRadius = 0.5f;
 
-    private static readonly List<DecoySignal> activeSignals = new List<DecoySignal>();
+    private static readonly List<Noisemaker> activeNoisemakers = new List<Noisemaker>();
 
-    public static IReadOnlyList<DecoySignal> ActiveSignals => activeSignals;
+    public static IReadOnlyList<Noisemaker> ActiveNoisemakers => activeNoisemakers;
 
     public Vector3 Position => transform.position;
 
     private void OnEnable()
     {
-        if (!activeSignals.Contains(this))
-            activeSignals.Add(this);
+        if (!activeNoisemakers.Contains(this))
+            activeNoisemakers.Add(this);
 
         if (destroyAfterLifetime && lifetime > 0f)
             Invoke(nameof(DestroySelf), lifetime);
@@ -26,13 +26,13 @@ public class DecoySignal : MonoBehaviour
 
     private void OnDisable()
     {
-        activeSignals.Remove(this);
+        activeNoisemakers.Remove(this);
         CancelInvoke();
     }
 
     private void OnDestroy()
     {
-        activeSignals.Remove(this);
+        activeNoisemakers.Remove(this);
         CancelInvoke();
     }
 

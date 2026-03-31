@@ -438,14 +438,14 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
 
     private bool HasAnyDecoySignalInRange()
     {
-        if (DecoySignal.ActiveSignals == null)
+        if (Noisemaker.ActiveNoisemakers == null)
             return false;
 
         float sqrRange = decoySignalInfluenceRadius * decoySignalInfluenceRadius;
 
-        for (int i = 0; i < DecoySignal.ActiveSignals.Count; i++)
+        for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
         {
-            DecoySignal signal = DecoySignal.ActiveSignals[i];
+            Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
             if (signal == null)
                 continue;
 
@@ -458,14 +458,14 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
 
     private bool HasAnyPhantomThreatInRange()
     {
-        if (PhantomThreat.ActiveThreats == null)
+        if (HologramProjection.ActiveHolograms == null)
             return false;
 
         float sqrRange = phantomThreatInfluenceRadius * phantomThreatInfluenceRadius;
 
-        for (int i = 0; i < PhantomThreat.ActiveThreats.Count; i++)
+        for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
         {
-            PhantomThreat threat = PhantomThreat.ActiveThreats[i];
+            HologramProjection threat = HologramProjection.ActiveHolograms[i];
             if (threat == null)
                 continue;
 
@@ -584,12 +584,12 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
     {
         float score = 0f;
 
-        if (DecoySignal.ActiveSignals == null)
+        if (Noisemaker.ActiveNoisemakers == null)
             return score;
 
-        for (int i = 0; i < DecoySignal.ActiveSignals.Count; i++)
+        for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
         {
-            DecoySignal signal = DecoySignal.ActiveSignals[i];
+            Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
             if (signal == null)
                 continue;
 
@@ -604,12 +604,12 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
     {
         float score = 0f;
 
-        if (PhantomThreat.ActiveThreats == null)
+        if (HologramProjection.ActiveHolograms == null)
             return score;
 
-        for (int i = 0; i < PhantomThreat.ActiveThreats.Count; i++)
+        for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
         {
-            PhantomThreat threat = PhantomThreat.ActiveThreats[i];
+            HologramProjection threat = HologramProjection.ActiveHolograms[i];
             if (threat == null)
                 continue;
 
@@ -639,13 +639,13 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
             combinedFleeDirection += awayFromAgent.normalized / (distance + 0.1f);
         }
 
-        if (DecoySignal.ActiveSignals != null)
+        if (Noisemaker.ActiveNoisemakers != null)
         {
             float sqrRange = decoySignalInfluenceRadius * decoySignalInfluenceRadius;
 
-            for (int i = 0; i < DecoySignal.ActiveSignals.Count; i++)
+            for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
             {
-                DecoySignal signal = DecoySignal.ActiveSignals[i];
+                Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
                 if (signal == null)
                     continue;
 
@@ -660,13 +660,13 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
             }
         }
 
-        if (PhantomThreat.ActiveThreats != null)
+        if (HologramProjection.ActiveHolograms != null)
         {
             float sqrRange = phantomThreatInfluenceRadius * phantomThreatInfluenceRadius;
 
-            for (int i = 0; i < PhantomThreat.ActiveThreats.Count; i++)
+            for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
             {
-                PhantomThreat threat = PhantomThreat.ActiveThreats[i];
+                HologramProjection threat = HologramProjection.ActiveHolograms[i];
                 if (threat == null)
                     continue;
 

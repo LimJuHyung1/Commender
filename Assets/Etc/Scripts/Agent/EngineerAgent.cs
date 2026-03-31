@@ -17,6 +17,7 @@ public class EngineerAgent : AgentController
 
     protected override void Awake()
     {
+        agentID = 2;
         base.Awake();
     }
 

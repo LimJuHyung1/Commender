@@ -16,6 +16,7 @@ public class ScoutAgent : AgentController
 
     protected override void Awake()
     {
+        agentID = 1;
         base.Awake();
 
         if (visionSensor == null)
