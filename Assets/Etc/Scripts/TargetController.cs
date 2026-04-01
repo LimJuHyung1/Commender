@@ -486,6 +486,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
 
         if (TryFindBestSafePosition(out Vector3 bestPosition))
         {
+            Debug.Log($"[Target] 도주 목적지 갱신: {bestPosition}");
             navAgent.SetDestination(bestPosition);
             lastRepathTime = Time.time;
         }

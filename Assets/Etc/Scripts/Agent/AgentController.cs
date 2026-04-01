@@ -18,9 +18,17 @@ public abstract class AgentController : MonoBehaviour
     protected Transform currentTarget;
     protected bool isManualMoving = false;
 
+    [SerializeField] private float chaseRepathInterval = 0.15f;
+    [SerializeField] private float chaseDestinationThreshold = 0.25f;
+
+    private float chaseRepathTimer = 0f;
+    private Vector3 lastChaseDestination;
+    private bool hasLastChaseDestination = false;
+
     public int AgentID => agentID;
     public Transform CurrentTarget => currentTarget;
     public bool IsManualMoving => isManualMoving;
+    public bool IsChasing => currentTarget != null;
     public LayerMask TargetLayer => targetLayer;
     public AgentStatsSO Stats => stats;
 
@@ -107,7 +115,19 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            navAgent.SetDestination(currentTarget.position);
+            chaseRepathTimer -= Time.deltaTime;
+
+            Vector3 targetPos = currentTarget.position;
+            bool shouldRepath = !hasLastChaseDestination ||
+                                Vector3.Distance(lastChaseDestination, targetPos) >= chaseDestinationThreshold;
+
+            if (chaseRepathTimer <= 0f && shouldRepath)
+            {
+                navAgent.SetDestination(targetPos);
+                lastChaseDestination = targetPos;
+                hasLastChaseDestination = true;
+                chaseRepathTimer = chaseRepathInterval;
+            }
         }
     }
 
@@ -133,8 +153,17 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual void MoveTo(Vector3 destination)
     {
+        Debug.Log($"[Agent {AgentID}] MoveTo 호출됨. destination={destination}, currentTarget={(currentTarget != null ? currentTarget.name : "null")}");
+
         if (navAgent == null)
             return;
+
+        // 추격 중이면 수동 이동 명령을 무시한다.
+        if (currentTarget != null)
+        {
+            Debug.Log($"[Agent {AgentID}] 현재 추격 중이므로 MoveTo를 무시합니다.");
+            return;
+        }
 
         currentTarget = null;
         isManualMoving = true;
@@ -160,6 +189,10 @@ public abstract class AgentController : MonoBehaviour
         currentTarget = target;
         isManualMoving = false;
         navAgent.isStopped = false;
+
+        hasLastChaseDestination = false;
+        chaseRepathTimer = 0f;
+
         navAgent.SetDestination(currentTarget.position);
 
         Debug.Log($"[Agent {AgentID}] Chase target assigned: {target.name}");

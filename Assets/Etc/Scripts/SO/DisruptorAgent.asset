@@ -19,6 +19,12 @@ MonoBehaviour:
   angularSpeed: 130
   viewRadius: 7.5
   viewAngle: 70
+  useSpotLight: 1
+  spotLightColor: {r: 1, g: 1, b: 1, a: 1}
+  spotLightIntensity: 100
+  spotLightRange: 10
+  spotLightInnerAngle: 16.6
+  spotLightOuterAngle: 67.2
   dashSpeed: 0
   dashAcceleration: 0
   dashDuration: 0
