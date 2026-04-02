@@ -1,16 +1,31 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
     [Header("UI 설정")]
-    [SerializeField] private GameObject winPanel; // 승리 알림 UI 패널
+    [SerializeField] private GameObject winPanel;
     [SerializeField] private Text winMessageText;
+
+    [Header("Scene 이동")]
+    [SerializeField] private string lobbySceneName = "Lobby";
+    [SerializeField] private bool autoReturnToLobbyOnWin = true;
+    [SerializeField] private float returnDelaySeconds = 2.0f;
+
+    [Header("연출")]
+    [SerializeField] private float winTimeScale = 0.5f;
+
+    private bool stageCleared = false;
 
     private void Awake()
     {
-        if (winPanel != null) winPanel.SetActive(false);
+        Time.timeScale = 1.0f;
+
+        if (winPanel != null)
+            winPanel.SetActive(false);
     }
 
     private void OnEnable()
@@ -25,41 +40,75 @@ public class GameManager : MonoBehaviour
 
     private void HandleWin(GameObject target)
     {
+        if (stageCleared)
+            return;
+
+        stageCleared = true;
+
         Debug.Log("<color=green>축하합니다! 모든 타겟을 체포했습니다.</color>");
 
-        // 1. 모든 에이전트 및 타겟 멈추기 (최적화된 메서드 호출)
+        UnlockNextStage();
         StopAllMovingObjects();
+        ShowWinUI(target);
 
-        // 2. 승리 UI 창 띄우기
-        if (winPanel != null)
+        Time.timeScale = winTimeScale;
+
+        if (autoReturnToLobbyOnWin)
+            StartCoroutine(ReturnToLobbyAfterDelay());
+    }
+
+    private void UnlockNextStage()
+    {
+        StageMapManager stageMapManager = FindFirstObjectByType<StageMapManager>();
+        if (stageMapManager == null)
         {
-            winPanel.SetActive(true);
-            winMessageText.text = $"축하합니다! {target.name}을(를) 체포했습니다!";
+            Debug.LogWarning("[GameManager] StageMapManager를 찾지 못해서 다음 스테이지를 해금하지 못했습니다.");
+            return;
         }
 
-        // 3. 연출: 슬로우 모션
-        Time.timeScale = 0.5f;
+        stageMapManager.CompleteStage();
+    }
+
+    private void ShowWinUI(GameObject target)
+    {
+        if (winPanel == null)
+            return;
+
+        winPanel.SetActive(true);
+
+        if (winMessageText != null)
+            winMessageText.text = $"축하합니다! {target.name}을(를) 체포했습니다!";
+    }
+
+    private IEnumerator ReturnToLobbyAfterDelay()
+    {
+        yield return new WaitForSecondsRealtime(returnDelaySeconds);
+        ReturnToLobby();
     }
 
     private void StopAllMovingObjects()
     {
-        // [수정됨] FindObjectsOfType 대신 더 빠르고 최신 방식인 FindObjectsByType 사용
-        // FindObjectsSortMode.None을 사용하여 불필요한 정렬 연산을 생략하고 성능을 높입니다.
         NavMeshAgent[] allAgents = Object.FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
 
         foreach (NavMeshAgent agent in allAgents)
         {
-            if (agent != null)
-            {
-                agent.isStopped = true; // 이동 중지
-                agent.velocity = Vector3.zero; // 물리적 관성 제거
-            }
+            if (agent == null)
+                continue;
+
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
         }
+    }
+
+    public void ReturnToLobby()
+    {
+        Time.timeScale = 1.0f;
+        SceneManager.LoadScene(lobbySceneName);
     }
 
     public void RestartGame()
     {
         Time.timeScale = 1.0f;
-        UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 }

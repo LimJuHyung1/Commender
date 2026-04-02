@@ -10,10 +10,14 @@ public class CommenderManager : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private CommenderCommandProcessor commandProcessor;
-    [SerializeField] private List<AgentController> agents;
+    [SerializeField] private List<AgentController> agents = new List<AgentController>();
     [SerializeField] private List<InputField> agentInputs;
     [SerializeField] private Button submitButton;
     [SerializeField] private AgentCameraFollow agentCameraFollow;
+
+    [Header("Auto Bind")]
+    [SerializeField] private bool autoBindAgentsFromScene = true;
+    [SerializeField] private bool sortAgentsById = true;
 
     private bool requestInFlight = false;
     private int currentFocusedInputIndex = -1;
@@ -25,11 +29,16 @@ public class CommenderManager : MonoBehaviour
 
     private void Awake()
     {
-        RebuildAgentLookup();
         CacheOriginalPlaceholderTexts();
+        TryRefreshAgentsFromScene(true);
 
         if (submitButton != null)
             submitButton.onClick.AddListener(OnSubmitAllCommands);
+    }
+
+    private void Start()
+    {
+        TryRefreshAgentsFromScene(true);
     }
 
     private void OnDestroy()
@@ -40,8 +49,98 @@ public class CommenderManager : MonoBehaviour
 
     private void Update()
     {
+        TryRefreshAgentsFromScene();
+
         HandleTabInputNavigation();
         UpdateFocusedInputPresentation();
+    }
+
+    [ContextMenu("Refresh Agents From Scene")]
+    public void RefreshAgentsFromScene()
+    {
+        TryRefreshAgentsFromScene(true);
+    }
+
+    private void TryRefreshAgentsFromScene(bool force = false)
+    {
+        if (!autoBindAgentsFromScene)
+        {
+            RebuildAgentLookup();
+            return;
+        }
+
+        if (!force && !NeedsAgentRefresh())
+            return;
+
+        AgentController[] foundAgents = FindObjectsByType<AgentController>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None
+        );
+
+        if (agents == null)
+            agents = new List<AgentController>();
+        else
+            agents.Clear();
+
+        if (foundAgents == null || foundAgents.Length == 0)
+        {
+            agentById.Clear();
+            return;
+        }
+
+        if (sortAgentsById)
+            Array.Sort(foundAgents, CompareAgentsById);
+
+        for (int i = 0; i < foundAgents.Length; i++)
+        {
+            if (foundAgents[i] != null)
+                agents.Add(foundAgents[i]);
+        }
+
+        RebuildAgentLookup();
+        WarnIfInputCountMismatch();
+    }
+
+    private bool NeedsAgentRefresh()
+    {
+        if (agents == null || agents.Count == 0)
+            return true;
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            if (agents[i] == null)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static int CompareAgentsById(AgentController a, AgentController b)
+    {
+        if (ReferenceEquals(a, b))
+            return 0;
+
+        if (a == null)
+            return 1;
+
+        if (b == null)
+            return -1;
+
+        return a.AgentID.CompareTo(b.AgentID);
+    }
+
+    private void WarnIfInputCountMismatch()
+    {
+        if (agentInputs == null)
+            return;
+
+        if (agents.Count != agentInputs.Count)
+        {
+            Debug.LogWarning(
+                $"[Commender] agents 수({agents.Count})와 agentInputs 수({agentInputs.Count})가 다릅니다. " +
+                $"입력칸 인덱스와 AgentID 매핑을 확인해주세요."
+            );
+        }
     }
 
     private void HandleTabInputNavigation()
@@ -322,7 +421,7 @@ public class CommenderManager : MonoBehaviour
             return;
         }
 
-        RebuildAgentLookup();
+        TryRefreshAgentsFromScene(true);
         submittedInstructionById.Clear();
 
         if (!TryBuildCombinedPrompt(out string combinedPrompt))

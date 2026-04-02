@@ -30,16 +30,10 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private float topDownYaw = 0f;
 
     [Header("Focused Agent View")]
-    // 포커스 대상 에이전트를 볼 때 기준으로 삼을 위치 오프셋.
-    [SerializeField] private Vector3 focusTargetOffset = new Vector3(0f, 1.5f, 0f);
-
-    // 포커스 상태에서 카메라가 바라볼 회전값.
+    [SerializeField] private string focusAnchorName = "CameraFocusPoint";
+    [SerializeField] private Vector3 focusTargetOffset = Vector3.zero;
     [SerializeField] private Vector3 focusedViewEuler = new Vector3(45f, -45f, 0f);
-
-    // 포커스 대상 기준 카메라의 로컬 오프셋.
-    [SerializeField] private Vector3 focusedLocalOffset = new Vector3(0f, 0f, -10f);
-
-    // 포커스 상태에서 사용할 orthographic size.
+    [SerializeField] private Vector3 focusedLocalOffset = new Vector3(0f, 0f, -5f);
     [SerializeField] private float focusedOrthoSize = 6f;
 
     [Header("Ground Click Settings")]
@@ -183,17 +177,118 @@ public class AgentCameraFollow : MonoBehaviour
             return;
 
         Quaternion desiredRotation = Quaternion.Euler(focusedViewEuler);
-
-        // 에이전트의 정확한 position이 아니라 약간 위를 바라보도록 offset 적용.
-        Vector3 focusPoint = focusedAgent.position + focusTargetOffset;
-
-        // focusPoint를 기준으로 로컬 오프셋만큼 떨어진 위치에 카메라를 둔다.
+        Vector3 focusPoint = GetFocusedAgentWorldPoint();
         Vector3 desiredPosition = focusPoint + desiredRotation * focusedLocalOffset;
 
-        // 부드럽게 이동/회전/줌 적용.
         transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
         transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, smoothSpeed * Time.deltaTime);
         cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, focusedOrthoSize, smoothSpeed * Time.deltaTime);
+    }
+
+    private Vector3 GetFocusedAgentWorldPoint()
+    {
+        if (focusedAgent == null)
+            return Vector3.zero;
+
+        Transform anchor = FindChildRecursive(focusedAgent, focusAnchorName);
+        if (anchor != null)
+            return anchor.position + focusTargetOffset;
+
+        if (TryGetRendererBoundsCenter(focusedAgent, out Vector3 rendererCenter))
+            return rendererCenter + focusTargetOffset;
+
+        if (TryGetColliderBoundsCenter(focusedAgent, out Vector3 colliderCenter))
+            return colliderCenter + focusTargetOffset;
+
+        return focusedAgent.position + focusTargetOffset;
+    }
+
+    private Transform FindChildRecursive(Transform root, string targetName)
+    {
+        if (root == null || string.IsNullOrWhiteSpace(targetName))
+            return null;
+
+        if (root.name == targetName)
+            return root;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform found = FindChildRecursive(root.GetChild(i), targetName);
+            if (found != null)
+                return found;
+        }
+
+        return null;
+    }
+
+    private bool TryGetRendererBoundsCenter(Transform root, out Vector3 center)
+    {
+        center = Vector3.zero;
+
+        if (root == null)
+            return false;
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool foundAny = false;
+        Bounds combinedBounds = default;
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer rend = renderers[i];
+            if (rend == null || !rend.enabled)
+                continue;
+
+            if (!foundAny)
+            {
+                combinedBounds = rend.bounds;
+                foundAny = true;
+            }
+            else
+            {
+                combinedBounds.Encapsulate(rend.bounds);
+            }
+        }
+
+        if (!foundAny)
+            return false;
+
+        center = combinedBounds.center;
+        return true;
+    }
+
+    private bool TryGetColliderBoundsCenter(Transform root, out Vector3 center)
+    {
+        center = Vector3.zero;
+
+        if (root == null)
+            return false;
+
+        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
+        bool foundAny = false;
+        Bounds combinedBounds = default;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider col = colliders[i];
+            if (col == null || col.isTrigger)
+                continue;
+
+            if (!foundAny)
+            {
+                combinedBounds = col.bounds;
+                foundAny = true;
+            }
+            else
+            {
+                combinedBounds.Encapsulate(col.bounds);
+            }
+        }
+
+        if (!foundAny)
+            return false;
+
+        center = combinedBounds.center;
+        return true;
     }
 
     // groundRoot 하위의 Renderer / Collider를 바탕으로 전체 바닥 bounds를 다시 계산한다.
@@ -415,7 +510,13 @@ public class AgentCameraFollow : MonoBehaviour
         if (showDebugInfo && focusedAgent != null)
         {
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(focusedAgent.position + focusTargetOffset, 0.4f);
+            Gizmos.DrawWireSphere(GetFocusedAgentWorldPoint(), 0.4f);
         }
+    }
+
+    public void SetGroundRoot(Transform newGroundRoot)
+    {
+        groundRoot = newGroundRoot;
+        RefreshGroundBounds();
     }
 }
