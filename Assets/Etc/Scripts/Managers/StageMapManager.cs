@@ -27,9 +27,13 @@ public class StageMapManager : MonoBehaviour
 
     private Transform groundRoot;
     private Transform agentSpawnPointsRoot;
-    private Transform targetSpawnPoint;
+    private Transform targetSpawnPointsRoot;
+    private Transform fallbackTargetSpawnPoint;
 
     private int currentStageIndex = 0;
+
+    public int CurrentStageIndex => currentStageIndex;
+    public string CurrentStageDisplayName => GetStageDisplayName(currentStageIndex);
 
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string UnlockedStageCountKey = "UnlockedStageCount";
@@ -95,12 +99,17 @@ public class StageMapManager : MonoBehaviour
 
         groundRoot = currentMap.transform.Find("GroundRoot");
         agentSpawnPointsRoot = currentMap.transform.Find("AgentSpawnPoints");
-        targetSpawnPoint = currentMap.transform.Find("TargetSpawnPoint");
+
+        targetSpawnPointsRoot = currentMap.transform.Find("TargetSpawnPoints");
+        fallbackTargetSpawnPoint = currentMap.transform.Find("TargetSpawnPoint");
 
         if (groundRoot == null)
             Debug.LogWarning("[StageMapManager] GroundRoot를 찾지 못했습니다.");
 
-        return agentSpawnPointsRoot != null && targetSpawnPoint != null;
+        if (targetSpawnPointsRoot == null && fallbackTargetSpawnPoint == null)
+            Debug.LogWarning("[StageMapManager] TargetSpawnPoints 또는 TargetSpawnPoint를 찾지 못했습니다.");
+
+        return agentSpawnPointsRoot != null && (targetSpawnPointsRoot != null || fallbackTargetSpawnPoint != null);
     }
 
     private void RegisterGroundRootToCamera()
@@ -134,10 +143,66 @@ public class StageMapManager : MonoBehaviour
 
     private void SpawnTarget()
     {
-        if (targetPrefab == null || targetSpawnPoint == null)
+        if (targetPrefab == null)
             return;
 
-        currentTarget = Instantiate(targetPrefab, targetSpawnPoint.position, targetSpawnPoint.rotation);
+        Transform spawnPoint = GetRandomTargetSpawnPoint();
+        if (spawnPoint == null)
+        {
+            Debug.LogError("[StageMapManager] 타겟 스폰 포인트를 찾지 못했습니다.");
+            return;
+        }
+
+        currentTarget = Instantiate(targetPrefab, spawnPoint.position, spawnPoint.rotation);
+        Debug.Log($"[StageMapManager] 타겟 랜덤 스폰 위치: {spawnPoint.name}");
+
+        ApplyTargetDifficulty();
+    }
+
+    private void ApplyTargetDifficulty()
+    {
+        if (currentTarget == null)
+            return;
+
+        TargetController targetController = currentTarget.GetComponent<TargetController>();
+        if (targetController == null)
+        {
+            Debug.LogWarning("[StageMapManager] TargetController를 찾지 못했습니다.");
+            return;
+        }
+
+        int targetDifficultyStageNumber = currentStageIndex + 1;
+
+        targetController.SetStageNumber(targetDifficultyStageNumber);
+        targetController.ApplyDifficultyForCurrentStage();
+
+        Debug.Log($"[StageMapManager] 타겟 난이도 적용: Stage {targetDifficultyStageNumber}");
+    }
+
+    private Transform GetRandomTargetSpawnPoint()
+    {
+        if (targetSpawnPointsRoot != null && targetSpawnPointsRoot.childCount > 0)
+        {
+            List<Transform> validSpawnPoints = new List<Transform>();
+
+            for (int i = 0; i < targetSpawnPointsRoot.childCount; i++)
+            {
+                Transform child = targetSpawnPointsRoot.GetChild(i);
+                if (child != null)
+                    validSpawnPoints.Add(child);
+            }
+
+            if (validSpawnPoints.Count > 0)
+            {
+                int randomIndex = Random.Range(0, validSpawnPoints.Count);
+                return validSpawnPoints[randomIndex];
+            }
+        }
+
+        if (fallbackTargetSpawnPoint != null)
+            return fallbackTargetSpawnPoint;
+
+        return null;
     }
 
     private void SpawnAgents()
@@ -202,11 +267,11 @@ public class StageMapManager : MonoBehaviour
 
     private void RefreshCommenderAgents()
     {
-        CommenderManager commenderManager = FindFirstObjectByType<CommenderManager>();
-        if (commenderManager == null)
+        CommanderManager commanderManager = FindFirstObjectByType<CommanderManager>();
+        if (commanderManager == null)
             return;
 
-        commenderManager.RefreshAgentsFromScene();
+        commanderManager.RefreshAgents();
     }
 
     public void CompleteStage()
@@ -245,6 +310,23 @@ public class StageMapManager : MonoBehaviour
 
         groundRoot = null;
         agentSpawnPointsRoot = null;
-        targetSpawnPoint = null;
+        targetSpawnPointsRoot = null;
+        fallbackTargetSpawnPoint = null;
+    }
+
+    public string GetStageDisplayName(int stageIndex)
+    {
+        if (stages == null || stages.Length == 0)
+            return $"Stage {stageIndex + 1}";
+
+        if (stageIndex < 0 || stageIndex >= stages.Length)
+            return $"Stage {stageIndex + 1}";
+
+        StageEntry entry = stages[stageIndex];
+
+        if (entry != null && !string.IsNullOrWhiteSpace(entry.stageName))
+            return entry.stageName;
+
+        return $"Stage {stageIndex + 1}";
     }
 }

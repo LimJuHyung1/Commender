@@ -33,7 +33,7 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private string focusAnchorName = "CameraFocusPoint";
     [SerializeField] private Vector3 focusTargetOffset = Vector3.zero;
     [SerializeField] private Vector3 focusedViewEuler = new Vector3(45f, -45f, 0f);
-    [SerializeField] private Vector3 focusedLocalOffset = new Vector3(0f, 0f, -5f);
+    [SerializeField] private Vector3 focusedLocalOffset = new Vector3(0f, 0f, -7f);
     [SerializeField] private float focusedOrthoSize = 6f;
 
     [Header("Ground Click Settings")]

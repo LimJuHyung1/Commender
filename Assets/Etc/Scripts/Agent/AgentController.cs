@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -13,6 +14,18 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] protected VisionSensor visionSensor;
     [SerializeField] protected Light spotLight;
 
+    [Header("Animation")]
+    [SerializeField] protected Animator animator;
+    [SerializeField] private string isMovingParameter = "IsMoving";
+    [SerializeField] private string moveSpeedParameter = "MoveSpeed";
+    [SerializeField] private bool useMoveSpeedParameter = true;
+    [SerializeField] private float movingThreshold = 0.05f;
+
+    [Header("Look Around")]
+    [SerializeField] private float lookAroundAngle = 70f;
+    [SerializeField] private float lookAroundTurnSpeed = 240f;
+    [SerializeField] private float lookAroundPauseSeconds = 0.08f;
+
     [Header("State")]
     protected NavMeshAgent navAgent;
     protected Transform currentTarget;
@@ -25,10 +38,18 @@ public abstract class AgentController : MonoBehaviour
     private Vector3 lastChaseDestination;
     private bool hasLastChaseDestination = false;
 
+    private int isMovingParameterHash;
+    private int moveSpeedParameterHash;
+
+    private Coroutine lookAroundRoutine;
+    private bool isLookingAround = false;
+    private bool previousNavUpdateRotation = true;
+
     public int AgentID => agentID;
     public Transform CurrentTarget => currentTarget;
     public bool IsManualMoving => isManualMoving;
     public bool IsChasing => currentTarget != null;
+    public bool IsLookingAround => isLookingAround;
     public LayerMask TargetLayer => targetLayer;
     public AgentStatsSO Stats => stats;
 
@@ -54,7 +75,22 @@ public abstract class AgentController : MonoBehaviour
             }
         }
 
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>(true);
+
+        CacheAnimatorParameterHashes();
         ApplyCommonStats();
+        UpdateAnimationState(true);
+    }
+
+    protected virtual void OnDisable()
+    {
+        StopLookAroundInternal(false);
+    }
+
+    protected virtual void OnValidate()
+    {
+        CacheAnimatorParameterHashes();
     }
 
     protected virtual void ApplyCommonStats()
@@ -107,9 +143,16 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent == null)
             return;
 
+        if (isLookingAround)
+        {
+            UpdateAnimationState();
+            return;
+        }
+
         if (isManualMoving)
         {
             CheckDestinationReached();
+            UpdateAnimationState();
             return;
         }
 
@@ -123,12 +166,15 @@ public abstract class AgentController : MonoBehaviour
 
             if (chaseRepathTimer <= 0f && shouldRepath)
             {
+                navAgent.isStopped = false;
                 navAgent.SetDestination(targetPos);
                 lastChaseDestination = targetPos;
                 hasLastChaseDestination = true;
                 chaseRepathTimer = chaseRepathInterval;
             }
         }
+
+        UpdateAnimationState();
     }
 
     protected virtual void CheckDestinationReached()
@@ -141,6 +187,8 @@ public abstract class AgentController : MonoBehaviour
             if (!navAgent.hasPath || navAgent.velocity.sqrMagnitude <= 0.01f)
             {
                 isManualMoving = false;
+                navAgent.ResetPath();
+                UpdateAnimationState(true);
                 Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
             }
         }
@@ -158,7 +206,9 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent == null)
             return;
 
-        // 추격 중이면 수동 이동 명령을 무시한다.
+        if (isLookingAround)
+            StopLookAroundInternal(false);
+
         if (currentTarget != null)
         {
             Debug.Log($"[Agent {AgentID}] 현재 추격 중이므로 MoveTo를 무시합니다.");
@@ -167,24 +217,152 @@ public abstract class AgentController : MonoBehaviour
 
         currentTarget = null;
         isManualMoving = true;
+        hasLastChaseDestination = false;
 
         NavMeshHit hit;
         if (NavMesh.SamplePosition(destination, out hit, 2.0f, NavMesh.AllAreas))
         {
             navAgent.isStopped = false;
             navAgent.SetDestination(hit.position);
+            UpdateAnimationState(true);
             Debug.Log($"[Agent {AgentID}] Manual move started: {hit.position}");
         }
         else
         {
+            isManualMoving = false;
+            UpdateAnimationState(true);
             Debug.LogWarning($"[Agent {AgentID}] Failed to find valid NavMesh position near {destination}");
         }
+    }
+
+    public bool TryStartLookAround()
+    {
+        if (navAgent == null)
+            return false;
+
+        if (currentTarget != null)
+        {
+            Debug.LogWarning($"[Agent {AgentID}] 현재 추격 중이므로 주변 둘러보기를 시작할 수 없습니다.");
+            return false;
+        }
+
+        if (isManualMoving)
+        {
+            Debug.LogWarning($"[Agent {AgentID}] 현재 이동 중이므로 주변 둘러보기를 시작할 수 없습니다.");
+            return false;
+        }
+
+        StopLookAroundInternal(false);
+        lookAroundRoutine = StartCoroutine(LookAroundCoroutine());
+        return true;
+    }
+
+    private IEnumerator LookAroundCoroutine()
+    {
+        isLookingAround = true;
+
+        if (navAgent != null)
+        {
+            navAgent.ResetPath();
+            navAgent.isStopped = true;
+            previousNavUpdateRotation = navAgent.updateRotation;
+            navAgent.updateRotation = false;
+        }
+
+        UpdateAnimationState(true);
+        Debug.Log($"[Agent {AgentID}] 주변 둘러보기 시작");
+
+        float startY = transform.eulerAngles.y;
+
+        yield return RotateToYaw(startY - lookAroundAngle);
+
+        if (lookAroundPauseSeconds > 0f)
+            yield return new WaitForSeconds(lookAroundPauseSeconds);
+
+        yield return RotateToYaw(startY + lookAroundAngle);
+
+        if (lookAroundPauseSeconds > 0f)
+            yield return new WaitForSeconds(lookAroundPauseSeconds);
+
+        yield return RotateToYaw(startY);
+
+        FinishLookAround();
+        Debug.Log($"[Agent {AgentID}] 주변 둘러보기 종료");
+    }
+
+    private IEnumerator RotateToYaw(float targetYaw)
+    {
+        Quaternion targetRotation = Quaternion.Euler(0f, targetYaw, 0f);
+
+        while (Quaternion.Angle(transform.rotation, targetRotation) > 0.5f)
+        {
+            if (!isLookingAround)
+                yield break;
+
+            if (currentTarget != null || isManualMoving)
+            {
+                StopLookAroundInternal(false);
+                yield break;
+            }
+
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                targetRotation,
+                lookAroundTurnSpeed * Time.deltaTime
+            );
+
+            yield return null;
+        }
+
+        transform.rotation = targetRotation;
+    }
+
+    private void FinishLookAround()
+    {
+        if (navAgent != null)
+        {
+            navAgent.updateRotation = previousNavUpdateRotation;
+            navAgent.isStopped = false;
+            navAgent.ResetPath();
+        }
+
+        isLookingAround = false;
+        lookAroundRoutine = null;
+        UpdateAnimationState(true);
+    }
+
+    private void StopLookAroundInternal(bool logMessage)
+    {
+        if (lookAroundRoutine != null)
+        {
+            StopCoroutine(lookAroundRoutine);
+            lookAroundRoutine = null;
+        }
+
+        if (!isLookingAround)
+            return;
+
+        if (navAgent != null)
+        {
+            navAgent.updateRotation = previousNavUpdateRotation;
+            navAgent.isStopped = false;
+            navAgent.ResetPath();
+        }
+
+        isLookingAround = false;
+        UpdateAnimationState(true);
+
+        if (logMessage)
+            Debug.Log($"[Agent {AgentID}] 주변 둘러보기를 중단했습니다.");
     }
 
     public virtual void SetChaseTarget(Transform target)
     {
         if (navAgent == null || target == null)
             return;
+
+        if (isLookingAround)
+            StopLookAroundInternal(false);
 
         currentTarget = target;
         isManualMoving = false;
@@ -194,6 +372,7 @@ public abstract class AgentController : MonoBehaviour
         chaseRepathTimer = 0f;
 
         navAgent.SetDestination(currentTarget.position);
+        UpdateAnimationState(true);
 
         Debug.Log($"[Agent {AgentID}] Chase target assigned: {target.name}");
     }
@@ -213,6 +392,7 @@ public abstract class AgentController : MonoBehaviour
             navAgent.ResetPath();
         }
 
+        UpdateAnimationState(true);
         Debug.Log($"[Agent {AgentID}] Chase target cleared: {target.name}");
     }
 
@@ -225,11 +405,51 @@ public abstract class AgentController : MonoBehaviour
             navAgent.ResetPath();
         }
 
+        UpdateAnimationState(true);
         Debug.Log($"[Agent {AgentID}] Chase stopped.");
     }
 
     public virtual void ReapplyStats()
     {
         ApplyCommonStats();
+    }
+
+    protected virtual void UpdateAnimationState(bool immediate = false)
+    {
+        if (animator == null || navAgent == null)
+            return;
+
+        float speed = navAgent.velocity.magnitude;
+        bool isMovingNow = !navAgent.isStopped &&
+                           (navAgent.pathPending || navAgent.hasPath || isManualMoving || currentTarget != null) &&
+                           speed > movingThreshold;
+
+        animator.SetBool(isMovingParameterHash, isMovingNow);
+
+        if (useMoveSpeedParameter)
+        {
+            float normalizedSpeed = 0f;
+
+            if (stats != null && stats.moveSpeed > 0.01f)
+                normalizedSpeed = Mathf.Clamp01(speed / stats.moveSpeed);
+            else
+                normalizedSpeed = Mathf.Clamp01(speed);
+
+            if (immediate)
+                animator.SetFloat(moveSpeedParameterHash, normalizedSpeed);
+            else
+                animator.SetFloat(moveSpeedParameterHash, normalizedSpeed, 0.1f, Time.deltaTime);
+        }
+    }
+
+    private void CacheAnimatorParameterHashes()
+    {
+        isMovingParameterHash = string.IsNullOrWhiteSpace(isMovingParameter)
+            ? Animator.StringToHash("IsMoving")
+            : Animator.StringToHash(isMovingParameter);
+
+        moveSpeedParameterHash = string.IsNullOrWhiteSpace(moveSpeedParameter)
+            ? Animator.StringToHash("MoveSpeed")
+            : Animator.StringToHash(moveSpeedParameter);
     }
 }
