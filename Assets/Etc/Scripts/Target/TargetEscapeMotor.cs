@@ -11,22 +11,32 @@ public class EscapeSettings
     public float fleeAngularSpeed = 1080f;
     public float fleeAcceleration = 45f;
     public float minNearestThreatDistanceGain = 0.5f;
-    [Range(-1f, 1f)] public float minPathStartAlignment = -0.05f;
+    [Range(-1f, 1f)] public float minPathStartAlignment = 0.1f;
 
     [Header("Safe Point Search")]
     public float safeSearchRadius = 20f;
-    public int safePointSampleCount = 20;
+    public int safePointSampleCount = 5;
     public float safePointMinDistance = 7f;
     public float navMeshSampleRadius = 4f;
     public float fleeDirectionBias = 2f;
+    [Range(0f, 1f)] public float directionalSampleRatio = 1f;
+    public float directionalSampleSpreadAngle = 70f;
+
+    [Header("Dead End Avoidance")]
+    public float minEdgeDistanceFromWall = 0f;
+    public float edgeDistanceWeight = 0f;
+    public float opennessProbeDistance = 0f;
+    public int opennessProbeCount = 0;
+    [Range(0f, 1f)] public float minOpennessRatio = 0f;
+    public float opennessWeight = 0f;
 
     [Header("Panic Boost")]
     public bool usePanicBoost = false;
     [Range(0f, 1f)] public float panicHealthThresholdRatio = 0.45f;
     public float panicSpeedMultiplier = 1.2f;
     public float panicSearchRadiusMultiplier = 1.2f;
-    public int panicSampleCountBonus = 6;
-    public float panicFleeDirectionBiasBonus = 0.75f;
+    public int panicSampleCountBonus = 0;
+    public float panicFleeDirectionBiasBonus = 0f;
 
     [Header("Emergency Escape")]
     public bool enableEmergencyEscape = false;
@@ -38,65 +48,118 @@ public class EscapeSettings
     public float emergencyEscapeSpeed = 22f;
     public float emergencyEscapeAcceleration = 30f;
     public float emergencyEscapeRepathInterval = 0.2f;
+
+    public EscapeSettings Clone()
+    {
+        return new EscapeSettings
+        {
+            repathCooldown = repathCooldown,
+            fleeMoveSpeed = fleeMoveSpeed,
+            fleeAngularSpeed = fleeAngularSpeed,
+            fleeAcceleration = fleeAcceleration,
+            minNearestThreatDistanceGain = minNearestThreatDistanceGain,
+            minPathStartAlignment = minPathStartAlignment,
+            safeSearchRadius = safeSearchRadius,
+            safePointSampleCount = safePointSampleCount,
+            safePointMinDistance = safePointMinDistance,
+            navMeshSampleRadius = navMeshSampleRadius,
+            fleeDirectionBias = fleeDirectionBias,
+            directionalSampleRatio = directionalSampleRatio,
+            directionalSampleSpreadAngle = directionalSampleSpreadAngle,
+            minEdgeDistanceFromWall = minEdgeDistanceFromWall,
+            edgeDistanceWeight = edgeDistanceWeight,
+            opennessProbeDistance = opennessProbeDistance,
+            opennessProbeCount = opennessProbeCount,
+            minOpennessRatio = minOpennessRatio,
+            opennessWeight = opennessWeight,
+            usePanicBoost = usePanicBoost,
+            panicHealthThresholdRatio = panicHealthThresholdRatio,
+            panicSpeedMultiplier = panicSpeedMultiplier,
+            panicSearchRadiusMultiplier = panicSearchRadiusMultiplier,
+            panicSampleCountBonus = panicSampleCountBonus,
+            panicFleeDirectionBiasBonus = panicFleeDirectionBiasBonus,
+            enableEmergencyEscape = enableEmergencyEscape,
+            emergencyEscapeCharges = emergencyEscapeCharges,
+            autoUseEmergencyEscape = autoUseEmergencyEscape,
+            emergencyEscapeAutoTriggerHealthRatio = emergencyEscapeAutoTriggerHealthRatio,
+            emergencyEscapeAutoTriggerThreatDistance = emergencyEscapeAutoTriggerThreatDistance,
+            emergencyEscapeDuration = emergencyEscapeDuration,
+            emergencyEscapeSpeed = emergencyEscapeSpeed,
+            emergencyEscapeAcceleration = emergencyEscapeAcceleration,
+            emergencyEscapeRepathInterval = emergencyEscapeRepathInterval
+        };
+    }
+
+    public void ClampValues()
+    {
+        repathCooldown = Mathf.Max(0.01f, repathCooldown);
+        fleeMoveSpeed = Mathf.Max(0f, fleeMoveSpeed);
+        fleeAngularSpeed = Mathf.Max(0f, fleeAngularSpeed);
+        fleeAcceleration = Mathf.Max(0f, fleeAcceleration);
+        minNearestThreatDistanceGain = Mathf.Max(0f, minNearestThreatDistanceGain);
+        minPathStartAlignment = Mathf.Clamp(minPathStartAlignment, -1f, 1f);
+
+        safeSearchRadius = Mathf.Max(0.5f, safeSearchRadius);
+        safePointSampleCount = Mathf.Clamp(safePointSampleCount, 3, 7);
+        safePointMinDistance = Mathf.Max(0f, safePointMinDistance);
+        navMeshSampleRadius = Mathf.Max(0.1f, navMeshSampleRadius);
+        fleeDirectionBias = Mathf.Max(0f, fleeDirectionBias);
+        directionalSampleRatio = Mathf.Clamp01(directionalSampleRatio);
+        directionalSampleSpreadAngle = Mathf.Max(0f, directionalSampleSpreadAngle);
+
+        minEdgeDistanceFromWall = Mathf.Max(0f, minEdgeDistanceFromWall);
+        edgeDistanceWeight = Mathf.Max(0f, edgeDistanceWeight);
+        opennessProbeDistance = Mathf.Max(0f, opennessProbeDistance);
+        opennessProbeCount = Mathf.Max(0, opennessProbeCount);
+        minOpennessRatio = Mathf.Clamp01(minOpennessRatio);
+        opennessWeight = Mathf.Max(0f, opennessWeight);
+
+        panicHealthThresholdRatio = Mathf.Clamp01(panicHealthThresholdRatio);
+        panicSpeedMultiplier = Mathf.Max(1f, panicSpeedMultiplier);
+        panicSearchRadiusMultiplier = Mathf.Max(1f, panicSearchRadiusMultiplier);
+        panicSampleCountBonus = Mathf.Max(0, panicSampleCountBonus);
+        panicFleeDirectionBiasBonus = Mathf.Max(0f, panicFleeDirectionBiasBonus);
+
+        emergencyEscapeCharges = Mathf.Max(0, emergencyEscapeCharges);
+        emergencyEscapeAutoTriggerHealthRatio = Mathf.Clamp01(emergencyEscapeAutoTriggerHealthRatio);
+        emergencyEscapeAutoTriggerThreatDistance = Mathf.Max(0f, emergencyEscapeAutoTriggerThreatDistance);
+        emergencyEscapeDuration = Mathf.Max(0.01f, emergencyEscapeDuration);
+        emergencyEscapeSpeed = Mathf.Max(0f, emergencyEscapeSpeed);
+        emergencyEscapeAcceleration = Mathf.Max(0f, emergencyEscapeAcceleration);
+        emergencyEscapeRepathInterval = Mathf.Max(0.01f, emergencyEscapeRepathInterval);
+    }
 }
 
 [RequireComponent(typeof(NavMeshAgent))]
 public class TargetEscapeMotor : MonoBehaviour
 {
+    private const float MinMoveThreshold = 0.001f;
+    private const float ArriveEpsilon = 0.05f;
+    private const float MinFallbackRepathCooldown = 0.05f;
+
     [Header("References")]
     [SerializeField] private TargetThreatTracker threatTracker;
-
-    [Header("Flee Movement")]
-    [SerializeField] private float repathCooldown = 0.25f;
-    [SerializeField] private float fleeMoveSpeed = 15f;
-    [SerializeField] private float fleeAngularSpeed = 1080f;
-    [SerializeField] private float fleeAcceleration = 45f;
-    [SerializeField] private float minNearestThreatDistanceGain = 0.5f;
-    [SerializeField][Range(-1f, 1f)] private float minPathStartAlignment = -0.05f;
-
-    [Header("Safe Point Search")]
-    [SerializeField] private float safeSearchRadius = 20f;
-    [SerializeField] private int safePointSampleCount = 20;
-    [SerializeField] private float safePointMinDistance = 7f;
-    [SerializeField] private float navMeshSampleRadius = 4f;
-    [SerializeField] private float fleeDirectionBias = 2f;
-
-    [Header("Panic Boost")]
-    [SerializeField] private bool usePanicBoost = false;
-    [SerializeField][Range(0f, 1f)] private float panicHealthThresholdRatio = 0.45f;
-    [SerializeField] private float panicSpeedMultiplier = 1.2f;
-    [SerializeField] private float panicSearchRadiusMultiplier = 1.2f;
-    [SerializeField] private int panicSampleCountBonus = 6;
-    [SerializeField] private float panicFleeDirectionBiasBonus = 0.75f;
-
-    [Header("Emergency Escape")]
-    [SerializeField] private bool enableEmergencyEscape = true;
-    [SerializeField] private int emergencyEscapeCharges = 1;
-    [SerializeField] private bool autoUseEmergencyEscape = false;
-    [SerializeField][Range(0f, 1f)] private float emergencyEscapeAutoTriggerHealthRatio = 0.35f;
-    [SerializeField] private float emergencyEscapeAutoTriggerThreatDistance = 6f;
-    [SerializeField] private float emergencyEscapeDuration = 0.8f;
-    [SerializeField] private float emergencyEscapeSpeed = 22f;
-    [SerializeField] private float emergencyEscapeAcceleration = 30f;
-    [SerializeField] private float emergencyEscapeRepathInterval = 0.2f;
+    [SerializeField] private TargetSkillController skillController;
+    [SerializeField] private EscapeSettings settings = new EscapeSettings();
 
     private NavMeshAgent navAgent;
+    private NavMeshPath reusablePath;
 
     private Coroutine rootRoutine;
     private Coroutine emergencyEscapeRoutine;
 
     private float lastRepathTime = -999f;
-    private int emergencyEscapeUsedCount = 0;
-
-    private bool isRooted = false;
-    private bool isEmergencyEscaping = false;
     private float lastKnownHealthRatio = 1f;
+    private int emergencyEscapeUsedCount;
+
+    private bool isRooted;
+    private bool isEmergencyEscaping;
 
     public bool IsRooted => isRooted;
     public bool IsEmergencyEscaping => isEmergencyEscaping;
     public bool CanBeCaught => !isEmergencyEscaping;
     public bool HasUsedEmergencyEscape => emergencyEscapeUsedCount > 0;
-    public int RemainingEmergencyEscapeCount => Mathf.Max(0, emergencyEscapeCharges - emergencyEscapeUsedCount);
+    public int RemainingEmergencyEscapeCount => Mathf.Max(0, settings.emergencyEscapeCharges - emergencyEscapeUsedCount);
 
     private void Awake()
     {
@@ -105,31 +168,28 @@ public class TargetEscapeMotor : MonoBehaviour
         if (threatTracker == null)
             threatTracker = GetComponent<TargetThreatTracker>();
 
+        if (skillController == null)
+            skillController = GetComponent<TargetSkillController>();
+
+        if (reusablePath == null)
+            reusablePath = new NavMeshPath();
+
+        settings.ClampValues();
         ApplyNavAgentBaseSettings();
+    }
+
+    private void OnValidate()
+    {
+        if (settings == null)
+            settings = new EscapeSettings();
+
+        settings.ClampValues();
     }
 
     private void OnDisable()
     {
-        if (rootRoutine != null)
-        {
-            StopCoroutine(rootRoutine);
-            rootRoutine = null;
-        }
-
-        if (emergencyEscapeRoutine != null)
-        {
-            StopCoroutine(emergencyEscapeRoutine);
-            emergencyEscapeRoutine = null;
-        }
-
-        isRooted = false;
-        isEmergencyEscaping = false;
-
-        if (navAgent != null)
-        {
-            navAgent.isStopped = false;
-            navAgent.ResetPath();
-        }
+        StopActiveCoroutines();
+        ResetMotionState();
     }
 
     public void SetThreatTracker(TargetThreatTracker tracker)
@@ -137,15 +197,20 @@ public class TargetEscapeMotor : MonoBehaviour
         threatTracker = tracker;
     }
 
+    public void SetSkillController(TargetSkillController controller)
+    {
+        skillController = controller;
+    }
+
     public void ApplyNavAgentBaseSettings()
     {
         if (navAgent == null)
             return;
 
-        navAgent.speed = fleeMoveSpeed;
+        navAgent.speed = settings.fleeMoveSpeed;
+        navAgent.acceleration = settings.fleeAcceleration;
+        navAgent.angularSpeed = settings.fleeAngularSpeed;
         navAgent.autoBraking = false;
-        navAgent.acceleration = fleeAcceleration;
-        navAgent.angularSpeed = fleeAngularSpeed;
         navAgent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
     }
 
@@ -156,90 +221,127 @@ public class TargetEscapeMotor : MonoBehaviour
 
         lastKnownHealthRatio = Mathf.Clamp01(healthRatio);
 
-        float targetSpeed = fleeMoveSpeed;
-        float targetAcceleration = fleeAcceleration;
+        float speed = settings.fleeMoveSpeed;
+        float acceleration = settings.fleeAcceleration;
 
-        if (IsPanicBoostActive(hasThreat, lastKnownHealthRatio))
+        if (IsPanicBoostActive(hasThreat))
         {
-            targetSpeed *= panicSpeedMultiplier;
-            targetAcceleration *= panicSpeedMultiplier;
+            speed *= settings.panicSpeedMultiplier;
+            acceleration *= settings.panicSpeedMultiplier;
         }
 
-        navAgent.speed = targetSpeed;
-        navAgent.acceleration = targetAcceleration;
-        navAgent.angularSpeed = fleeAngularSpeed;
+        navAgent.speed = speed;
+        navAgent.acceleration = acceleration;
+        navAgent.angularSpeed = settings.fleeAngularSpeed;
     }
 
-    public bool TryAutoEmergencyEscape(float healthRatio)
+    public bool ShouldAutoTriggerEmergencyEscape(float healthRatio)
     {
         lastKnownHealthRatio = Mathf.Clamp01(healthRatio);
 
-        if (!autoUseEmergencyEscape)
+        if (!settings.autoUseEmergencyEscape)
             return false;
 
-        if (!enableEmergencyEscape)
+        if (!CanUseEmergencyEscape(false))
             return false;
 
-        if (isRooted || isEmergencyEscaping)
-            return false;
-
-        if (RemainingEmergencyEscapeCount <= 0)
-            return false;
-
-        if (lastKnownHealthRatio > emergencyEscapeAutoTriggerHealthRatio)
+        if (lastKnownHealthRatio > settings.emergencyEscapeAutoTriggerHealthRatio)
             return false;
 
         if (threatTracker == null)
             return false;
 
-        float nearestAgentDistance = threatTracker.GetNearestRealAgentDistance();
-        if (nearestAgentDistance > emergencyEscapeAutoTriggerThreatDistance)
-            return false;
-
-        return TryActivateEmergencyEscape();
+        return threatTracker.GetNearestRealAgentDistance() <= settings.emergencyEscapeAutoTriggerThreatDistance;
     }
 
     public bool TryActivateEmergencyEscape()
     {
-        if (!enableEmergencyEscape)
-        {
-            Debug.Log("<color=orange>[TargetEscapeMotor]</color> 긴급 회피 비활성화 상태라 사용할 수 없습니다.");
+        if (!CanUseEmergencyEscape(true))
             return false;
-        }
-
-        if (RemainingEmergencyEscapeCount <= 0)
-        {
-            Debug.Log("<color=orange>[TargetEscapeMotor]</color> 긴급 회피 사용 가능 횟수가 없습니다.");
-            return false;
-        }
-
-        if (isEmergencyEscaping)
-        {
-            Debug.Log("<color=orange>[TargetEscapeMotor]</color> 현재 이미 긴급 회피 중입니다.");
-            return false;
-        }
-
-        if (isRooted)
-        {
-            Debug.Log("<color=orange>[TargetEscapeMotor]</color> 속박 상태라 긴급 회피를 사용할 수 없습니다.");
-            return false;
-        }
-
-        if (navAgent == null)
-        {
-            Debug.LogWarning("<color=orange>[TargetEscapeMotor]</color> NavMeshAgent가 없어 긴급 회피를 사용할 수 없습니다.");
-            return false;
-        }
 
         emergencyEscapeUsedCount++;
-
-        Debug.Log($"<color=orange>[TargetEscapeMotor]</color> 긴급 회피 발동! 남은 횟수={RemainingEmergencyEscapeCount}");
 
         if (emergencyEscapeRoutine != null)
             StopCoroutine(emergencyEscapeRoutine);
 
+        Debug.Log($"[TargetEscapeMotor] 긴급 회피 발동. 남은 횟수={RemainingEmergencyEscapeCount}");
         emergencyEscapeRoutine = StartCoroutine(EmergencyEscapeRoutine());
         return true;
+    }
+
+    public void ApplyRoot(float duration)
+    {
+        if (rootRoutine != null)
+            StopCoroutine(rootRoutine);
+
+        rootRoutine = StartCoroutine(RootRoutine(duration));
+    }
+
+    public void TryFleeFromThreats(bool forceRepath = false)
+    {
+        if (!CanFlee())
+            return;
+
+        bool hasThreat = threatTracker.HasAnyThreat();
+        if (!hasThreat)
+            return;
+
+        float cooldown = GetEffectiveRepathCooldown(hasThreat);
+        if (!forceRepath && Time.time - lastRepathTime < cooldown)
+            return;
+
+        if (!TryFindSimpleFleePosition(out Vector3 bestPosition))
+            return;
+
+        if (!navAgent.SetDestination(bestPosition))
+            return;
+
+        if (skillController != null)
+            skillController.TryUseBarricade(bestPosition);
+
+        lastRepathTime = Time.time;
+    }
+
+    public bool IsCompletelyStopped()
+    {
+        if (navAgent == null)
+            return true;
+
+        bool noPathOrArrived =
+            !navAgent.pathPending &&
+            (!navAgent.hasPath || navAgent.remainingDistance <= navAgent.stoppingDistance + ArriveEpsilon);
+
+        bool almostNotMoving = navAgent.velocity.sqrMagnitude <= 0.01f;
+        return noPathOrArrived && almostNotMoving;
+    }
+
+    public void ResetRuntimeState(bool resetEmergencyEscapeUsage = true)
+    {
+        StopActiveCoroutines();
+
+        isRooted = false;
+        isEmergencyEscaping = false;
+        lastRepathTime = -999f;
+        lastKnownHealthRatio = 1f;
+
+        if (resetEmergencyEscapeUsage)
+            emergencyEscapeUsedCount = 0;
+
+        if (skillController != null)
+            skillController.ResetRuntimeState(true, true);
+
+        ResetAgentPath();
+        ApplyNavAgentBaseSettings();
+    }
+
+    public void ApplySettings(EscapeSettings newSettings)
+    {
+        if (newSettings == null)
+            return;
+
+        settings = newSettings.Clone();
+        settings.ClampValues();
+        ApplyNavAgentBaseSettings();
     }
 
     private IEnumerator EmergencyEscapeRoutine()
@@ -254,29 +356,23 @@ public class TargetEscapeMotor : MonoBehaviour
 
         if (navAgent != null)
         {
-            navAgent.speed = Mathf.Max(navAgent.speed, emergencyEscapeSpeed);
-            navAgent.acceleration = Mathf.Max(navAgent.acceleration, emergencyEscapeAcceleration);
+            navAgent.speed = Mathf.Max(navAgent.speed, settings.emergencyEscapeSpeed);
+            navAgent.acceleration = Mathf.Max(navAgent.acceleration, settings.emergencyEscapeAcceleration);
         }
 
-        Debug.Log("<color=orange>[TargetEscapeMotor]</color> 긴급 회피 발동! 잠시 포획되지 않습니다.");
+        Debug.Log("[TargetEscapeMotor] 긴급 회피 시작");
 
         float elapsed = 0f;
-
-        while (elapsed < emergencyEscapeDuration)
+        while (elapsed < settings.emergencyEscapeDuration)
         {
             if (navAgent == null)
                 break;
 
             TryFleeFromThreats(true);
 
-            float waitTime = Mathf.Min(emergencyEscapeRepathInterval, emergencyEscapeDuration - elapsed);
-
-            if (waitTime > 0f)
-                yield return new WaitForSeconds(waitTime);
-            else
-                yield return null;
-
-            elapsed += waitTime;
+            float step = Mathf.Min(settings.emergencyEscapeRepathInterval, settings.emergencyEscapeDuration - elapsed);
+            yield return step > 0f ? new WaitForSeconds(step) : null;
+            elapsed += step;
         }
 
         if (navAgent != null)
@@ -291,28 +387,15 @@ public class TargetEscapeMotor : MonoBehaviour
         bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
         RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
 
-        Debug.Log("<color=orange>[TargetEscapeMotor]</color> 긴급 회피 종료. 다시 포획될 수 있습니다.");
-    }
-
-    public void ApplyRoot(float duration)
-    {
-        if (rootRoutine != null)
-            StopCoroutine(rootRoutine);
-
-        rootRoutine = StartCoroutine(RootRoutine(duration));
+        Debug.Log("[TargetEscapeMotor] 긴급 회피 종료");
     }
 
     private IEnumerator RootRoutine(float duration)
     {
         isRooted = true;
+        ResetAgentPath(true);
 
-        if (navAgent != null)
-        {
-            navAgent.isStopped = true;
-            navAgent.ResetPath();
-        }
-
-        Debug.Log($"<color=red>[TargetEscapeMotor]</color> 속박 발동! {duration}초 동안 정지합니다.");
+        Debug.Log($"[TargetEscapeMotor] 속박 발동. {duration}초 동안 정지");
 
         yield return new WaitForSeconds(duration);
 
@@ -322,7 +405,7 @@ public class TargetEscapeMotor : MonoBehaviour
         isRooted = false;
         rootRoutine = null;
 
-        Debug.Log("<color=red>[TargetEscapeMotor]</color> 속박 종료.");
+        Debug.Log("[TargetEscapeMotor] 속박 종료");
 
         if (threatTracker != null && threatTracker.HasAnyThreat())
         {
@@ -331,272 +414,207 @@ public class TargetEscapeMotor : MonoBehaviour
         }
     }
 
-    public void TryFleeFromThreats(bool forceRepath = false)
+    private bool CanUseEmergencyEscape(bool writeLog)
     {
-        if (navAgent == null || navAgent.isStopped)
-            return;
+        if (!settings.enableEmergencyEscape)
+            return FailEmergencyEscape(writeLog, "긴급 회피 비활성화 상태입니다.");
 
-        if (threatTracker == null)
-            return;
+        if (RemainingEmergencyEscapeCount <= 0)
+            return FailEmergencyEscape(writeLog, "긴급 회피 사용 가능 횟수가 없습니다.");
 
-        bool hasThreat = threatTracker.HasAnyThreat();
-        if (!hasThreat)
-            return;
+        if (isEmergencyEscaping)
+            return FailEmergencyEscape(writeLog, "이미 긴급 회피 중입니다.");
 
-        float effectiveRepathCooldown = GetEffectiveRepathCooldown(hasThreat);
+        if (isRooted)
+            return FailEmergencyEscape(writeLog, "속박 상태에서는 사용할 수 없습니다.");
 
-        if (!forceRepath && Time.time - lastRepathTime < effectiveRepathCooldown)
-            return;
-
-        if (TryFindBestSafePosition(out Vector3 bestPosition))
+        if (navAgent == null)
         {
-            navAgent.SetDestination(bestPosition);
-            lastRepathTime = Time.time;
-            Debug.Log($"[TargetEscapeMotor] 도주 목적지 갱신: {bestPosition}");
+            if (writeLog)
+                Debug.LogWarning("[TargetEscapeMotor] NavMeshAgent가 없어 긴급 회피를 사용할 수 없습니다.");
+            return false;
         }
+
+        return true;
+    }
+
+    private bool FailEmergencyEscape(bool writeLog, string message)
+    {
+        if (writeLog)
+            Debug.Log($"[TargetEscapeMotor] {message}");
+
+        return false;
+    }
+
+    private bool CanFlee()
+    {
+        return navAgent != null && !navAgent.isStopped && threatTracker != null;
     }
 
     private float GetEffectiveRepathCooldown(bool hasThreat)
     {
-        if (IsPanicBoostActive(hasThreat, lastKnownHealthRatio))
-            return Mathf.Max(0.05f, repathCooldown * 0.75f);
+        if (IsPanicBoostActive(hasThreat))
+            return Mathf.Max(MinFallbackRepathCooldown, settings.repathCooldown * 0.75f);
 
-        return repathCooldown;
+        return settings.repathCooldown;
     }
 
     private float GetEffectiveSafeSearchRadius(bool hasThreat)
     {
-        float radius = safeSearchRadius;
+        if (IsPanicBoostActive(hasThreat))
+            return settings.safeSearchRadius * settings.panicSearchRadiusMultiplier;
 
-        if (IsPanicBoostActive(hasThreat, lastKnownHealthRatio))
-            radius *= panicSearchRadiusMultiplier;
-
-        return radius;
+        return settings.safeSearchRadius;
     }
 
-    private int GetEffectiveSafePointSampleCount(bool hasThreat)
+    private bool IsPanicBoostActive(bool hasThreat)
     {
-        int count = safePointSampleCount;
-
-        if (IsPanicBoostActive(hasThreat, lastKnownHealthRatio))
-            count += panicSampleCountBonus;
-
-        return Mathf.Max(4, count);
+        return settings.usePanicBoost && hasThreat && lastKnownHealthRatio <= settings.panicHealthThresholdRatio;
     }
 
-    private float GetEffectiveFleeDirectionBias(bool hasThreat)
-    {
-        float bias = fleeDirectionBias;
-
-        if (IsPanicBoostActive(hasThreat, lastKnownHealthRatio))
-            bias += panicFleeDirectionBiasBonus;
-
-        return bias;
-    }
-
-    private bool IsPanicBoostActive(bool hasThreat, float healthRatio)
-    {
-        if (!usePanicBoost)
-            return false;
-
-        if (!hasThreat)
-            return false;
-
-        return healthRatio <= panicHealthThresholdRatio;
-    }
-
-    private bool TryFindBestSafePosition(out Vector3 bestPosition)
+    private bool TryFindSimpleFleePosition(out Vector3 bestPosition)
     {
         bestPosition = transform.position;
 
-        if (threatTracker == null || navAgent == null)
+        if (!CanFlee() || threatTracker == null)
             return false;
 
         bool hasThreat = threatTracker.HasAnyThreat();
-        float currentSafeSearchRadius = GetEffectiveSafeSearchRadius(hasThreat);
-        int currentSampleCount = GetEffectiveSafePointSampleCount(hasThreat);
-        float currentFleeDirectionBias = GetEffectiveFleeDirectionBias(hasThreat);
+        if (!hasThreat)
+            return false;
 
         Vector3 fleeDirection = threatTracker.CalculateCombinedFleeDirection();
-        Vector3 flatFleeDirection = fleeDirection.sqrMagnitude > 0.001f
-            ? fleeDirection.normalized
-            : Vector3.zero;
+        fleeDirection.y = 0f;
 
-        float currentNearestThreatDistance =
-            threatTracker.GetNearestThreatDistance(transform.position, currentSafeSearchRadius * 2f);
+        if (fleeDirection.sqrMagnitude <= MinMoveThreshold)
+            fleeDirection = -transform.forward;
 
-        float bestStrictScore = float.MinValue;
-        bool foundStrict = false;
-        Vector3 bestFallbackPosition = transform.position;
+        if (fleeDirection.sqrMagnitude <= MinMoveThreshold)
+            fleeDirection = Vector3.back;
+
+        fleeDirection.Normalize();
+
+        float searchRadius = GetEffectiveSafeSearchRadius(hasThreat);
+        float currentThreatDistance = threatTracker.GetNearestThreatDistance(transform.position, searchRadius * 2f);
+
+        float[] angleOffsets = { 0f, 25f, -25f, 50f, -50f, 75f, -75f, 110f, -110f };
+        float[] distanceScales = { 1f, 0.8f, 0.6f, 0.4f };
+
+        bool foundSaferCandidate = false;
+        bool foundFallbackCandidate = false;
+
+        float bestSaferScore = float.MinValue;
         float bestFallbackScore = float.MinValue;
-        bool foundFallback = false;
+        Vector3 fallbackPosition = transform.position;
 
-        for (int i = 0; i < currentSampleCount; i++)
+        for (int d = 0; d < distanceScales.Length; d++)
         {
-            Vector2 randomCircle = Random.insideUnitCircle * currentSafeSearchRadius;
-            Vector3 rawCandidate = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
+            float distance = Mathf.Max(settings.safePointMinDistance, searchRadius * distanceScales[d]);
 
-            if (Vector3.Distance(transform.position, rawCandidate) < safePointMinDistance)
-                continue;
-
-            if (!NavMesh.SamplePosition(rawCandidate, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
-                continue;
-
-            Vector3 candidate = hit.position;
-
-            if (!IsReachable(candidate))
-                continue;
-
-            float candidateNearestThreatDistance =
-                threatTracker.GetNearestThreatDistance(candidate, currentSafeSearchRadius * 2f);
-
-            float pathStartAlignment = GetPathStartAlignment(candidate, flatFleeDirection);
-
-            float score = EvaluateSafePoint(
-                candidate,
-                flatFleeDirection,
-                currentNearestThreatDistance,
-                candidateNearestThreatDistance,
-                pathStartAlignment,
-                currentFleeDirectionBias
-            );
-
-            bool isSaferThanCurrent =
-                candidateNearestThreatDistance + 0.01f >= currentNearestThreatDistance + minNearestThreatDistanceGain;
-
-            bool pathStartsAwayFromThreat =
-                pathStartAlignment >= minPathStartAlignment;
-
-            if (isSaferThanCurrent && pathStartsAwayFromThreat)
+            for (int i = 0; i < angleOffsets.Length; i++)
             {
-                if (score > bestStrictScore)
+                Vector3 direction = Quaternion.Euler(0f, angleOffsets[i], 0f) * fleeDirection;
+                direction.y = 0f;
+
+                if (direction.sqrMagnitude <= MinMoveThreshold)
+                    continue;
+
+                direction.Normalize();
+
+                Vector3 rawCandidate = transform.position + direction * distance;
+
+                if (!NavMesh.SamplePosition(rawCandidate, out NavMeshHit hit, settings.navMeshSampleRadius, NavMesh.AllAreas))
+                    continue;
+
+                Vector3 candidate = hit.position;
+
+                if (!TryCalculatePath(candidate))
+                    continue;
+
+                float pathStartAlignment = GetPathStartAlignment(reusablePath, fleeDirection);
+                float candidateThreatDistance = threatTracker.GetNearestThreatDistance(candidate, searchRadius * 2f);
+                float threatDistanceGain = candidateThreatDistance - currentThreatDistance;
+                float moveDistance = Vector3.Distance(transform.position, candidate);
+
+                float score =
+                    threatDistanceGain * 10f +
+                    pathStartAlignment * 2f +
+                    moveDistance * 0.2f;
+
+                if (threatDistanceGain > 0.05f)
                 {
-                    bestStrictScore = score;
-                    bestPosition = candidate;
-                    foundStrict = true;
+                    if (score > bestSaferScore)
+                    {
+                        bestSaferScore = score;
+                        bestPosition = candidate;
+                        foundSaferCandidate = true;
+                    }
                 }
-            }
-            else
-            {
-                if (!foundStrict && score > bestFallbackScore)
+                else
                 {
-                    bestFallbackScore = score;
-                    bestFallbackPosition = candidate;
-                    foundFallback = true;
+                    if (pathStartAlignment > -0.35f && score > bestFallbackScore)
+                    {
+                        bestFallbackScore = score;
+                        fallbackPosition = candidate;
+                        foundFallbackCandidate = true;
+                    }
                 }
             }
         }
 
-        if (foundStrict)
+        if (foundSaferCandidate)
             return true;
 
-        if (foundFallback)
+        if (foundFallbackCandidate)
         {
-            bestPosition = bestFallbackPosition;
+            bestPosition = fallbackPosition;
             return true;
         }
 
         return false;
     }
-
-    private bool IsReachable(Vector3 destination)
+    private bool TryBuildCandidateDestination(Vector3 direction, float distance, out Vector3 candidate)
     {
-        if (navAgent == null)
+        candidate = transform.position;
+
+        Vector3 rawPosition = transform.position + direction * distance;
+
+        if (!NavMesh.SamplePosition(rawPosition, out NavMeshHit hit, settings.navMeshSampleRadius, NavMesh.AllAreas))
             return false;
 
-        NavMeshPath path = new NavMeshPath();
-        if (!navAgent.CalculatePath(destination, path))
-            return false;
-
-        return path.status == NavMeshPathStatus.PathComplete;
+        candidate = hit.position;
+        return true;
     }
 
-    private float GetPathStartAlignment(Vector3 destination, Vector3 fleeDirection)
+    private bool TryCalculatePath(Vector3 destination)
     {
         if (navAgent == null)
-            return -1f;
+            return false;
 
-        if (fleeDirection == Vector3.zero)
-            return 1f;
+        if (reusablePath == null)
+            reusablePath = new NavMeshPath();
 
-        NavMeshPath path = new NavMeshPath();
-        if (!navAgent.CalculatePath(destination, path))
-            return -1f;
+        if (!navAgent.CalculatePath(destination, reusablePath))
+            return false;
 
-        if (path.status != NavMeshPathStatus.PathComplete)
-            return -1f;
+        return reusablePath.status == NavMeshPathStatus.PathComplete;
+    }
 
-        if (path.corners == null || path.corners.Length < 2)
+    private float GetPathStartAlignment(NavMeshPath path, Vector3 fleeDirection)
+    {
+        if (fleeDirection == Vector3.zero || path == null || path.corners == null || path.corners.Length < 2)
             return 1f;
 
         Vector3 firstStep = path.corners[1] - transform.position;
         firstStep.y = 0f;
 
-        if (firstStep.sqrMagnitude <= 0.001f)
+        if (firstStep.sqrMagnitude <= MinMoveThreshold)
             return 1f;
 
-        return Vector3.Dot(firstStep.normalized, fleeDirection);
+        return Vector3.Dot(firstStep.normalized, fleeDirection.normalized);
     }
 
-    private float EvaluateSafePoint(
-        Vector3 candidate,
-        Vector3 fleeDirection,
-        float currentNearestThreatDistance,
-        float candidateNearestThreatDistance,
-        float pathStartAlignment,
-        float currentFleeDirectionBias)
-    {
-        if (threatTracker == null)
-            return float.MinValue;
-
-        float score = 0f;
-
-        score += threatTracker.GetDistanceScoreFromAgents(candidate) * 3f;
-        score += threatTracker.GetDistanceScoreFromDecoys(candidate) * 1.5f;
-        score += threatTracker.GetDistanceScoreFromPhantoms(candidate) * 2f;
-
-        float moveDistance = Vector3.Distance(transform.position, candidate);
-        score += moveDistance * 0.5f;
-
-        if (fleeDirection != Vector3.zero)
-        {
-            Vector3 toCandidate = (candidate - transform.position).normalized;
-            float alignment = Vector3.Dot(toCandidate, fleeDirection);
-            score += alignment * currentFleeDirectionBias;
-
-            if (alignment < 0f)
-                score += alignment * 20f;
-        }
-
-        float nearestThreatDistanceGain = candidateNearestThreatDistance - currentNearestThreatDistance;
-        score += nearestThreatDistanceGain * 5f;
-
-        if (nearestThreatDistanceGain < 0f)
-            score += nearestThreatDistanceGain * 25f;
-
-        score += pathStartAlignment * 8f;
-
-        if (pathStartAlignment < 0f)
-            score += pathStartAlignment * 30f;
-
-        return score;
-    }
-
-    public bool IsCompletelyStopped()
-    {
-        if (navAgent == null)
-            return true;
-
-        bool noPathOrArrived =
-            !navAgent.pathPending &&
-            (!navAgent.hasPath || navAgent.remainingDistance <= navAgent.stoppingDistance + 0.05f);
-
-        bool almostNotMoving = navAgent.velocity.sqrMagnitude <= 0.01f;
-
-        return noPathOrArrived && almostNotMoving;
-    }
-
-    public void ResetRuntimeState(bool resetEmergencyEscapeUsage = true)
+    private void StopActiveCoroutines()
     {
         if (rootRoutine != null)
         {
@@ -609,60 +627,21 @@ public class TargetEscapeMotor : MonoBehaviour
             StopCoroutine(emergencyEscapeRoutine);
             emergencyEscapeRoutine = null;
         }
+    }
 
+    private void ResetMotionState()
+    {
         isRooted = false;
         isEmergencyEscaping = false;
-        lastRepathTime = -999f;
-        lastKnownHealthRatio = 1f;
-
-        if (resetEmergencyEscapeUsage)
-            emergencyEscapeUsedCount = 0;
-
-        if (navAgent != null)
-        {
-            navAgent.isStopped = false;
-            navAgent.ResetPath();
-        }
-
-        ApplyNavAgentBaseSettings();
+        ResetAgentPath();
     }
 
-    public void ApplySettings(EscapeSettings settings)
+    private void ResetAgentPath(bool stopAgent = false)
     {
-        if (settings == null)
+        if (navAgent == null)
             return;
 
-        repathCooldown = settings.repathCooldown;
-        fleeMoveSpeed = settings.fleeMoveSpeed;
-        fleeAngularSpeed = settings.fleeAngularSpeed;
-        fleeAcceleration = settings.fleeAcceleration;
-        minNearestThreatDistanceGain = settings.minNearestThreatDistanceGain;
-        minPathStartAlignment = settings.minPathStartAlignment;
-
-        safeSearchRadius = settings.safeSearchRadius;
-        safePointSampleCount = settings.safePointSampleCount;
-        safePointMinDistance = settings.safePointMinDistance;
-        navMeshSampleRadius = settings.navMeshSampleRadius;
-        fleeDirectionBias = settings.fleeDirectionBias;
-
-        usePanicBoost = settings.usePanicBoost;
-        panicHealthThresholdRatio = settings.panicHealthThresholdRatio;
-        panicSpeedMultiplier = settings.panicSpeedMultiplier;
-        panicSearchRadiusMultiplier = settings.panicSearchRadiusMultiplier;
-        panicSampleCountBonus = settings.panicSampleCountBonus;
-        panicFleeDirectionBiasBonus = settings.panicFleeDirectionBiasBonus;
-
-        enableEmergencyEscape = settings.enableEmergencyEscape;
-        emergencyEscapeCharges = Mathf.Max(0, settings.emergencyEscapeCharges);
-        autoUseEmergencyEscape = settings.autoUseEmergencyEscape;
-        emergencyEscapeAutoTriggerHealthRatio = settings.emergencyEscapeAutoTriggerHealthRatio;
-        emergencyEscapeAutoTriggerThreatDistance = settings.emergencyEscapeAutoTriggerThreatDistance;
-        emergencyEscapeDuration = settings.emergencyEscapeDuration;
-        emergencyEscapeSpeed = settings.emergencyEscapeSpeed;
-        emergencyEscapeAcceleration = settings.emergencyEscapeAcceleration;
-        emergencyEscapeRepathInterval = settings.emergencyEscapeRepathInterval;
-
-        ApplyNavAgentBaseSettings();
+        navAgent.isStopped = stopAgent;
+        navAgent.ResetPath();
     }
-
 }

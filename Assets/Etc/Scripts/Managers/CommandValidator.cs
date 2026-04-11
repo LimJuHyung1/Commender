@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -15,6 +16,9 @@ public sealed class CommandValidator
     private const string SkillSlowTrap = "slowtrap";
     private const string SkillNoiseMaker = "noisemaker";
     private const string SkillHologram = "hologram";
+
+    private static readonly Regex CoordinateRegex =
+        new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
     private static readonly string[] DashInstructionKeywords =
     {
@@ -157,7 +161,36 @@ public sealed class CommandValidator
         if (string.IsNullOrWhiteSpace(source))
             return false;
 
-        return Regex.IsMatch(source, @"-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?");
+        return CoordinateRegex.IsMatch(source);
+    }
+
+    public bool TryExtractCoordinate(string source, out float x, out float z)
+    {
+        x = 0f;
+        z = 0f;
+
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        Match match = CoordinateRegex.Match(source);
+        if (!match.Success)
+            return false;
+
+        bool parsedX = float.TryParse(
+            match.Groups[1].Value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out x
+        );
+
+        bool parsedZ = float.TryParse(
+            match.Groups[2].Value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out z
+        );
+
+        return parsedX && parsedZ;
     }
 
     private bool ShouldForceLookAroundFromInstruction(string source)

@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using CodeMonkey.HealthSystemCM;
 using UnityEngine;
@@ -7,7 +7,7 @@ using UnityEngine.AI;
 [RequireComponent(typeof(NavMeshAgent))]
 [RequireComponent(typeof(TargetThreatTracker))]
 [RequireComponent(typeof(TargetEscapeMotor))]
-public class TargetController : MonoBehaviour, IGetHealthSystem
+public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver
 {
     [Serializable]
     private class DifficultyAnchor
@@ -38,6 +38,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
     [Header("References")]
     [SerializeField] private TargetThreatTracker threatTracker;
     [SerializeField] private TargetEscapeMotor escapeMotor;
+    [SerializeField] private TargetSkillController skillController;
 
     [Header("Difficulty")]
     [SerializeField] private bool applyDifficultyOnAwake = true;
@@ -78,8 +79,14 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
         if (escapeMotor == null)
             escapeMotor = GetComponent<TargetEscapeMotor>();
 
+        if (skillController == null)
+            skillController = GetComponent<TargetSkillController>();
+
         if (escapeMotor != null && threatTracker != null)
             escapeMotor.SetThreatTracker(threatTracker);
+
+        if (escapeMotor != null && skillController != null)
+            escapeMotor.SetSkillController(skillController);
 
         if (applyDifficultyOnAwake)
             ApplyDifficultyForStage(currentStageNumber, false);
@@ -133,7 +140,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
             stoppedRecoveryTimer = 0f;
             isRecoveringAfterStop = false;
 
-            escapeMotor.TryAutoEmergencyEscape(GetHealthRatio());
+            TryAutoEmergencyEscape();
 
             float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
             healthSystem.Damage(damageAmount);
@@ -175,7 +182,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
         DifficultyAnchor resolved = ResolveAnchor(currentStageNumber);
         if (resolved == null)
         {
-            Debug.LogWarning("[Target] Àû¿ëÇÒ difficulty anchor¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.");
+            Debug.LogWarning("[Target] ìœ íš¨í•œ difficulty anchorë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.");
             RecreateHealthSystem();
             return;
         }
@@ -213,7 +220,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
         if (writeLog)
         {
             Debug.Log(
-                $"[Target] Stage {currentStageNumber} ³­ÀÌµµ Àû¿ë ¿Ï·á " +
+                $"[Target] Stage {currentStageNumber} ë‚œì´ë„ í”„ë¡œí•„ ì ìš© " +
                 $"(catchDifficulty={resolved.catchDifficulty:F2}, boss={resolved.isBossStage})"
             );
         }
@@ -380,7 +387,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
             navAgent.ResetPath();
         }
 
-        Debug.Log("<color=red>[Target]</color> Ã¼·ÂÀÌ 0ÀÌ µÇ¾î ´õ ÀÌ»ó ÀÌµ¿ÇÏÁö ¾Ê½À´Ï´Ù.");
+        Debug.Log("<color=red>[Target]</color> ì²´ë ¥ì´ 0ì´ ë˜ì–´ ë” ì´ìƒ ë„ë§ì¹  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.");
     }
 
     private void HandleStoppedRecovery()
@@ -506,7 +513,26 @@ public class TargetController : MonoBehaviour, IGetHealthSystem
 
     public bool TryActivateEmergencyEscape()
     {
+        if (skillController != null)
+            return skillController.TryUseEmergencyEscape();
+
         if (escapeMotor == null)
+            return false;
+
+        return escapeMotor.TryActivateEmergencyEscape();
+    }
+
+    private bool TryAutoEmergencyEscape()
+    {
+        float healthRatio = GetHealthRatio();
+
+        if (skillController != null)
+            return skillController.TryAutoEmergencyEscape(healthRatio);
+
+        if (escapeMotor == null)
+            return false;
+
+        if (!escapeMotor.ShouldAutoTriggerEmergencyEscape(healthRatio))
             return false;
 
         return escapeMotor.TryActivateEmergencyEscape();

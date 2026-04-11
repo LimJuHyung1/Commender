@@ -172,11 +172,11 @@ public class TargetThreatTracker : MonoBehaviour
             }
         }
 
-        if (HologramProjection.ActiveHolograms != null)
+        if (AgentHologram.ActiveHolograms != null)
         {
-            for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
+            for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
             {
-                HologramProjection hologram = HologramProjection.ActiveHolograms[i];
+                AgentHologram hologram = AgentHologram.ActiveHolograms[i];
                 if (hologram == null)
                     continue;
 
@@ -253,13 +253,13 @@ public class TargetThreatTracker : MonoBehaviour
             }
         }
 
-        if (HologramProjection.ActiveHolograms != null)
+        if (AgentHologram.ActiveHolograms != null)
         {
             float sqrRange = hologramInfluenceRadius * hologramInfluenceRadius;
 
-            for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
+            for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
             {
-                HologramProjection hologram = HologramProjection.ActiveHolograms[i];
+                AgentHologram hologram = AgentHologram.ActiveHolograms[i];
                 if (hologram == null)
                     continue;
 
@@ -320,12 +320,12 @@ public class TargetThreatTracker : MonoBehaviour
     {
         float score = 0f;
 
-        if (HologramProjection.ActiveHolograms == null)
+        if (AgentHologram.ActiveHolograms == null)
             return score;
 
-        for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
+        for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
         {
-            HologramProjection hologram = HologramProjection.ActiveHolograms[i];
+            AgentHologram hologram = AgentHologram.ActiveHolograms[i];
             if (hologram == null)
                 continue;
 
@@ -358,14 +358,14 @@ public class TargetThreatTracker : MonoBehaviour
 
     public bool HasAnyPhantomThreatInRange()
     {
-        if (HologramProjection.ActiveHolograms == null)
+        if (AgentHologram.ActiveHolograms == null)
             return false;
 
         float sqrRange = hologramInfluenceRadius * hologramInfluenceRadius;
 
-        for (int i = 0; i < HologramProjection.ActiveHolograms.Count; i++)
+        for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
         {
-            HologramProjection hologram = HologramProjection.ActiveHolograms[i];
+            AgentHologram hologram = AgentHologram.ActiveHolograms[i];
             if (hologram == null)
                 continue;
 
@@ -398,6 +398,61 @@ public class TargetThreatTracker : MonoBehaviour
                 nearbyAgents.RemoveAt(i);
         }
     }
+
+    public bool TryGetNearestRealAgentBehind(
+    Vector3 escapeForward,
+    float maxDistance,
+    float behindDotThreshold,
+    out Transform nearestAgent,
+    out float nearestDistance)
+    {
+        nearestAgent = null;
+        nearestDistance = maxDistance;
+
+        CleanupNearbyAgents();
+
+        escapeForward.y = 0f;
+        if (escapeForward.sqrMagnitude <= 0.0001f)
+            return false;
+
+        escapeForward.Normalize();
+
+        float maxDistanceSqr = maxDistance * maxDistance;
+        float bestSqrDistance = float.MaxValue;
+
+        for (int i = nearbyAgents.Count - 1; i >= 0; i--)
+        {
+            Transform agent = nearbyAgents[i];
+            if (agent == null)
+                continue;
+
+            Vector3 toAgent = agent.position - transform.position;
+            toAgent.y = 0f;
+
+            float sqrDistance = toAgent.sqrMagnitude;
+            if (sqrDistance <= 0.0001f || sqrDistance > maxDistanceSqr)
+                continue;
+
+            float dot = Vector3.Dot(escapeForward, toAgent.normalized);
+
+            // dot가 음수일수록 타겟의 뒤쪽
+            if (dot > behindDotThreshold)
+                continue;
+
+            if (sqrDistance < bestSqrDistance)
+            {
+                bestSqrDistance = sqrDistance;
+                nearestAgent = agent;
+            }
+        }
+
+        if (nearestAgent == null)
+            return false;
+
+        nearestDistance = Mathf.Sqrt(bestSqrDistance);
+        return true;
+    }
+
 
     private void UpdatePlayerRevealVisual()
     {

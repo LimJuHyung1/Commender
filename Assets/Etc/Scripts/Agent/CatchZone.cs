@@ -1,9 +1,9 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System;
 
 public class CatchZone : MonoBehaviour
 {
-    [Header("¼³Á¤")]
+    [Header("ì„¤ì •")]
     [SerializeField] private LayerMask targetLayer;
 
     public static event Action<GameObject> OnTargetCaught;
@@ -12,6 +12,13 @@ public class CatchZone : MonoBehaviour
     {
         if (other.isTrigger)
             return;
+
+        TargetHologram targetHologram = other.GetComponentInParent<TargetHologram>();
+        if (targetHologram != null)
+        {
+            Debug.Log($"<color=cyan>[CatchZone]</color> {targetHologram.name} ì€(ëŠ”) íƒ€ê²Ÿ í™€ë¡œê·¸ë¨ì´ë¯€ë¡œ ì²´í¬ ì²˜ë¦¬í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.");
+            return;
+        }
 
         if (((1 << other.gameObject.layer) & targetLayer) == 0)
             return;
@@ -22,20 +29,20 @@ public class CatchZone : MonoBehaviour
         {
             if (targetController.TryActivateEmergencyEscape())
             {
-                Debug.Log($"<color=orange>[CatchZone]</color> {targetController.name} ÀÌ(°¡) ±ä±Ş È¸ÇÇ¸¦ »ç¿ëÇØ Æ÷È¹À» È¸ÇÇÇß½À´Ï´Ù.");
+                Debug.Log($"<color=orange>[CatchZone]</color> {targetController.name} ì´(ê°€) ê¸´ê¸‰ íšŒí”¼ë¥¼ ì‚¬ìš©í•´ í¬íšì„ íšŒí”¼í–ˆìŠµë‹ˆë‹¤.");
                 return;
             }
 
             if (!targetController.CanBeCaught)
             {
-                Debug.Log($"<color=orange>[CatchZone]</color> {targetController.name} Àº(´Â) ÇöÀç Æ÷È¹ ºÒ°¡ »óÅÂÀÔ´Ï´Ù.");
+                Debug.Log($"<color=orange>[CatchZone]</color> {targetController.name} ì€(ëŠ”) í˜„ì¬ í¬íš ë¶ˆê°€ ìƒíƒœì…ë‹ˆë‹¤.");
                 return;
             }
         }
 
         GameObject caughtObject = targetController != null ? targetController.gameObject : other.gameObject;
 
-        Debug.Log($"<color=yellow>[CatchZone]</color> {caughtObject.name} Æ÷È¹ ¼º°ø!");
+        Debug.Log($"<color=yellow>[CatchZone]</color> {caughtObject.name} í¬íš ì„±ê³µ!");
         OnTargetCaught?.Invoke(caughtObject);
 
         var targetAgent = caughtObject.GetComponent<UnityEngine.AI.NavMeshAgent>();

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,13 +15,23 @@ public class CommanderUIController : MonoBehaviour
     [Header("Hotkeys")]
     [SerializeField] private bool enableFunctionKeyFocus = true;
 
+    [Header("Communication Jam")]
+    [SerializeField] private string jammedPlaceholderText = "통신 방해 중...";
+    [SerializeField] private bool clearTextOnJam = true;
+
     private IReadOnlyList<AgentController> agents;
     private int currentFocusedInputIndex = -1;
     private AgentOutline currentHighlightedOutline;
     private bool uiInteractable = true;
 
+    private Coroutine tabMoveRoutine;
+
     private readonly Dictionary<InputField, string> originalPlaceholderTextByInput =
         new Dictionary<InputField, string>();
+
+    private readonly HashSet<int> jammedAgentIds = new HashSet<int>();
+    private readonly Dictionary<int, Coroutine> jamReleaseRoutineByAgentId =
+        new Dictionary<int, Coroutine>();
 
     private void Awake()
     {
@@ -47,6 +58,7 @@ public class CommanderUIController : MonoBehaviour
     {
         agents = boundAgents;
         WarnIfInputCountMismatch();
+        RefreshAllInputInteractableStates();
         UpdateFocusedInputPresentation(true);
     }
 
@@ -56,8 +68,15 @@ public class CommanderUIController : MonoBehaviour
 
         if (!state)
         {
+            if (tabMoveRoutine != null)
+            {
+                StopCoroutine(tabMoveRoutine);
+                tabMoveRoutine = null;
+            }
+
             currentFocusedInputIndex = -1;
             RestoreAllPlaceholderTexts();
+            ApplyAllJammedPlaceholders();
 
             if (agentCameraFollow != null)
                 agentCameraFollow.ClearFocusAgent();
@@ -72,14 +91,7 @@ public class CommanderUIController : MonoBehaviour
                 EventSystem.current.SetSelectedGameObject(null);
         }
 
-        if (agentInputs != null)
-        {
-            foreach (InputField input in agentInputs)
-            {
-                if (input != null)
-                    input.interactable = state;
-            }
-        }
+        RefreshAllInputInteractableStates();
 
         if (submitButton != null)
             submitButton.interactable = state;
@@ -92,6 +104,25 @@ public class CommanderUIController : MonoBehaviour
 
         foreach (InputField input in agentInputs)
         {
+            if (input != null)
+                input.text = "";
+        }
+    }
+
+    public void ClearInputsByAgentIds(IEnumerable<int> agentIds)
+    {
+        if (agentIds == null || agentInputs == null)
+            return;
+
+        foreach (int agentId in agentIds)
+        {
+            if (!TryGetInputIndexByAgentId(agentId, out int inputIndex))
+                continue;
+
+            if (inputIndex < 0 || inputIndex >= agentInputs.Count)
+                continue;
+
+            InputField input = agentInputs[inputIndex];
             if (input != null)
                 input.text = "";
         }
@@ -112,6 +143,9 @@ public class CommanderUIController : MonoBehaviour
             if (input == null)
                 continue;
 
+            if (IsInputIndexJammed(i))
+                continue;
+
             string instruction = input.text.Trim();
             if (string.IsNullOrEmpty(instruction))
                 continue;
@@ -127,6 +161,108 @@ public class CommanderUIController : MonoBehaviour
         }
 
         return hasAnyValidInput;
+    }
+
+    public bool TryJamAgentInput(int agentId, float duration)
+    {
+        if (duration <= 0f)
+            return false;
+
+        if (!TryGetInputIndexByAgentId(agentId, out int inputIndex))
+            return false;
+
+        SetAgentInputJammedState(agentId, true);
+
+        InputField input = agentInputs[inputIndex];
+        if (input != null)
+        {
+            if (clearTextOnJam)
+                input.text = "";
+
+            input.DeactivateInputField();
+        }
+
+        if (jamReleaseRoutineByAgentId.TryGetValue(agentId, out Coroutine runningRoutine) &&
+            runningRoutine != null)
+        {
+            StopCoroutine(runningRoutine);
+        }
+
+        jamReleaseRoutineByAgentId[agentId] = StartCoroutine(ReleaseJamAfterDelay(agentId, duration));
+
+        if (GetSelectedInputIndex() == inputIndex || currentFocusedInputIndex == inputIndex)
+            FocusNextAvailableInputFrom(inputIndex);
+
+        UpdateFocusedInputPresentation(true);
+        return true;
+    }
+
+    public void ClearAgentInputJam(int agentId)
+    {
+        if (jamReleaseRoutineByAgentId.TryGetValue(agentId, out Coroutine runningRoutine) &&
+            runningRoutine != null)
+        {
+            StopCoroutine(runningRoutine);
+        }
+
+        jamReleaseRoutineByAgentId.Remove(agentId);
+        SetAgentInputJammedState(agentId, false);
+        UpdateFocusedInputPresentation(true);
+    }
+
+    public void ClearAllAgentInputJams()
+    {
+        foreach (KeyValuePair<int, Coroutine> pair in jamReleaseRoutineByAgentId)
+        {
+            if (pair.Value != null)
+                StopCoroutine(pair.Value);
+        }
+
+        jamReleaseRoutineByAgentId.Clear();
+        jammedAgentIds.Clear();
+
+        RefreshAllInputInteractableStates();
+        UpdateFocusedInputPresentation(true);
+    }
+
+    public bool IsAgentInputJammed(int agentId)
+    {
+        return jammedAgentIds.Contains(agentId);
+    }
+
+    private IEnumerator ReleaseJamAfterDelay(int agentId, float duration)
+    {
+        yield return new WaitForSeconds(duration);
+
+        jamReleaseRoutineByAgentId.Remove(agentId);
+        SetAgentInputJammedState(agentId, false);
+        UpdateFocusedInputPresentation(true);
+    }
+
+    private void SetAgentInputJammedState(int agentId, bool jammed)
+    {
+        if (jammed)
+            jammedAgentIds.Add(agentId);
+        else
+            jammedAgentIds.Remove(agentId);
+
+        RefreshAllInputInteractableStates();
+    }
+
+    private void RefreshAllInputInteractableStates()
+    {
+        if (agentInputs == null)
+            return;
+
+        for (int i = 0; i < agentInputs.Count; i++)
+        {
+            InputField input = agentInputs[i];
+            if (input == null)
+                continue;
+
+            bool canInteract = uiInteractable && !IsInputIndexJammed(i);
+            input.interactable = canInteract;
+        }
     }
 
     private void HandleFunctionKeyFocus()
@@ -174,6 +310,9 @@ public class CommanderUIController : MonoBehaviour
         if (inputIndex < 0 || inputIndex >= agentInputs.Count)
             return;
 
+        if (IsInputIndexJammed(inputIndex))
+            return;
+
         FocusInputField(inputIndex);
     }
 
@@ -200,11 +339,34 @@ public class CommanderUIController : MonoBehaviour
             keyboard.leftShiftKey.isPressed ||
             keyboard.rightShiftKey.isPressed;
 
-        int nextIndex = movePrevious
-            ? (currentIndex - 1 + agentInputs.Count) % agentInputs.Count
-            : (currentIndex + 1) % agentInputs.Count;
+        int nextIndex = FindNextAvailableInputIndex(currentIndex, movePrevious);
+        if (nextIndex < 0 || nextIndex == currentIndex)
+            return;
+
+        if (tabMoveRoutine != null)
+            StopCoroutine(tabMoveRoutine);
+
+        tabMoveRoutine = StartCoroutine(MoveFocusAfterImeCommit(currentIndex, nextIndex));
+    }
+
+    private IEnumerator MoveFocusAfterImeCommit(int currentIndex, int nextIndex)
+    {
+        while (IsImeComposing())
+            yield return null;
+
+        InputField currentInput = agentInputs[currentIndex];
+        if (currentInput != null)
+            currentInput.DeactivateInputField();
+
+        yield return null;
 
         FocusInputField(nextIndex);
+        tabMoveRoutine = null;
+    }
+
+    private bool IsImeComposing()
+    {
+        return !string.IsNullOrEmpty(UnityEngine.Input.compositionString);
     }
 
     private int GetSelectedInputIndex()
@@ -257,6 +419,7 @@ public class CommanderUIController : MonoBehaviour
         currentFocusedInputIndex = focusedIndex;
 
         RestoreAllPlaceholderTexts();
+        ApplyAllJammedPlaceholders();
 
         if (currentHighlightedOutline != null)
         {
@@ -272,7 +435,8 @@ public class CommanderUIController : MonoBehaviour
             return;
         }
 
-        ApplyFocusedInputSkillPlaceholder(focusedIndex, targetAgent);
+        if (!IsInputIndexJammed(focusedIndex))
+            ApplyFocusedInputSkillPlaceholder(focusedIndex, targetAgent);
 
         if (agentCameraFollow != null)
             agentCameraFollow.FocusAgent(targetAgent.transform);
@@ -293,6 +457,9 @@ public class CommanderUIController : MonoBehaviour
         if (index < 0 || index >= agentInputs.Count)
             return;
 
+        if (IsInputIndexJammed(index))
+            return;
+
         InputField nextInput = agentInputs[index];
         if (nextInput == null || !nextInput.interactable)
             return;
@@ -305,6 +472,102 @@ public class CommanderUIController : MonoBehaviour
         nextInput.MoveTextEnd(false);
 
         UpdateFocusedInputPresentation(true);
+    }
+
+    private void FocusNextAvailableInputFrom(int startIndex)
+    {
+        int nextIndex = FindNextAvailableInputIndex(startIndex, false);
+
+        if (nextIndex >= 0 && nextIndex != startIndex)
+        {
+            FocusInputField(nextIndex);
+            return;
+        }
+
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(null);
+
+        if (agentCameraFollow != null)
+            agentCameraFollow.ClearFocusAgent();
+
+        if (currentHighlightedOutline != null)
+        {
+            currentHighlightedOutline.SetOutlineVisible(false);
+            currentHighlightedOutline = null;
+        }
+
+        currentFocusedInputIndex = -1;
+    }
+
+    private int FindNextAvailableInputIndex(int startIndex, bool movePrevious)
+    {
+        if (agentInputs == null || agentInputs.Count == 0)
+            return -1;
+
+        int count = agentInputs.Count;
+        int step = movePrevious ? -1 : 1;
+
+        for (int offset = 1; offset <= count; offset++)
+        {
+            int index = (startIndex + step * offset + count) % count;
+
+            if (CanFocusInputIndex(index))
+                return index;
+        }
+
+        return -1;
+    }
+
+    private bool CanFocusInputIndex(int index)
+    {
+        if (agentInputs == null)
+            return false;
+
+        if (index < 0 || index >= agentInputs.Count)
+            return false;
+
+        InputField input = agentInputs[index];
+        if (input == null)
+            return false;
+
+        if (!uiInteractable)
+            return false;
+
+        if (IsInputIndexJammed(index))
+            return false;
+
+        return input.interactable;
+    }
+
+    private bool IsInputIndexJammed(int inputIndex)
+    {
+        if (!TryGetAgentAtInputIndex(inputIndex, out AgentController agent))
+            return false;
+
+        return jammedAgentIds.Contains(agent.AgentID);
+    }
+
+    private bool TryGetInputIndexByAgentId(int agentId, out int inputIndex)
+    {
+        inputIndex = -1;
+
+        if (agents == null)
+            return false;
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            AgentController agent = agents[i];
+            if (agent == null)
+                continue;
+
+            if (agent.AgentID != agentId)
+                continue;
+
+            inputIndex = i;
+            return true;
+        }
+
+        return false;
     }
 
     private bool TryGetAgentAtInputIndex(int index, out AgentController agent)
@@ -359,12 +622,33 @@ public class CommanderUIController : MonoBehaviour
         }
     }
 
+    private void ApplyAllJammedPlaceholders()
+    {
+        if (agentInputs == null)
+            return;
+
+        for (int i = 0; i < agentInputs.Count; i++)
+        {
+            if (!IsInputIndexJammed(i))
+                continue;
+
+            InputField input = agentInputs[i];
+            if (input == null)
+                continue;
+
+            SetPlaceholderText(input, jammedPlaceholderText);
+        }
+    }
+
     private void ApplyFocusedInputSkillPlaceholder(int inputIndex, AgentController agent)
     {
         if (agentInputs == null)
             return;
 
         if (inputIndex < 0 || inputIndex >= agentInputs.Count)
+            return;
+
+        if (IsInputIndexJammed(inputIndex))
             return;
 
         InputField input = agentInputs[inputIndex];
@@ -435,5 +719,37 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         placeholderText.text = text;
+    }
+
+
+
+    // 디버그용: 버튼에서 랜덤 에이전트 통신 방해 테스트
+    // 나중에 삭제하기
+    public void TestRandomCommunicationJamFromButton()
+    {
+        if (agents == null || agents.Count == 0)
+        {
+            Debug.LogWarning("[CommanderUI] 에이전트가 아직 바인딩되지 않았습니다.");
+            return;
+        }
+
+        int startIndex = Random.Range(0, agents.Count);
+
+        for (int offset = 0; offset < agents.Count; offset++)
+        {
+            int index = (startIndex + offset) % agents.Count;
+            AgentController agent = agents[index];
+
+            if (agent == null)
+                continue;
+
+            if (TryJamAgentInput(agent.AgentID, 15f))
+            {
+                Debug.Log($"[CommanderUI] 통신 방해 테스트 성공: AgentID {agent.AgentID}, 15초");
+                return;
+            }
+        }
+
+        Debug.LogWarning("[CommanderUI] 통신 방해 테스트 실패: 방해 가능한 에이전트가 없습니다.");
     }
 }

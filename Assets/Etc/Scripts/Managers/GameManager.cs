@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
@@ -10,7 +10,7 @@ public class GameManager : MonoBehaviour
     public class StageRule
     {
         public string stageName = "Stage";
-        [TextArea] public string missionDescription = "Å¸°ÙÀ» Ã¼Æ÷ÇÏ¼¼¿ä.";
+        [TextArea] public string missionDescription = "íƒ€ê²Ÿì„ ì²´í¬í•˜ì„¸ìš”.";
         public bool useTimeLimit = false;
         public float timeLimitSeconds = 300f;
         public bool clearOnTargetCaught = true;
@@ -19,20 +19,20 @@ public class GameManager : MonoBehaviour
     [Header("Stage Rules")]
     [SerializeField] private StageRule[] stageRules;
 
-    [Header("UI ¼³Á¤")]
+    [Header("UI ï¿½ï¿½ï¿½ï¿½")]
     [SerializeField] private GameObject resultPanel;
     [SerializeField] private Text resultTitleText;
     [SerializeField] private Text resultMessageText;
     [SerializeField] private Text missionText;
     [SerializeField] private Text timerText;
 
-    [Header("Scene ÀÌµ¿")]
+    [Header("Scene ï¿½Ìµï¿½")]
     [SerializeField] private string lobbySceneName = "Lobby";
     [SerializeField] private bool autoReturnToLobbyOnWin = true;
     [SerializeField] private bool autoReturnToLobbyOnFail = false;
     [SerializeField] private float returnDelaySeconds = 2.0f;
 
-    [Header("¿¬Ãâ")]
+    [Header("ï¿½ï¿½ï¿½ï¿½")]
     [SerializeField] private float winTimeScale = 0.5f;
     [SerializeField] private float failTimeScale = 0.5f;
 
@@ -101,7 +101,7 @@ public class GameManager : MonoBehaviour
                 timerText.gameObject.SetActive(false);
         }
 
-        Debug.Log($"[GameManager] {currentRule.stageName} ±ÔÄ¢ Àû¿ë: " +
+        Debug.Log($"[GameManager] {currentRule.stageName} ê·œì¹™ ì ìš©: " +
                   $"useTimeLimit={currentRule.useTimeLimit}, " +
                   $"timeLimit={currentRule.timeLimitSeconds}, " +
                   $"clearOnTargetCaught={currentRule.clearOnTargetCaught}");
@@ -152,7 +152,7 @@ public class GameManager : MonoBehaviour
 
         StageRule fallbackRule = new StageRule();
         fallbackRule.stageName = $"Stage {stageIndex + 1}";
-        fallbackRule.missionDescription = "Å¸°ÙÀ» Ã¼Æ÷ÇÏ¼¼¿ä.";
+        fallbackRule.missionDescription = "íƒ€ê²Ÿì„ ì²´í¬í•˜ì„¸ìš”.";
         fallbackRule.useTimeLimit = false;
         fallbackRule.timeLimitSeconds = 60f;
         fallbackRule.clearOnTargetCaught = true;
@@ -170,7 +170,7 @@ public class GameManager : MonoBehaviour
         {
             remainingTime = 0f;
             RefreshTimerText();
-            FailStage("Á¦ÇÑ ½Ã°£ ¾È¿¡ Å¸°ÙÀ» Ã¼Æ÷ÇÏÁö ¸øÇß½À´Ï´Ù.");
+            FailStage("ì œí•œ ì‹œê°„ ì•ˆì— íƒ€ê²Ÿì„ ì²´í¬í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.");
             return;
         }
 
@@ -196,13 +196,13 @@ public class GameManager : MonoBehaviour
 
         if (currentRule != null && !currentRule.clearOnTargetCaught)
         {
-            Debug.Log("[GameManager] ÇöÀç ½ºÅ×ÀÌÁö´Â Å¸°Ù Ã¼Æ÷¸¸À¸·Î Å¬¸®¾îµÇÁö ¾Ê½À´Ï´Ù.");
+            Debug.Log("[GameManager] í˜„ì¬ ìŠ¤í…Œì´ì§€ëŠ” íƒ€ê²Ÿ ì²´í¬ë§Œìœ¼ë¡œ í´ë¦¬ì–´ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.");
             return;
         }
 
         string message = target != null
-            ? $"ÃàÇÏÇÕ´Ï´Ù! {target.name}À»(¸¦) Ã¼Æ÷Çß½À´Ï´Ù!"
-            : "ÃàÇÏÇÕ´Ï´Ù! Å¸°ÙÀ» Ã¼Æ÷Çß½À´Ï´Ù!";
+            ? $"ì¶•í•˜í•©ë‹ˆë‹¤! {target.name}ì„(ë¥¼) ì²´í¬í–ˆìŠµë‹ˆë‹¤!"
+            : "ì¶•í•˜í•©ë‹ˆë‹¤! íƒ€ê²Ÿì„ ì²´í¬í–ˆìŠµë‹ˆë‹¤!";
 
         CompleteStage(message);
     }
@@ -215,7 +215,7 @@ public class GameManager : MonoBehaviour
         stageFinished = true;
         timerRunning = false;
 
-        Debug.Log($"<color=green>[GameManager]</color> ½ºÅ×ÀÌÁö Å¬¸®¾î: {message}");
+        Debug.Log($"<color=green>[GameManager]</color> ìŠ¤í…Œì´ì§€ í´ë¦¬ì–´: {message}");
 
         UnlockNextStage();
         StopAllMovingObjects();
@@ -235,7 +235,7 @@ public class GameManager : MonoBehaviour
         stageFinished = true;
         timerRunning = false;
 
-        Debug.Log($"<color=red>[GameManager]</color> ½ºÅ×ÀÌÁö ½ÇÆĞ: {message}");
+        Debug.Log($"<color=red>[GameManager]</color> ìŠ¤í…Œì´ì§€ ì‹¤íŒ¨: {message}");
 
         StopAllMovingObjects();
         ShowResultUI(false, message);
@@ -251,7 +251,7 @@ public class GameManager : MonoBehaviour
         StageMapManager stageMapManager = FindFirstObjectByType<StageMapManager>();
         if (stageMapManager == null)
         {
-            Debug.LogWarning("[GameManager] StageMapManager¸¦ Ã£Áö ¸øÇØ¼­ ´ÙÀ½ ½ºÅ×ÀÌÁö¸¦ ÇØ±İÇÏÁö ¸øÇß½À´Ï´Ù.");
+            Debug.LogWarning("[GameManager] StageMapManagerë¥¼ ì°¾ì§€ ëª»í•´ì„œ ë‹¤ìŒ ìŠ¤í…Œì´ì§€ë¥¼ í•´ê¸ˆí•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.");
             return;
         }
 
@@ -264,7 +264,7 @@ public class GameManager : MonoBehaviour
             resultPanel.SetActive(true);
 
         if (resultTitleText != null)
-            resultTitleText.text = isSuccess ? "¼º°ø" : "½ÇÆĞ";
+            resultTitleText.text = isSuccess ? "ì„±ê³µ" : "ì‹¤íŒ¨";
 
         if (resultMessageText != null)
             resultMessageText.text = message;

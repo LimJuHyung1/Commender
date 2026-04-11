@@ -61,19 +61,17 @@ public class CommanderManager : MonoBehaviour
             return;
 
         requestInFlight = true;
-
         uiController.SetUIInteractable(false);
 
         try
         {
             commandProcessor.RefreshAgentsFromScene();
-
             uiController.BindAgents(commandProcessor.GetAgents());
 
-            bool success = await commandProcessor.ProcessCommandsFromUIAsync(uiController);
+            var result = await commandProcessor.ProcessCommandsFromUIAsync(uiController);
 
-            if (success)
-                uiController.ClearAllInputs();
+            if (result.HasAnySuccess)
+                uiController.ClearInputsByAgentIds(result.SucceededAgentIds);
         }
         catch (Exception e)
         {

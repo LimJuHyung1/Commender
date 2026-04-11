@@ -15,7 +15,7 @@ MonoBehaviour:
   role: 0
   moveSpeed: 5.2
   acceleration: 9
-  stoppingDistance: 0.15
+  stoppingDistance: 1
   angularSpeed: 140
   viewRadius: 7
   viewAngle: 55

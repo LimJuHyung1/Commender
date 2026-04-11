@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -21,10 +21,17 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] private bool useMoveSpeedParameter = true;
     [SerializeField] private float movingThreshold = 0.05f;
 
-    [Header("Look Around")]
-    [SerializeField] private float lookAroundAngle = 70f;
-    [SerializeField] private float lookAroundTurnSpeed = 240f;
-    [SerializeField] private float lookAroundPauseSeconds = 0.08f;
+    private float lookAroundAngle = 70f;
+    private float lookAroundTurnSpeed = 240f;
+    private float lookAroundPauseSeconds = 0.08f;
+
+    // AgentController.cs ì— ì¶”ê°€
+
+    [SerializeField] protected ChatServiceOpenAI commandChatService;
+    [SerializeField, TextArea(6, 20)] private string commandSystemPromptOverride;
+
+    public ChatServiceOpenAI CommandChatService => commandChatService;
+    public string CommandSystemPromptOverride => commandSystemPromptOverride;
 
     [Header("State")]
     protected NavMeshAgent navAgent;
@@ -78,6 +85,9 @@ public abstract class AgentController : MonoBehaviour
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
 
+        if (commandChatService == null)
+            commandChatService = GetComponentInChildren<ChatServiceOpenAI>(true);
+
         CacheAnimatorParameterHashes();
         ApplyCommonStats();
         UpdateAnimationState(true);
@@ -97,7 +107,7 @@ public abstract class AgentController : MonoBehaviour
     {
         if (stats == null)
         {
-            Debug.LogWarning($"[Agent {agentID}] AgentStatsSO°¡ ¿¬°áµÇÁö ¾Ê¾Ò½À´Ï´Ù.");
+            Debug.LogWarning($"[Agent {agentID}] AgentStatsSOï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¾Ò½ï¿½ï¿½Ï´ï¿½.");
             return;
         }
 
@@ -201,7 +211,7 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual void MoveTo(Vector3 destination)
     {
-        Debug.Log($"[Agent {AgentID}] MoveTo È£ÃâµÊ. destination={destination}, currentTarget={(currentTarget != null ? currentTarget.name : "null")}");
+        Debug.Log($"[Agent {AgentID}] MoveTo È£ï¿½ï¿½ï¿½. destination={destination}, currentTarget={(currentTarget != null ? currentTarget.name : "null")}");
 
         if (navAgent == null)
             return;
@@ -211,7 +221,7 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            Debug.Log($"[Agent {AgentID}] ÇöÀç Ãß°Ý ÁßÀÌ¹Ç·Î MoveTo¸¦ ¹«½ÃÇÕ´Ï´Ù.");
+            Debug.Log($"[Agent {AgentID}] ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½Ì¹Ç·ï¿½ MoveToï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½.");
             return;
         }
 
@@ -242,13 +252,13 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            Debug.LogWarning($"[Agent {AgentID}] ÇöÀç Ãß°Ý ÁßÀÌ¹Ç·Î ÁÖº¯ µÑ·¯º¸±â¸¦ ½ÃÀÛÇÒ ¼ö ¾ø½À´Ï´Ù.");
+            Debug.LogWarning($"[Agent {AgentID}] ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½Ì¹Ç·ï¿½ ï¿½Öºï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½â¸¦ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.");
             return false;
         }
 
         if (isManualMoving)
         {
-            Debug.LogWarning($"[Agent {AgentID}] ÇöÀç ÀÌµ¿ ÁßÀÌ¹Ç·Î ÁÖº¯ µÑ·¯º¸±â¸¦ ½ÃÀÛÇÒ ¼ö ¾ø½À´Ï´Ù.");
+            Debug.LogWarning($"[Agent {AgentID}] ï¿½ï¿½ï¿½ï¿½ ï¿½Ìµï¿½ ï¿½ï¿½ï¿½Ì¹Ç·ï¿½ ï¿½Öºï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½â¸¦ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.");
             return false;
         }
 
@@ -270,7 +280,7 @@ public abstract class AgentController : MonoBehaviour
         }
 
         UpdateAnimationState(true);
-        Debug.Log($"[Agent {AgentID}] ÁÖº¯ µÑ·¯º¸±â ½ÃÀÛ");
+        Debug.Log($"[Agent {AgentID}] ï¿½Öºï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
 
         float startY = transform.eulerAngles.y;
 
@@ -287,7 +297,7 @@ public abstract class AgentController : MonoBehaviour
         yield return RotateToYaw(startY);
 
         FinishLookAround();
-        Debug.Log($"[Agent {AgentID}] ÁÖº¯ µÑ·¯º¸±â Á¾·á");
+        Debug.Log($"[Agent {AgentID}] ï¿½Öºï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
     }
 
     private IEnumerator RotateToYaw(float targetYaw)
@@ -353,7 +363,7 @@ public abstract class AgentController : MonoBehaviour
         UpdateAnimationState(true);
 
         if (logMessage)
-            Debug.Log($"[Agent {AgentID}] ÁÖº¯ µÑ·¯º¸±â¸¦ Áß´ÜÇß½À´Ï´Ù.");
+            Debug.Log($"[Agent {AgentID}] ï¿½Öºï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½â¸¦ ï¿½ß´ï¿½ï¿½ß½ï¿½ï¿½Ï´ï¿½.");
     }
 
     public virtual void SetChaseTarget(Transform target)

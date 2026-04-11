@@ -1,15 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
 public class CommanderCommandProcessor : MonoBehaviour
 {
-    [Header("References")]
-    [SerializeField] private ChatServiceOpenAI chatService;
-
     [Header("Auto Bind")]
     [SerializeField] private bool autoBindAgentsFromScene = true;
     [SerializeField] private bool sortAgentsById = true;
@@ -21,62 +17,46 @@ public class CommanderCommandProcessor : MonoBehaviour
     private CommandValidator commandValidator;
     private CommandExecutor commandExecutor;
 
-    private string systemPrompt =
-    "You are a tactical coordinator for the game 'Commender'.\n\n" +
-    "RULES:\n" +
-    "1. Each input line formatted as 'Agent N Instruction: ...' MUST produce exactly one command with \"id\": N.\n" +
-    "2. Never change the agent id.\n" +
-    "3. If the instruction says a time delay such as '5초 후', '5초 뒤', '5초 이후', 'after 5 seconds', or 'in 5 seconds', set \"delaySeconds\" to that value.\n" +
-    "4. If no time delay is specified, set \"delaySeconds\": 0.0.\n" +
-    "5. \"delaySeconds\" must never be negative.\n" +
-    "6. If the user clearly specifies a location like '0,0' for movement, set pos as {\"x\":0.0,\"z\":0.0}.\n" +
-    "7. If the instruction is movement only, skill MUST be an empty string.\n" +
-    "8. If the instruction explicitly asks to check surroundings such as 주변, 주위, 주변 확인, 주위 확인, 주변 둘러봐, 주위 둘러봐, 주변 살펴봐, 주위 살펴봐, look around, or check around, use skill \"lookaround\".\n" +
-    "9. Bare instructions like '주변' or '주위' should also be interpreted as \"lookaround\".\n" +
-    "10. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\" and do not convert it into movement.\n" +
-    "11. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
-    "12. Use \"dash\" ONLY when the instruction explicitly asks for dash, 대시, or 대쉬.\n" +
-    "13. Use \"smoke\" ONLY when the instruction explicitly asks for smoke, 연막, or 연막탄.\n" +
-    "14. Use \"reveal\" ONLY when the instruction explicitly asks for reveal, recon, recondrone, drone, 드론, 정찰, 정찰 드론, 정찰드론, 드론 설치, or 정찰 드론 설치.\n" +
-    "15. Use \"wallsight\" ONLY when the instruction explicitly asks for wallsight, 투시, 벽 너머 시야, 벽너머 시야, or 벽너머 보기.\n" +
-    "16. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
-    "17. Use \"slowtrap\" ONLY when the instruction explicitly asks for slowtrap, snaretrap, trap, 함정, 정지 함정, 구속 함정, 속박 함정, or 트랩 설치.\n" +
-    "18. Use \"noisemaker\" ONLY when the instruction explicitly asks for noisemaker, noise, 소란 장치, 소음 장치, 소음 발생기, 소란 기계, or 소란 장치 설치.\n" +
-    "19. Use \"hologram\" ONLY when the instruction explicitly asks for hologram, 홀로그램, 홀로그램 설치, 현재 위치에 홀로그램, or 자기 위치에 홀로그램.\n" +
-    "20. Hologram is always created at the disruptor agent's CURRENT POSITION, not at the requested coordinate.\n" +
-    "21. Only one hologram can exist for that agent at a time.\n" +
-    "22. Do not infer unsupported movement from unknown text.\n" +
-    "23. Only dash may be combined with movement. All other skills must be skill-only actions.\n" +
-    "24. If a skill is used without a location, set pos as {\"x\":0.0,\"z\":0.0}.\n" +
-    "25. Do not create chained actions, conditional actions, or multiple sequential actions from one input line.\n" +
-    "26. Output JSON only.\n\n" +
-    "OUTPUT FORMAT:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
-    "EXAMPLES:\n" +
-    "Input: Agent 0 Instruction: 0,0으로 이동\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 주변\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"lookaround\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 주위\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"lookaround\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 주변 살펴봐\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"lookaround\" } ] }\n\n" +
-    "Input: Agent 1 Instruction: 3초 후 주위 확인\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 1, \"delaySeconds\": 3.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"lookaround\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 이해할 수 없는 명령\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"hold\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 3,2로 대시\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 3.0, \"z\": 2.0}, \"skill\": \"dash\" } ] }\n\n" +
-    "Input: Agent 0 Instruction: 5,4에 연막 사용\n" +
-    "Output:\n" +
-    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 5.0, \"z\": 4.0}, \"skill\": \"smoke\" } ] }";
+    [Serializable]
+    public class CommandProcessResult
+    {
+        public List<int> SucceededAgentIds = new List<int>();
+        public List<int> FailedAgentIds = new List<int>();
+
+        public bool HasAnySuccess => SucceededAgentIds != null && SucceededAgentIds.Count > 0;
+    }
+
+    [Serializable]
+    public class CommandGroup
+    {
+        public List<MoveCommand> commands;
+    }
+
+    [Serializable]
+    public class MoveCommand
+    {
+        public int id;
+        public float delaySeconds;
+        public PosData pos;
+        public string skill;
+    }
+
+    [Serializable]
+    public class PosData
+    {
+        public float x;
+        public float z;
+    }
+
+    private class PendingCommandPlan
+    {
+        public int AgentId;
+        public AgentController Agent;
+        public Vector3 Destination;
+        public string Skill;
+        public float DelaySeconds;
+        public bool IsValid;
+    }
 
     private void Awake()
     {
@@ -111,12 +91,14 @@ public class CommanderCommandProcessor : MonoBehaviour
         return agents;
     }
 
-    public async Task<bool> ProcessCommandsFromUIAsync(CommanderUIController uiController)
+    public async Task<CommandProcessResult> ProcessCommandsFromUIAsync(CommanderUIController uiController)
     {
+        CommandProcessResult result = new CommandProcessResult();
+
         if (uiController == null)
         {
             Debug.LogError("[Commender] CommenderUIController 참조가 없습니다.");
-            return false;
+            return result;
         }
 
         RefreshAgentsFromScene(true);
@@ -124,123 +106,10 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (!uiController.TryBuildSubmittedInstructions(out Dictionary<int, string> submittedInstructionById))
         {
             Debug.LogWarning("[Commender] 제출할 입력값이 없습니다.");
-            return false;
+            return result;
         }
 
-        if (!TryBuildCombinedPrompt(submittedInstructionById, out string combinedPrompt))
-        {
-            Debug.LogWarning("[Commender] 프롬프트 생성에 실패했습니다.");
-            return false;
-        }
-
-        return await ProcessCommandsAsync(combinedPrompt, submittedInstructionById);
-    }
-
-    public async Task<bool> ProcessCommandsAsync(
-        string combinedPrompt,
-        Dictionary<int, string> submittedInstructionById)
-    {
-        EnsureHelpers();
-
-        if (chatService == null)
-        {
-            Debug.LogError("[Commender] ChatServiceOpenAI 참조가 없습니다.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(combinedPrompt))
-        {
-            Debug.LogWarning("[Commender] 전달된 프롬프트가 비어 있습니다.");
-            return false;
-        }
-
-        string rawResponse = await chatService.GetResponseAsync(systemPrompt, combinedPrompt);
-
-        if (string.IsNullOrWhiteSpace(rawResponse))
-        {
-            Debug.LogWarning("[Commender] AI 응답이 비어 있어 명령 처리를 중단합니다.");
-            return false;
-        }
-
-        return ProcessAICommand(rawResponse, submittedInstructionById);
-    }
-
-    private void EnsureHelpers()
-    {
-        if (commandValidator == null)
-            commandValidator = new CommandValidator();
-
-        if (commandExecutor == null)
-            commandExecutor = new CommandExecutor();
-    }
-
-    private void RefreshAgentsFromScene(bool force)
-    {
-        if (!autoBindAgentsFromScene)
-        {
-            RebuildAgentLookup();
-            return;
-        }
-
-        if (!force && !NeedsAgentRefresh())
-            return;
-
-        AgentController[] foundAgents = FindObjectsByType<AgentController>(
-            FindObjectsInactive.Include,
-            FindObjectsSortMode.None
-        );
-
-        agents.Clear();
-
-        if (foundAgents == null || foundAgents.Length == 0)
-        {
-            agentById.Clear();
-            return;
-        }
-
-        if (sortAgentsById)
-            Array.Sort(foundAgents, CompareAgentsById);
-
-        for (int i = 0; i < foundAgents.Length; i++)
-        {
-            if (foundAgents[i] != null)
-                agents.Add(foundAgents[i]);
-        }
-
-        RebuildAgentLookup();
-    }
-
-    private bool NeedsAgentRefresh()
-    {
-        if (agents.Count == 0)
-            return true;
-
-        for (int i = 0; i < agents.Count; i++)
-        {
-            if (agents[i] == null)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static int CompareAgentsById(AgentController a, AgentController b)
-    {
-        if (ReferenceEquals(a, b))
-            return 0;
-
-        if (a == null)
-            return 1;
-
-        if (b == null)
-            return -1;
-
-        return a.AgentID.CompareTo(b.AgentID);
-    }
-
-    private void RebuildAgentLookup()
-    {
-        agentById.Clear();
+        List<Task<PendingCommandPlan>> requestTasks = new List<Task<PendingCommandPlan>>();
 
         for (int i = 0; i < agents.Count; i++)
         {
@@ -248,65 +117,122 @@ public class CommanderCommandProcessor : MonoBehaviour
             if (agent == null)
                 continue;
 
-            int id = agent.AgentID;
+            if (!submittedInstructionById.TryGetValue(agent.AgentID, out string instruction))
+                continue;
 
-            if (agentById.ContainsKey(id))
+            if (string.IsNullOrWhiteSpace(instruction))
+                continue;
+
+            requestTasks.Add(BuildPendingCommandPlanAsync(agent, instruction));
+        }
+
+        if (requestTasks.Count == 0)
+        {
+            Debug.LogWarning("[Commender] 처리할 에이전트 명령이 없습니다.");
+            return result;
+        }
+
+        PendingCommandPlan[] plans = await Task.WhenAll(requestTasks);
+
+        // 모든 응답을 받은 뒤 한 번에 스케줄링
+        for (int i = 0; i < plans.Length; i++)
+        {
+            PendingCommandPlan plan = plans[i];
+            if (plan == null)
+                continue;
+
+            if (!plan.IsValid || plan.Agent == null)
             {
-                Debug.LogError($"[Commender] 중복된 AgentID가 있습니다. ID: {id}");
+                result.FailedAgentIds.Add(plan != null ? plan.AgentId : -1);
                 continue;
             }
 
-            agentById.Add(id, agent);
+            ScheduleCommand(plan.Agent, plan.Destination, plan.Skill, plan.DelaySeconds);
+            result.SucceededAgentIds.Add(plan.AgentId);
         }
+
+        return result;
     }
 
-    private bool TryBuildCombinedPrompt(
-        Dictionary<int, string> submittedInstructionById,
-        out string combinedPrompt)
+    private async Task<PendingCommandPlan> BuildPendingCommandPlanAsync(AgentController targetAgent, string instruction)
     {
-        combinedPrompt = "";
-
-        if (submittedInstructionById == null || submittedInstructionById.Count == 0)
-            return false;
-
-        StringBuilder builder = new StringBuilder();
-
-        foreach (KeyValuePair<int, string> pair in submittedInstructionById)
+        PendingCommandPlan failedPlan = new PendingCommandPlan
         {
-            if (string.IsNullOrWhiteSpace(pair.Value))
-                continue;
+            AgentId = targetAgent != null ? targetAgent.AgentID : -1,
+            Agent = targetAgent,
+            IsValid = false
+        };
 
-            builder.AppendLine($"Agent {pair.Key} Instruction: {pair.Value}");
-        }
-
-        if (builder.Length == 0)
-            return false;
-
-        combinedPrompt = builder.ToString();
-        return true;
-    }
-
-    private bool ProcessAICommand(
-        string raw,
-        Dictionary<int, string> submittedInstructionById)
-    {
         EnsureHelpers();
 
-        Debug.Log($"[Commender] AI 응답 데이터: {raw}");
+        if (targetAgent == null)
+            return failedPlan;
+
+        ChatServiceOpenAI chatService = targetAgent.CommandChatService;
+        if (chatService == null)
+        {
+            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 의 ChatServiceOpenAI 참조가 없습니다.");
+            return failedPlan;
+        }
+
+        try
+        {
+            string systemPrompt = GetSystemPromptForAgent(targetAgent);
+            string userPrompt = BuildUserPrompt(targetAgent, instruction);
+
+            string rawResponse = await chatService.GetOneShotAsync(systemPrompt, userPrompt);
+
+            if (string.IsNullOrWhiteSpace(rawResponse))
+            {
+                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 의 AI 응답이 비어 있습니다.");
+                return failedPlan;
+            }
+
+            if (TryBuildPendingCommandPlan(rawResponse, targetAgent, instruction, out PendingCommandPlan plan))
+                return plan;
+
+            return failedPlan;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 명령 생성 중 오류: {e}");
+            return failedPlan;
+        }
+    }
+
+    private bool TryBuildPendingCommandPlan(
+        string raw,
+        AgentController targetAgent,
+        string originalInstruction,
+        out PendingCommandPlan plan)
+    {
+        plan = new PendingCommandPlan
+        {
+            AgentId = targetAgent != null ? targetAgent.AgentID : -1,
+            Agent = targetAgent,
+            IsValid = false
+        };
+
+        EnsureHelpers();
+
+        if (targetAgent == null)
+            return false;
+
+        Debug.Log($"[Commender] Agent {targetAgent.AgentID} AI 응답 데이터: {raw}");
 
         if (string.IsNullOrWhiteSpace(raw))
         {
-            Debug.LogWarning("[Commender] AI 응답이 비어 있습니다.");
+            Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} AI 응답이 비어 있습니다.");
             return false;
         }
 
         try
         {
-            string json = ExtractJsonObject(raw);
+            string json = ExtractFirstJsonObject(raw);
 
             if (string.IsNullOrWhiteSpace(json))
             {
-                Debug.LogWarning("[Commender] 응답에서 JSON 객체를 찾지 못했습니다.");
+                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 응답에서 JSON 객체를 찾지 못했습니다.");
                 return false;
             }
 
@@ -314,42 +240,189 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (group == null || group.commands == null || group.commands.Count == 0)
             {
-                Debug.LogWarning("[Commender] 명령 데이터가 비어 있습니다.");
+                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 명령 데이터가 비어 있습니다.");
                 return false;
             }
 
-            bool hasAnyHandledCommand = false;
+            MoveCommand cmd = group.commands[0];
+            if (cmd == null)
+                return false;
 
-            foreach (MoveCommand cmd in group.commands)
+            if (group.commands.Count > 1)
             {
-                if (cmd == null)
-                    continue;
-
-                if (!agentById.TryGetValue(cmd.id, out AgentController targetAgent) || targetAgent == null)
-                {
-                    Debug.LogWarning($"[Commender] Agent ID {cmd.id} 를 찾지 못했습니다.");
-                    continue;
-                }
-
-                Vector3 dest = BuildDestination(targetAgent, cmd);
-                string originalInstruction = GetOriginalInstruction(cmd.id, submittedInstructionById);
-                string validatedSkill = commandValidator.ValidateSkill(cmd.skill, originalInstruction);
-                float validatedDelaySeconds = Mathf.Max(0f, cmd.delaySeconds);
-
-                ScheduleCommand(targetAgent, dest, validatedSkill, validatedDelaySeconds);
-                hasAnyHandledCommand = true;
+                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 응답에 명령이 여러 개 들어왔습니다. 첫 번째 명령만 사용합니다.");
             }
 
-            return hasAnyHandledCommand;
+            string validatedSkill = commandValidator.ValidateSkill(cmd.skill, originalInstruction);
+
+            if (validatedSkill == "hold")
+            {
+                if (commandValidator.IsLookAroundInstruction(originalInstruction))
+                    validatedSkill = "lookaround";
+                else if (commandValidator.IsMovementInstruction(originalInstruction))
+                    validatedSkill = "";
+            }
+
+            Vector3 dest = ResolveDestination(targetAgent, cmd, originalInstruction, validatedSkill);
+            float validatedDelaySeconds = Mathf.Max(0f, cmd.delaySeconds);
+
+            plan = new PendingCommandPlan
+            {
+                AgentId = targetAgent.AgentID,
+                Agent = targetAgent,
+                Destination = dest,
+                Skill = validatedSkill,
+                DelaySeconds = validatedDelaySeconds,
+                IsValid = true
+            };
+
+            return true;
         }
         catch (Exception e)
         {
-            Debug.LogError($"[Commender] 파싱 오류: {e}");
+            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 파싱 오류: {e}");
             return false;
         }
     }
 
-    private Vector3 BuildDestination(AgentController targetAgent, MoveCommand cmd)
+    private string BuildUserPrompt(AgentController targetAgent, string instruction)
+    {
+        return $"Agent {targetAgent.AgentID} Instruction: {instruction}";
+    }
+
+    private string GetSystemPromptForAgent(AgentController targetAgent)
+    {
+        string commonRules =
+            "You are a tactical coordinator for the game 'Commender'.\n\n" +
+            "You will receive exactly one instruction for exactly one agent.\n" +
+            $"The fixed agent id is {targetAgent.AgentID}.\n\n" +
+            "RULES:\n" +
+            $"1. Always output exactly one command with \"id\": {targetAgent.AgentID}.\n" +
+            "2. Never output commands for any other agent id.\n" +
+            "3. If the instruction says a time delay such as '5초 후', '5초 뒤', '5초 이후', 'after 5 seconds', or 'in 5 seconds', set \"delaySeconds\" to that value.\n" +
+            "4. If no time delay is specified, set \"delaySeconds\": 0.0.\n" +
+            "5. \"delaySeconds\" must never be negative.\n" +
+            "6. If the instruction is movement only, skill MUST be an empty string.\n" +
+            "7. If the instruction explicitly asks to check surroundings such as 주변, 주위, 주변 확인, 주위 확인, 주변 둘러봐, 주위 둘러봐, 주변 살펴봐, 주위 살펴봐, look around, or check around, use skill \"lookaround\".\n" +
+            "8. Bare instructions like '주변' or '주위' should also be interpreted as \"lookaround\".\n" +
+            "9. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\".\n" +
+            "10. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
+            "11. If a skill is used without a location, set pos as {\"x\":0.0,\"z\":0.0} unless the skill is defined to use current position.\n" +
+            "12. Output JSON only.\n";
+
+        if (targetAgent is PursuerAgent)
+        {
+            return commonRules +
+                   "13. Allowed skills for this agent are only \"dash\" and \"smoke\".\n" +
+                   "14. Use \"dash\" ONLY when the instruction explicitly asks for dash, 대시, or 대쉬.\n" +
+                   "15. Use \"smoke\" ONLY when the instruction explicitly asks for smoke, 연막, or 연막탄.\n" +
+                   "16. Only dash may be combined with movement.\n\n" +
+                   "OUTPUT FORMAT:\n" +
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,5\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 5.0}}, \"skill\": \"\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 3,2로 대시\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 3.0, \"z\": 2.0}}, \"skill\": \"dash\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,4에 연막 사용\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 4.0}}, \"skill\": \"smoke\" }} ] }}";
+        }
+
+        if (targetAgent is ScoutAgent)
+        {
+            return commonRules +
+                   "13. Allowed skills for this agent are only \"reveal\" and \"wallsight\".\n" +
+                   "14. Use \"reveal\" ONLY when the instruction explicitly asks for reveal, recon, recondrone, drone, 드론, 정찰, 정찰 드론, 정찰드론, 드론 설치, or 정찰 드론 설치.\n" +
+                   "15. Use \"wallsight\" ONLY when the instruction explicitly asks for wallsight, 투시, 벽 너머 시야, 벽너머 시야, or 벽너머 보기.\n\n" +
+                   "OUTPUT FORMAT:\n" +
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 8,3에 드론 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 8.0, \"z\": 3.0}}, \"skill\": \"reveal\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 투시 사용\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"wallsight\" }} ] }}";
+        }
+
+        if (targetAgent is EngineerAgent)
+        {
+            return commonRules +
+                   "13. Allowed skills for this agent are only \"barricade\" and \"slowtrap\".\n" +
+                   "14. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
+                   "15. Use \"slowtrap\" ONLY when the instruction explicitly asks for slowtrap, snaretrap, trap, 함정, 정지 함정, 구속 함정, 속박 함정, or 트랩 설치.\n\n" +
+                   "OUTPUT FORMAT:\n" +
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 4,1에 바리케이드 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 4.0, \"z\": 1.0}}, \"skill\": \"barricade\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 2,6에 함정 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"slowtrap\" }} ] }}";
+        }
+
+        if (targetAgent is DisruptorAgent)
+        {
+            return commonRules +
+                   "13. Allowed skills for this agent are only \"noisemaker\" and \"hologram\".\n" +
+                   "14. Use \"noisemaker\" ONLY when the instruction explicitly asks for noisemaker, noise, 소란 장치, 소음 장치, 소음 발생기, 소란 기계, or 소란 장치 설치.\n" +
+                   "15. Use \"hologram\" ONLY when the instruction explicitly asks for hologram, 홀로그램, 홀로그램 설치, 현재 위치에 홀로그램, or 자기 위치에 홀로그램.\n" +
+                   "16. Hologram is always created at the disruptor agent's CURRENT POSITION, not at the requested coordinate.\n\n" +
+                   "OUTPUT FORMAT:\n" +
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 7,7에 소란 장치 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 7.0, \"z\": 7.0}}, \"skill\": \"noisemaker\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 현재 위치에 홀로그램 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"hologram\" }} ] }}";
+        }
+
+        return commonRules;
+    }
+
+    private Vector3 ResolveDestination(
+        AgentController targetAgent,
+        MoveCommand cmd,
+        string originalInstruction,
+        string validatedSkill)
+    {
+        if (targetAgent == null)
+            return Vector3.zero;
+
+        if (ShouldUseInstructionCoordinate(originalInstruction, validatedSkill) &&
+            commandValidator.TryExtractCoordinate(originalInstruction, out float parsedX, out float parsedZ))
+        {
+            Vector3 parsedDestination = new Vector3(
+                parsedX,
+                targetAgent.transform.position.y,
+                parsedZ
+            );
+
+            Debug.Log($"[Commender] Agent {targetAgent.AgentID} 좌표를 원문에서 직접 사용: {parsedDestination}");
+            return parsedDestination;
+        }
+
+        return BuildDestinationFromAI(targetAgent, cmd);
+    }
+
+    private bool ShouldUseInstructionCoordinate(string originalInstruction, string validatedSkill)
+    {
+        if (string.IsNullOrWhiteSpace(originalInstruction))
+            return false;
+
+        if (!commandValidator.ContainsCoordinate(originalInstruction))
+            return false;
+
+        if (validatedSkill == "hold")
+            return false;
+
+        if (validatedSkill == "lookaround")
+            return false;
+
+        if (validatedSkill == "hologram")
+            return false;
+
+        return true;
+    }
+
+    private Vector3 BuildDestinationFromAI(AgentController targetAgent, MoveCommand cmd)
     {
         float x = targetAgent.transform.position.x;
         float z = targetAgent.transform.position.z;
@@ -361,21 +434,10 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[Commender] Agent {cmd.id} 명령에 pos가 없습니다. 현재 위치 기준으로 처리합니다.");
+            Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 명령에 pos가 없습니다. 현재 위치 기준으로 처리합니다.");
         }
 
         return new Vector3(x, targetAgent.transform.position.y, z);
-    }
-
-    private string GetOriginalInstruction(int agentId, Dictionary<int, string> submittedInstructionById)
-    {
-        if (submittedInstructionById == null)
-            return "";
-
-        if (submittedInstructionById.TryGetValue(agentId, out string savedInstruction))
-            return savedInstruction;
-
-        return "";
     }
 
     private void ScheduleCommand(
@@ -478,39 +540,127 @@ public class CommanderCommandProcessor : MonoBehaviour
             Debug.Log("[Commender] 모든 예약 명령을 취소했습니다.");
     }
 
-    private string ExtractJsonObject(string text)
+    private void EnsureHelpers()
+    {
+        if (commandValidator == null)
+            commandValidator = new CommandValidator();
+
+        if (commandExecutor == null)
+            commandExecutor = new CommandExecutor();
+    }
+
+    private void RefreshAgentsFromScene(bool force)
+    {
+        if (!autoBindAgentsFromScene)
+        {
+            RebuildAgentLookup();
+            return;
+        }
+
+        if (!force && !NeedsAgentRefresh())
+            return;
+
+        AgentController[] foundAgents = FindObjectsByType<AgentController>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None
+        );
+
+        agents.Clear();
+
+        if (foundAgents == null || foundAgents.Length == 0)
+        {
+            agentById.Clear();
+            return;
+        }
+
+        if (sortAgentsById)
+            Array.Sort(foundAgents, CompareAgentsById);
+
+        for (int i = 0; i < foundAgents.Length; i++)
+        {
+            if (foundAgents[i] != null)
+                agents.Add(foundAgents[i]);
+        }
+
+        RebuildAgentLookup();
+    }
+
+    private bool NeedsAgentRefresh()
+    {
+        if (agents.Count == 0)
+            return true;
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            if (agents[i] == null)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static int CompareAgentsById(AgentController a, AgentController b)
+    {
+        if (ReferenceEquals(a, b))
+            return 0;
+
+        if (a == null)
+            return 1;
+
+        if (b == null)
+            return -1;
+
+        return a.AgentID.CompareTo(b.AgentID);
+    }
+
+    private void RebuildAgentLookup()
+    {
+        agentById.Clear();
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            AgentController agent = agents[i];
+            if (agent == null)
+                continue;
+
+            int id = agent.AgentID;
+
+            if (agentById.ContainsKey(id))
+            {
+                Debug.LogError($"[Commender] 중복된 AgentID가 있습니다. ID: {id}");
+                continue;
+            }
+
+            agentById.Add(id, agent);
+        }
+    }
+
+    private string ExtractFirstJsonObject(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return "";
 
         int start = text.IndexOf('{');
-        int end = text.LastIndexOf('}');
-
-        if (start < 0 || end <= start)
+        if (start < 0)
             return "";
 
-        return text.Substring(start, end - start + 1);
-    }
+        int depth = 0;
 
-    [Serializable]
-    public class CommandGroup
-    {
-        public List<MoveCommand> commands;
-    }
+        for (int i = start; i < text.Length; i++)
+        {
+            char c = text[i];
 
-    [Serializable]
-    public class MoveCommand
-    {
-        public int id;
-        public float delaySeconds;
-        public PosData pos;
-        public string skill;
-    }
+            if (c == '{')
+                depth++;
+            else if (c == '}')
+            {
+                depth--;
 
-    [Serializable]
-    public class PosData
-    {
-        public float x;
-        public float z;
+                if (depth == 0)
+                    return text.Substring(start, i - start + 1);
+            }
+        }
+
+        return "";
     }
 }
