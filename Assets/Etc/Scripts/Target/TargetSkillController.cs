@@ -12,6 +12,13 @@ public enum TargetSkillType
     EmergencyEscape
 }
 
+public enum TargetDifficultySkillSet
+{
+    Easy = 0,
+    Normal = 1,
+    Hard = 2
+}
+
 public class TargetSkillController : MonoBehaviour
 {
     [Header("Common References")]
@@ -30,7 +37,6 @@ public class TargetSkillController : MonoBehaviour
     [SerializeField] private float minDistanceBetweenPlacements = 3.5f;
     [SerializeField] private float spawnBehindDistance = 2.3f;
     [SerializeField] private float navMeshSampleRadius = 1.5f;
-    [SerializeField] private float barricadeLifetime = 7f;
     [SerializeField][Min(1)] private int maxActiveBarricades = 2;
 
     [Header("Hologram")]
@@ -57,11 +63,18 @@ public class TargetSkillController : MonoBehaviour
     [SerializeField] private float communicationJamCooldown = 12f;
     [SerializeField] private float communicationJamDuration = 15f;
 
+    [Header("Emergency Escape")]
+    [SerializeField][Min(0)] private int normalEmergencyEscapeCharges = 1;
+    [SerializeField][Min(0)] private int hardEmergencyEscapeCharges = 1;
+    [SerializeField] private bool autoUseEmergencyEscapeOnNormal = true;
+    [SerializeField] private bool autoUseEmergencyEscapeOnHard = true;
+
     [Header("Skill Toggle")]
     [SerializeField] private bool enableBarricadeSkill = true;
     [SerializeField] private bool enableHologramSkill = true;
     [SerializeField] private bool enableSmokeSkill = true;
     [SerializeField] private bool enableCommunicationJamSkill = true;
+    [SerializeField] private bool enableEmergencyEscapeSkill = false;
 
     [Header("Debug")]
     [SerializeField] private bool writeLog = true;
@@ -82,7 +95,9 @@ public class TargetSkillController : MonoBehaviour
     public float HologramRemainingCooldown => Mathf.Max(0f, nextHologramReadyTime - Time.time);
     public float SmokeRemainingCooldown => Mathf.Max(0f, nextSmokeReadyTime - Time.time);
     public float CommunicationJamRemainingCooldown => Mathf.Max(0f, nextCommunicationJamReadyTime - Time.time);
-    public int RemainingEmergencyEscapeCount => escapeMotor != null ? escapeMotor.RemainingEmergencyEscapeCount : 0;
+    public int RemainingEmergencyEscapeCount => enableEmergencyEscapeSkill && escapeMotor != null
+        ? escapeMotor.RemainingEmergencyEscapeCount
+        : 0;
 
     private void Awake()
     {
@@ -140,6 +155,79 @@ public class TargetSkillController : MonoBehaviour
 
         if (destroyActiveHologram)
             ForceClearCurrentHologram();
+    }
+
+    public void ApplySkillSetByDifficultyIndex(int difficultyIndex)
+    {
+        if (difficultyIndex <= 0)
+        {
+            ApplySkillSet(TargetDifficultySkillSet.Easy);
+            return;
+        }
+
+        if (difficultyIndex == 1)
+        {
+            ApplySkillSet(TargetDifficultySkillSet.Normal);
+            return;
+        }
+
+        ApplySkillSet(TargetDifficultySkillSet.Hard);
+    }
+
+    public void ApplySkillSet(TargetDifficultySkillSet skillSet)
+    {
+        bool useBarricade = true;
+        bool useHologram = true;
+        bool useSmoke = false;
+        bool useCommunicationJam = false;
+        bool useEmergencyEscape = false;
+        int emergencyEscapeCharges = 0;
+        bool autoUseEmergencyEscape = false;
+
+        switch (skillSet)
+        {
+            case TargetDifficultySkillSet.Easy:
+                useBarricade = true;
+                useHologram = true;
+                break;
+
+            case TargetDifficultySkillSet.Normal:
+                useBarricade = true;
+                useHologram = true;
+                useSmoke = true;
+                useEmergencyEscape = true;
+                emergencyEscapeCharges = normalEmergencyEscapeCharges;
+                autoUseEmergencyEscape = autoUseEmergencyEscapeOnNormal;
+                break;
+
+            case TargetDifficultySkillSet.Hard:
+                useBarricade = true;
+                useHologram = true;
+                useSmoke = true;
+                useEmergencyEscape = true;
+                useCommunicationJam = true;
+                emergencyEscapeCharges = hardEmergencyEscapeCharges;
+                autoUseEmergencyEscape = autoUseEmergencyEscapeOnHard;
+                break;
+        }
+
+        enableBarricadeSkill = useBarricade;
+        enableHologramSkill = useHologram;
+        enableSmokeSkill = useSmoke;
+        enableCommunicationJamSkill = useCommunicationJam;
+        enableEmergencyEscapeSkill = useEmergencyEscape;
+
+        if (escapeMotor != null)
+            escapeMotor.ConfigureEmergencyEscape(useEmergencyEscape, emergencyEscapeCharges, autoUseEmergencyEscape);
+
+        if (writeLog)
+        {
+            Debug.Log(
+                $"[TargetSkillController] 난이도 스킬 적용: {skillSet} " +
+                $"(Barricade={enableBarricadeSkill}, Hologram={enableHologramSkill}, Smoke={enableSmokeSkill}, " +
+                $"EmergencyEscape={enableEmergencyEscapeSkill}, CommunicationJam={enableCommunicationJamSkill})"
+            );
+        }
     }
 
     public bool TryUseBarricade(Vector3 escapeDestination)
@@ -264,6 +352,9 @@ public class TargetSkillController : MonoBehaviour
 
     public bool TryUseEmergencyEscape()
     {
+        if (!enableEmergencyEscapeSkill)
+            return false;
+
         if (escapeMotor == null)
             return false;
 
@@ -277,6 +368,9 @@ public class TargetSkillController : MonoBehaviour
 
     public bool TryAutoEmergencyEscape(float healthRatio)
     {
+        if (!enableEmergencyEscapeSkill)
+            return false;
+
         if (escapeMotor == null)
             return false;
 
@@ -336,6 +430,11 @@ public class TargetSkillController : MonoBehaviour
             return true;
 
         return TryUseBarricade(escapeDestination);
+    }
+
+    public bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
+    {
+        return TryUseDefensiveSkill(escapeDestination, true);
     }
 
     public void ForceClearCurrentHologram()
@@ -436,9 +535,6 @@ public class TargetSkillController : MonoBehaviour
         GameObject instance = Instantiate(barricadePrefab, spawnPosition, rotation);
         activeBarricades.Enqueue(instance);
 
-        if (barricadeLifetime > 0f)
-            Destroy(instance, barricadeLifetime);
-
         TrimActiveBarricades();
 
         if (writeLog)
@@ -527,7 +623,6 @@ public class TargetSkillController : MonoBehaviour
 
         spawnBehindDistance = Mathf.Max(0.5f, spawnBehindDistance);
         navMeshSampleRadius = Mathf.Max(0.1f, navMeshSampleRadius);
-        barricadeLifetime = Mathf.Max(0f, barricadeLifetime);
         maxActiveBarricades = Mathf.Max(1, maxActiveBarricades);
 
         hologramCooldown = Mathf.Max(0f, hologramCooldown);
@@ -538,5 +633,8 @@ public class TargetSkillController : MonoBehaviour
 
         communicationJamCooldown = Mathf.Max(0f, communicationJamCooldown);
         communicationJamDuration = Mathf.Max(0.1f, communicationJamDuration);
+
+        normalEmergencyEscapeCharges = Mathf.Max(0, normalEmergencyEscapeCharges);
+        hardEmergencyEscapeCharges = Mathf.Max(0, hardEmergencyEscapeCharges);
     }
 }

@@ -15,7 +15,6 @@ public class TargetVisibilityController : MonoBehaviour
     [Header("Options")]
     [SerializeField] private bool hideWhenNotVisible = true;
     [SerializeField] private bool autoFindSceneSensors = true;
-    [SerializeField] private bool useRevealState = false;
     [SerializeField] private bool debugVisibility = true;
 
     private bool isCurrentlyVisible = true;
@@ -47,12 +46,12 @@ public class TargetVisibilityController : MonoBehaviour
     private void Update()
     {
         bool canPlayerSee = CanPlayerSeeTarget(out string visibleReason);
+        lastVisibleReason = visibleReason;
 
         if (isCurrentlyVisible == canPlayerSee)
             return;
 
         isCurrentlyVisible = canPlayerSee;
-        lastVisibleReason = visibleReason;
         ApplyVisibility(isCurrentlyVisible);
 
         if (debugVisibility)
@@ -107,9 +106,11 @@ public class TargetVisibilityController : MonoBehaviour
         if (targetRoot == null)
             return false;
 
-        if (useRevealState && targetController != null && targetController.IsRevealedToPlayer)
+        // 드론 정찰 범위에 들어와 노출된 상태라면,
+        // 직접 시야와 상관없이 카메라에 보이도록 처리
+        if (targetController != null && targetController.IsRevealedToPlayer)
         {
-            visibleReason = "RevealState";
+            visibleReason = "ReconReveal";
             return true;
         }
 

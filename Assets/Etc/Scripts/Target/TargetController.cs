@@ -61,6 +61,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public bool IsRevealedToPlayer => threatTracker != null && threatTracker.IsRevealedToPlayer;
     public bool IsRooted => escapeMotor != null && escapeMotor.IsRooted;
+    public bool IsSlowed => escapeMotor != null && escapeMotor.IsSlowed;
     public bool HasUsedEmergencyEscape => escapeMotor != null && escapeMotor.HasUsedEmergencyEscape;
     public bool IsEmergencyEscaping => escapeMotor != null && escapeMotor.IsEmergencyEscaping;
     public bool CanBeCaught => escapeMotor == null || escapeMotor.CanBeCaught;
@@ -493,6 +494,17 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         isRecoveringAfterStop = false;
 
         escapeMotor.ApplyRoot(duration);
+    }
+
+    public void ApplySlow(float multiplier, float duration)
+    {
+        if (escapeMotor == null)
+            return;
+
+        stoppedRecoveryTimer = 0f;
+        isRecoveringAfterStop = false;
+
+        escapeMotor.ApplySlow(multiplier, duration);
     }
 
     public void AddReconReveal()

@@ -3,20 +3,21 @@ using UnityEngine;
 public class ScoutAgent : AgentController
 {
     [Header("참조")]
-    [SerializeField] private ReconDrone reconDronePrefab;
-    [SerializeField] private Transform reconDroneParent;
+    [SerializeField] private Flare flarePrefab;
+    [SerializeField] private Transform flareParent;
+    [SerializeField] private Transform flareShootPoint;
 
-    [Header("정찰 드론 설정")]
-    [SerializeField] private bool replaceExistingReconDrone = true;
-    [SerializeField] private float reconDroneYOffset = 5f;
-    [SerializeField] private bool reconDroneSingleUse = true;
+    [Header("신호탄 설정")]
+    [SerializeField] private bool replaceExistingFlare = true;
+    [SerializeField] private bool flareSingleUse = true;
+    [SerializeField] private Vector3 flareShootOffset = new Vector3(0f, 1.5f, 0f);
 
     [Header("투시 디메리트")]
     [SerializeField, Range(0.1f, 1f)] private float trueSightMoveSpeedMultiplier = 0.75f;
 
-    private ReconDrone currentReconDrone;
+    private Flare currentFlare;
     private bool trueSightEnabled = false;
-    private bool hasUsedReconDrone = false;
+    private bool hasUsedFlare = false;
 
     protected override void Awake()
     {
@@ -33,16 +34,16 @@ public class ScoutAgent : AgentController
 
         Debug.Log($"[Scout {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
 
-        if (skill.Contains("recondrone") || skill.Contains("reveal") || skill.Contains("recon"))
+        if (skill.Contains("flare") || skill.Contains("signalflare"))
         {
-            if (!CanUseReconDrone())
+            if (!CanUseFlare())
             {
-                Debug.LogWarning($"[Scout {AgentID}] 정찰 드론은 1회용이라 더 이상 사용할 수 없습니다.");
+                Debug.LogWarning($"[Scout {AgentID}] 신호탄은 1회용이라 더 이상 사용할 수 없습니다.");
                 return;
             }
 
             ForceStopForSkill();
-            DeployReconDrone(targetPos);
+            DeployFlare(targetPos);
         }
         else if (skill.Contains("truesight") || skill.Contains("wallsight"))
         {
@@ -55,12 +56,12 @@ public class ScoutAgent : AgentController
         }
     }
 
-    private bool CanUseReconDrone()
+    private bool CanUseFlare()
     {
-        if (!reconDroneSingleUse)
+        if (!flareSingleUse)
             return true;
 
-        return !hasUsedReconDrone;
+        return !hasUsedFlare;
     }
 
     private void ForceStopForSkill()
@@ -75,34 +76,33 @@ public class ScoutAgent : AgentController
         }
     }
 
-    private void DeployReconDrone(Vector3 targetPos)
+    private void DeployFlare(Vector3 targetPos)
     {
-        if (reconDronePrefab == null)
+        if (flarePrefab == null)
         {
-            Debug.LogWarning($"[Scout {AgentID}] ReconDrone 프리팹이 연결되지 않았습니다.");
+            Debug.LogWarning($"[Scout {AgentID}] ScoutFlare 프리팹이 연결되지 않았습니다.");
             return;
         }
 
-        Vector3 spawnPos = new Vector3(
-            targetPos.x,
-            targetPos.y + reconDroneYOffset,
-            targetPos.z
-        );
+        Vector3 shootStartPos = flareShootPoint != null
+            ? flareShootPoint.position
+            : transform.position + flareShootOffset;
 
-        if (replaceExistingReconDrone && currentReconDrone != null)
+        if (replaceExistingFlare && currentFlare != null)
         {
-            Destroy(currentReconDrone.gameObject);
-            currentReconDrone = null;
+            Destroy(currentFlare.gameObject);
+            currentFlare = null;
         }
 
-        Transform parent = reconDroneParent != null ? reconDroneParent : null;
-        currentReconDrone = Instantiate(reconDronePrefab, spawnPos, Quaternion.identity, parent);
+        Transform parent = flareParent != null ? flareParent : null;
+        currentFlare = Instantiate(flarePrefab, shootStartPos, Quaternion.identity, parent);
+        currentFlare.Launch(shootStartPos, targetPos);
 
-        hasUsedReconDrone = true;
+        hasUsedFlare = true;
 
         Debug.Log(
             $"<color=yellow>[Scout Skill]</color> Agent {AgentID} : " +
-            $"정찰 드론 생성 위치 = {spawnPos}"
+            $"신호탄 발사 시작 = {shootStartPos}, 목표 좌표 = {targetPos}"
         );
     }
 
@@ -138,8 +138,8 @@ public class ScoutAgent : AgentController
             navAgent.speed = baseMoveSpeed;
     }
 
-    public void ResetReconDroneUsage()
+    public void ResetFlareUsage()
     {
-        hasUsedReconDrone = false;
+        hasUsedFlare = false;
     }
 }

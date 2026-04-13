@@ -10,7 +10,7 @@ public sealed class CommandValidator
     private const string SkillLookAround = "lookaround";
     private const string SkillDash = "dash";
     private const string SkillSmoke = "smoke";
-    private const string SkillReveal = "reveal";
+    private const string SkillFlare = "flare";
     private const string SkillWallSight = "wallsight";
     private const string SkillBarricade = "barricade";
     private const string SkillSlowTrap = "slowtrap";
@@ -30,9 +30,14 @@ public sealed class CommandValidator
         "smoke", "연막", "연막탄"
     };
 
-    private static readonly string[] RevealInstructionKeywords =
+    private static readonly string[] FlareInstructionKeywords =
     {
-        "reveal", "recon", "recondrone", "드론", "정찰", "정찰 드론", "정찰드론"
+        "flare",
+        "signal flare",
+        "signalflare",
+        "조명탄",
+        "신호탄",
+        "플레어"
     };
 
     private static readonly string[] WallSightInstructionKeywords =
@@ -47,7 +52,16 @@ public sealed class CommandValidator
 
     private static readonly string[] SlowTrapInstructionKeywords =
     {
-        "slowtrap", "snaretrap", "trap", "함정", "정지 함정", "구속 함정", "속박 함정", "트랩"
+        "slowtrap",
+        "snaretrap",
+        "trap",
+        "트랩",
+        "함정",
+        "정지 함정",
+        "구속 함정",
+        "속박 함정",
+        "트랩 설치",
+        "함정 설치"
     };
 
     private static readonly string[] NoiseMakerInstructionKeywords =
@@ -96,14 +110,17 @@ public sealed class CommandValidator
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
 
+        if (IsTrapInstruction(normalizedInstruction))
+            return SkillSlowTrap;
+
         if (ContainsAny(normalizedSkill, SkillDash))
             return MatchOrHold(normalizedInstruction, DashInstructionKeywords, SkillDash, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillSmoke))
             return MatchOrHold(normalizedInstruction, SmokeInstructionKeywords, SkillSmoke, aiSkill, originalInstruction);
 
-        if (ContainsAny(normalizedSkill, SkillReveal, "recon", "recondrone"))
-            return MatchOrHold(normalizedInstruction, RevealInstructionKeywords, SkillReveal, aiSkill, originalInstruction);
+        if (ContainsAny(normalizedSkill, SkillFlare, "signalflare"))
+            return MatchOrHold(normalizedInstruction, FlareInstructionKeywords, SkillFlare, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillWallSight, "truesight"))
             return MatchOrHold(normalizedInstruction, WallSightInstructionKeywords, SkillWallSight, aiSkill, originalInstruction);
@@ -154,6 +171,11 @@ public sealed class CommandValidator
             return true;
 
         return ContainsAny(normalized, MovementInstructionKeywords);
+    }
+
+    public bool IsTrapInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), SlowTrapInstructionKeywords);
     }
 
     public bool ContainsCoordinate(string source)

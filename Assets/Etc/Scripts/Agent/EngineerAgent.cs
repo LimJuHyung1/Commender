@@ -1,24 +1,37 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 public class EngineerAgent : AgentController
 {
     [Header("설치 프리팹")]
     [SerializeField] private GameObject barricadePrefab;
-    [SerializeField] private GameObject snareTrapPrefab;
+    [SerializeField] private GameObject trapPrefab;
     [SerializeField] private Transform deployParent;
 
     [Header("설치 설정")]
     [SerializeField] private float deployY = 0f;
+    [SerializeField] private float placementNavMeshSampleRadius = 2f;
+    [SerializeField] private float groundProbeHeight = 4f;
+    [SerializeField] private float groundProbeDistance = 20f;
+    [SerializeField] private LayerMask placementGroundLayer;
     [SerializeField] private bool replaceExistingBarricade = true;
-    [SerializeField] private bool replaceExistingSlowTrap = false;
+    [SerializeField] private bool replaceExistingTrap = false;
+
+    [Header("함정 사용 횟수")]
+    [SerializeField][Min(0)] private int trapMaxUses = 3;
 
     private GameObject currentBarricade;
-    private GameObject currentSlowTrap;
+    private GameObject currentTrap;
+    private int remainingTrapUses;
+
+    public int RemainingTrapUses => remainingTrapUses;
 
     protected override void Awake()
     {
         agentID = 2;
         base.Awake();
+
+        remainingTrapUses = Mathf.Max(0, trapMaxUses);
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -35,10 +48,14 @@ public class EngineerAgent : AgentController
             ForceStopForSkill();
             DeployBarricade(targetPos);
         }
-        else if (skill.Contains("slowtrap") || skill.Contains("trap"))
+        else if (
+            skill.Contains("slowtrap") ||
+            skill.Contains("trap") ||
+            skill.Contains("트랩") ||
+            skill.Contains("함정"))
         {
             ForceStopForSkill();
-            DeploySlowTrap(targetPos);
+            DeployTrap(targetPos);
         }
         else
         {
@@ -67,6 +84,7 @@ public class EngineerAgent : AgentController
         }
 
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
+        Quaternion spawnRotation = BuildBarricadeRotation();
 
         if (replaceExistingBarricade && currentBarricade != null)
         {
@@ -74,54 +92,109 @@ public class EngineerAgent : AgentController
             currentBarricade = null;
         }
 
-        currentBarricade = Instantiate(
+        GameObject spawnedBarricade = Instantiate(
             barricadePrefab,
-            spawnPos,
-            Quaternion.identity,
+            Vector3.zero,
+            spawnRotation,
             deployParent != null ? deployParent : null
         );
+
+        BarricadeObject barricade = spawnedBarricade.GetComponent<BarricadeObject>();
+        if (barricade != null)
+            barricade.Deploy(spawnPos, spawnRotation);
+        else
+            spawnedBarricade.transform.SetPositionAndRotation(spawnPos, spawnRotation);
+
+        currentBarricade = spawnedBarricade;
 
         Debug.Log($"[Engineer {AgentID}] 바리케이드 설치: {spawnPos}");
     }
 
-    private void DeploySlowTrap(Vector3 targetPos)
+    private void DeployTrap(Vector3 targetPos)
     {
-        if (snareTrapPrefab == null)
+        if (trapPrefab == null)
         {
-            Debug.LogWarning($"[Engineer {AgentID}] snareTrapPrefab이 연결되지 않았습니다.");
+            Debug.LogWarning($"[Engineer {AgentID}] trapPrefab이 연결되지 않았습니다.");
+            return;
+        }
+
+        if (remainingTrapUses <= 0)
+        {
+            Debug.LogWarning($"[Engineer {AgentID}] 감속 함정 사용 가능 횟수가 없습니다.");
             return;
         }
 
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
 
-        if (replaceExistingSlowTrap && currentSlowTrap != null)
+        if (replaceExistingTrap && currentTrap != null)
         {
-            Destroy(currentSlowTrap);
-            currentSlowTrap = null;
+            Destroy(currentTrap);
+            currentTrap = null;
         }
 
         GameObject spawnedTrap = Instantiate(
-            snareTrapPrefab,
+            trapPrefab,
             spawnPos,
             Quaternion.identity,
             deployParent != null ? deployParent : null
         );
 
-        if (replaceExistingSlowTrap)
-            currentSlowTrap = spawnedTrap;
+        if (replaceExistingTrap)
+            currentTrap = spawnedTrap;
 
-        Debug.Log($"[Engineer {AgentID}] 감속 함정 설치: {spawnPos}");
+        remainingTrapUses--;
+
+        Debug.Log($"[Engineer {AgentID}] 감속 함정 설치: {spawnPos} | 남은 횟수: {remainingTrapUses}");
     }
 
     private Vector3 BuildSpawnPosition(Vector3 targetPos)
     {
-        Vector3 desired = new Vector3(targetPos.x, targetPos.y + 2f, targetPos.z);
+        Vector3 desiredPosition = targetPos;
 
-        if (Physics.Raycast(desired, Vector3.down, out RaycastHit hit, 10f, ~0, QueryTriggerInteraction.Ignore))
+        if (NavMesh.SamplePosition(
+                targetPos,
+                out NavMeshHit navHit,
+                placementNavMeshSampleRadius,
+                NavMesh.AllAreas))
+        {
+            desiredPosition = navHit.position;
+        }
+
+        Vector3 rayOrigin = desiredPosition + Vector3.up * groundProbeHeight;
+        float rayDistance = groundProbeHeight + groundProbeDistance;
+
+        if (Physics.Raycast(
+                rayOrigin,
+                Vector3.down,
+                out RaycastHit hit,
+                rayDistance,
+                placementGroundLayer,
+                QueryTriggerInteraction.Ignore))
         {
             return new Vector3(hit.point.x, hit.point.y + deployY, hit.point.z);
         }
 
-        return new Vector3(targetPos.x, deployY, targetPos.z);
+        return new Vector3(
+            desiredPosition.x,
+            desiredPosition.y + deployY,
+            desiredPosition.z
+        );
+    }
+
+    private Quaternion BuildBarricadeRotation()
+    {
+        Vector3 forward = transform.forward;
+        forward.y = 0f;
+
+        if (forward.sqrMagnitude < 0.0001f)
+            return Quaternion.identity;
+
+        return Quaternion.LookRotation(forward.normalized, Vector3.up);
+    }
+
+    public void ResetSlowTrapUses()
+    {
+        remainingTrapUses = Mathf.Max(0, trapMaxUses);
+        Debug.Log($"[Engineer {AgentID}] 감속 함정 사용 횟수 초기화: {remainingTrapUses}");
     }
 }

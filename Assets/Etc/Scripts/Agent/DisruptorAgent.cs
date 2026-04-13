@@ -97,7 +97,7 @@ public class DisruptorAgent : AgentController
             return;
         }
 
-        Vector3 spawnPos = BuildSpawnPosition(transform.position);
+        Vector3 spawnPos = transform.position;  // 현재 위치에 홀로그램 생성
 
         currentHologram = Instantiate(
             hologramPrefab,

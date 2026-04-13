@@ -43,7 +43,6 @@ public class AgentStatsSO : ScriptableObject
     public float wallSightDuration = 5f;
 
     [Header("°øº´")]
-    public float barricadeLifetime = 10f;
     public float slowTrapDuration = 3f;
     public float slowTrapStrength = 0.5f;
 

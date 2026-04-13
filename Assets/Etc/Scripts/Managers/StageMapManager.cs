@@ -216,11 +216,35 @@ public class StageMapManager : MonoBehaviour
 
         targetController.SetStageNumber(selectedDifficultyEntry.difficultyProfileNumber);
         targetController.ApplyDifficultyForCurrentStage();
+        ApplyTargetSkillSetByDifficulty();
 
         Debug.Log(
             $"[StageMapManager] 타겟 난이도 적용: " +
             $"{selectedDifficultyEntry.difficultyName}, " +
             $"프로필 번호={selectedDifficultyEntry.difficultyProfileNumber}"
+        );
+    }
+
+    private void ApplyTargetSkillSetByDifficulty()
+    {
+        if (currentTarget == null)
+            return;
+
+        TargetSkillController targetSkillController = currentTarget.GetComponent<TargetSkillController>();
+        if (targetSkillController == null)
+            targetSkillController = currentTarget.GetComponentInChildren<TargetSkillController>(true);
+
+        if (targetSkillController == null)
+        {
+            Debug.LogWarning("[StageMapManager] TargetSkillController를 찾지 못했습니다.");
+            return;
+        }
+
+        targetSkillController.ApplySkillSetByDifficultyIndex(currentDifficultyIndex);
+
+        Debug.Log(
+            $"[StageMapManager] 타겟 스킬 세트 적용: DifficultyIndex={currentDifficultyIndex}, " +
+            $"DifficultyName={CurrentDifficultyDisplayName}"
         );
     }
 

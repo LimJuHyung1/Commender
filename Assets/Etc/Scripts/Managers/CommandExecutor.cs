@@ -5,6 +5,7 @@ public sealed class CommandExecutor
     private const string SkillHold = "hold";
     private const string SkillLookAround = "lookaround";
     private const string SkillDash = "dash";
+    private const string SkillHologram = "hologram";
 
     public void Execute(AgentController targetAgent, Vector3 dest, string validatedSkill)
     {
@@ -23,10 +24,10 @@ public sealed class CommandExecutor
     }
 
     private void ExecuteSkillCommand(
-        AgentController targetAgent,
-        int agentId,
-        Vector3 dest,
-        string validatedSkill)
+    AgentController targetAgent,
+    int agentId,
+    Vector3 dest,
+    string validatedSkill)
     {
         switch (validatedSkill)
         {
@@ -40,6 +41,12 @@ public sealed class CommandExecutor
 
             case SkillDash:
                 ExecuteDash(targetAgent, agentId, dest);
+                return;
+
+            case SkillHologram:
+                Vector3 currentPosition = targetAgent.transform.position;
+                Debug.Log($"<color=cyan>[Action]</color> Agent {agentId} : 현재 위치 {currentPosition} 에 'hologram' 스킬 사용");
+                targetAgent.ExecuteSkill(validatedSkill, currentPosition);
                 return;
 
             default:

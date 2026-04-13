@@ -134,7 +134,6 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         PendingCommandPlan[] plans = await Task.WhenAll(requestTasks);
 
-        // 모든 응답을 받은 뒤 한 번에 스케줄링
         for (int i = 0; i < plans.Length; i++)
         {
             PendingCommandPlan plan = plans[i];
@@ -259,6 +258,8 @@ public class CommanderCommandProcessor : MonoBehaviour
             {
                 if (commandValidator.IsLookAroundInstruction(originalInstruction))
                     validatedSkill = "lookaround";
+                else if (commandValidator.IsTrapInstruction(originalInstruction))
+                    validatedSkill = "slowtrap";
                 else if (commandValidator.IsMovementInstruction(originalInstruction))
                     validatedSkill = "";
             }
@@ -331,14 +332,14 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent is ScoutAgent)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"reveal\" and \"wallsight\".\n" +
-                   "14. Use \"reveal\" ONLY when the instruction explicitly asks for reveal, recon, recondrone, drone, 드론, 정찰, 정찰 드론, 정찰드론, 드론 설치, or 정찰 드론 설치.\n" +
+                   "13. Allowed skills for this agent are only \"flare\" and \"wallsight\".\n" +
+                   "14. Use \"flare\" ONLY when the instruction explicitly asks for flare, signal flare, 조명탄, 신호탄, or 플레어.\n" +
                    "15. Use \"wallsight\" ONLY when the instruction explicitly asks for wallsight, 투시, 벽 너머 시야, 벽너머 시야, or 벽너머 보기.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 8,3에 드론 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 8.0, \"z\": 3.0}}, \"skill\": \"reveal\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 8,3에 신호탄 발사\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 8.0, \"z\": 3.0}}, \"skill\": \"flare\" }} ] }}\n\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 투시 사용\n" +
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"wallsight\" }} ] }}";
         }
@@ -348,14 +349,19 @@ public class CommanderCommandProcessor : MonoBehaviour
             return commonRules +
                    "13. Allowed skills for this agent are only \"barricade\" and \"slowtrap\".\n" +
                    "14. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
-                   "15. Use \"slowtrap\" ONLY when the instruction explicitly asks for slowtrap, snaretrap, trap, 함정, 정지 함정, 구속 함정, 속박 함정, or 트랩 설치.\n\n" +
+                   "15. Use \"slowtrap\" ONLY when the instruction explicitly asks for slowtrap, snaretrap, trap, 트랩, 함정, 정지 함정, 구속 함정, 속박 함정, 트랩 설치, or 함정 설치.\n" +
+                   "16. If the instruction is just trap, 트랩, or 함정 without coordinates, interpret it as using the trap at the engineer's current position.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 4,1에 바리케이드 설치\n" +
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 4.0, \"z\": 1.0}}, \"skill\": \"barricade\" }} ] }}\n\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 2,6에 함정 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"slowtrap\" }} ] }}";
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"slowtrap\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 트랩\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"slowtrap\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 함정\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"slowtrap\" }} ] }}";
         }
 
         if (targetAgent is DisruptorAgent)
@@ -386,6 +392,13 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent == null)
             return Vector3.zero;
 
+        if (ShouldUseCurrentPositionWhenNoCoordinate(originalInstruction, validatedSkill))
+        {
+            Vector3 currentPosition = targetAgent.transform.position;
+            Debug.Log($"[Commender] Agent {targetAgent.AgentID} 좌표 없는 함정 명령이므로 현재 위치 사용: {currentPosition}");
+            return currentPosition;
+        }
+
         if (ShouldUseInstructionCoordinate(originalInstruction, validatedSkill) &&
             commandValidator.TryExtractCoordinate(originalInstruction, out float parsedX, out float parsedZ))
         {
@@ -400,6 +413,20 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
 
         return BuildDestinationFromAI(targetAgent, cmd);
+    }
+
+    private bool ShouldUseCurrentPositionWhenNoCoordinate(string originalInstruction, string validatedSkill)
+    {
+        if (string.IsNullOrWhiteSpace(originalInstruction))
+            return false;
+
+        if (validatedSkill != "slowtrap")
+            return false;
+
+        if (commandValidator.ContainsCoordinate(originalInstruction))
+            return false;
+
+        return commandValidator.IsTrapInstruction(originalInstruction);
     }
 
     private bool ShouldUseInstructionCoordinate(string originalInstruction, string validatedSkill)

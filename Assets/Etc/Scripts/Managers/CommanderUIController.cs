@@ -45,6 +45,7 @@ public class CommanderUIController : MonoBehaviour
 
         HandleFunctionKeyFocus();
         HandleTabInputNavigation();
+        HandleSubmitHotkey();
         UpdateFocusedInputPresentation();
     }
 
@@ -347,6 +348,72 @@ public class CommanderUIController : MonoBehaviour
             StopCoroutine(tabMoveRoutine);
 
         tabMoveRoutine = StartCoroutine(MoveFocusAfterImeCommit(currentIndex, nextIndex));
+    }
+
+    private void HandleSubmitHotkey()
+    {
+        if (submitButton == null || !submitButton.interactable)
+            return;
+
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard == null)
+            return;
+
+        bool ctrlPressed =
+            keyboard.leftCtrlKey.isPressed ||
+            keyboard.rightCtrlKey.isPressed;
+
+        if (!ctrlPressed)
+            return;
+
+        bool enterPressedThisFrame =
+            keyboard.enterKey.wasPressedThisFrame ||
+            keyboard.numpadEnterKey.wasPressedThisFrame;
+
+        if (!enterPressedThisFrame)
+            return;
+
+        if (IsImeComposing())
+            return;
+
+        int selectedIndex = GetSelectedInputIndex();
+        int focusedIndex = GetFocusedInputIndex();
+
+        if (selectedIndex < 0 && focusedIndex < 0)
+            return;
+
+        ClearInputFocusBeforeSubmit();
+        submitButton.onClick.Invoke();
+    }
+
+    private void ClearInputFocusBeforeSubmit()
+    {
+        if (agentInputs != null)
+        {
+            foreach (InputField input in agentInputs)
+            {
+                if (input == null)
+                    continue;
+
+                input.DeactivateInputField();
+            }
+        }
+
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(null);
+
+        if (agentCameraFollow != null)
+            agentCameraFollow.ClearFocusAgent();
+
+        if (currentHighlightedOutline != null)
+        {
+            currentHighlightedOutline.SetOutlineVisible(false);
+            currentHighlightedOutline = null;
+        }
+
+        currentFocusedInputIndex = -1;
+        RestoreAllPlaceholderTexts();
+        ApplyAllJammedPlaceholders();
     }
 
     private IEnumerator MoveFocusAfterImeCommit(int currentIndex, int nextIndex)
@@ -674,7 +741,7 @@ public class CommanderUIController : MonoBehaviour
             return "EX) 대쉬, 연막";
 
         if (typeName.Contains("Scout"))
-            return "EX) 드론, 투시";
+            return "EX) 조명탄, 투시";
 
         if (typeName.Contains("Engineer"))
             return "EX) 바리케이드, 함정";
@@ -687,7 +754,7 @@ public class CommanderUIController : MonoBehaviour
             case 0:
                 return "EX) 대쉬, 연막";
             case 1:
-                return "EX) 드론, 투시";
+                return "EX) 조명탄, 투시";
             case 2:
                 return "EX) 바리케이드, 함정";
             case 3:
@@ -720,8 +787,6 @@ public class CommanderUIController : MonoBehaviour
 
         placeholderText.text = text;
     }
-
-
 
     // 디버그용: 버튼에서 랜덤 에이전트 통신 방해 테스트
     // 나중에 삭제하기

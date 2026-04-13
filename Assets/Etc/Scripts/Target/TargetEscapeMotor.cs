@@ -146,16 +146,20 @@ public class TargetEscapeMotor : MonoBehaviour
     private NavMeshPath reusablePath;
 
     private Coroutine rootRoutine;
+    private Coroutine slowRoutine;
     private Coroutine emergencyEscapeRoutine;
 
     private float lastRepathTime = -999f;
     private float lastKnownHealthRatio = 1f;
+    private float activeSlowMultiplier = 1f;
     private int emergencyEscapeUsedCount;
 
     private bool isRooted;
+    private bool isSlowed;
     private bool isEmergencyEscaping;
 
     public bool IsRooted => isRooted;
+    public bool IsSlowed => isSlowed;
     public bool IsEmergencyEscaping => isEmergencyEscaping;
     public bool CanBeCaught => !isEmergencyEscaping;
     public bool HasUsedEmergencyEscape => emergencyEscapeUsedCount > 0;
@@ -230,9 +234,30 @@ public class TargetEscapeMotor : MonoBehaviour
             acceleration *= settings.panicSpeedMultiplier;
         }
 
+        speed *= activeSlowMultiplier;
+        acceleration *= activeSlowMultiplier;
+
         navAgent.speed = speed;
         navAgent.acceleration = acceleration;
         navAgent.angularSpeed = settings.fleeAngularSpeed;
+    }
+
+    public void ConfigureEmergencyEscape(bool enabled, int charges, bool autoUse)
+    {
+        settings.enableEmergencyEscape = enabled;
+        settings.emergencyEscapeCharges = enabled ? Mathf.Max(0, charges) : 0;
+        settings.autoUseEmergencyEscape = enabled && autoUse;
+        settings.ClampValues();
+
+        emergencyEscapeUsedCount = 0;
+
+        if (!enabled && emergencyEscapeRoutine != null)
+        {
+            StopCoroutine(emergencyEscapeRoutine);
+            emergencyEscapeRoutine = null;
+            isEmergencyEscaping = false;
+            ApplyNavAgentBaseSettings();
+        }
     }
 
     public bool ShouldAutoTriggerEmergencyEscape(float healthRatio)
@@ -277,6 +302,20 @@ public class TargetEscapeMotor : MonoBehaviour
         rootRoutine = StartCoroutine(RootRoutine(duration));
     }
 
+    public void ApplySlow(float multiplier, float duration)
+    {
+        activeSlowMultiplier = Mathf.Clamp(multiplier, 0.05f, 1f);
+        isSlowed = true;
+
+        if (slowRoutine != null)
+            StopCoroutine(slowRoutine);
+
+        bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
+        RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
+
+        slowRoutine = StartCoroutine(SlowRoutine(duration));
+    }
+
     public void TryFleeFromThreats(bool forceRepath = false)
     {
         if (!CanFlee())
@@ -297,7 +336,7 @@ public class TargetEscapeMotor : MonoBehaviour
             return;
 
         if (skillController != null)
-            skillController.TryUseBarricade(bestPosition);
+            skillController.TryUseAutoDefensiveSkill(bestPosition);
 
         lastRepathTime = Time.time;
     }
@@ -320,7 +359,9 @@ public class TargetEscapeMotor : MonoBehaviour
         StopActiveCoroutines();
 
         isRooted = false;
+        isSlowed = false;
         isEmergencyEscaping = false;
+        activeSlowMultiplier = 1f;
         lastRepathTime = -999f;
         lastKnownHealthRatio = 1f;
 
@@ -412,6 +453,27 @@ public class TargetEscapeMotor : MonoBehaviour
             RefreshDynamicMovementSettings(true, lastKnownHealthRatio);
             TryFleeFromThreats(true);
         }
+    }
+
+    private IEnumerator SlowRoutine(float duration)
+    {
+        duration = Mathf.Max(0.01f, duration);
+
+        Debug.Log($"[TargetEscapeMotor] 감속 발동. {duration:0.##}초 동안 이동 속도 x{activeSlowMultiplier:0.##}");
+
+        yield return new WaitForSeconds(duration);
+
+        isSlowed = false;
+        activeSlowMultiplier = 1f;
+        slowRoutine = null;
+
+        Debug.Log("[TargetEscapeMotor] 감속 종료");
+
+        bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
+        RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
+
+        if (hasThreat)
+            TryFleeFromThreats(true);
     }
 
     private bool CanUseEmergencyEscape(bool writeLog)
@@ -573,18 +635,6 @@ public class TargetEscapeMotor : MonoBehaviour
 
         return false;
     }
-    private bool TryBuildCandidateDestination(Vector3 direction, float distance, out Vector3 candidate)
-    {
-        candidate = transform.position;
-
-        Vector3 rawPosition = transform.position + direction * distance;
-
-        if (!NavMesh.SamplePosition(rawPosition, out NavMeshHit hit, settings.navMeshSampleRadius, NavMesh.AllAreas))
-            return false;
-
-        candidate = hit.position;
-        return true;
-    }
 
     private bool TryCalculatePath(Vector3 destination)
     {
@@ -622,6 +672,12 @@ public class TargetEscapeMotor : MonoBehaviour
             rootRoutine = null;
         }
 
+        if (slowRoutine != null)
+        {
+            StopCoroutine(slowRoutine);
+            slowRoutine = null;
+        }
+
         if (emergencyEscapeRoutine != null)
         {
             StopCoroutine(emergencyEscapeRoutine);
@@ -632,7 +688,9 @@ public class TargetEscapeMotor : MonoBehaviour
     private void ResetMotionState()
     {
         isRooted = false;
+        isSlowed = false;
         isEmergencyEscaping = false;
+        activeSlowMultiplier = 1f;
         ResetAgentPath();
     }
 

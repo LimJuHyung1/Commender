@@ -69,6 +69,9 @@ public abstract class HologramBase : MonoBehaviour
     public void Initialize(Transform newOwnerRoot)
     {
         ownerRoot = newOwnerRoot;
+
+        if (ownerRoot != null)
+            transform.position = ownerRoot.position;
     }
 
     protected void DestroySelf()
