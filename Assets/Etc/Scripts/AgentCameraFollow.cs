@@ -49,24 +49,40 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private Vector2 labelSize = new Vector2(140f, 28f);
 
     private Camera cam;
+
     private Bounds groundBounds;
-    private bool hasGroundBounds = false;
+    private bool hasGroundBounds;
 
     private Vector3 lastClickedGroundPoint;
-    private bool hasClickedGroundPoint = false;
+    private bool hasClickedGroundPoint;
     private Vector2 lastClickScreenPosition;
-    private float clickLabelEndTime = 0f;
-    private float copiedLabelEndTime = 0f;
+    private float clickLabelEndTime;
+    private float copiedLabelEndTime;
 
     private GUIStyle labelStyle;
+
     private readonly List<RaycastResult> uiRaycastResults = new List<RaycastResult>();
+    private PointerEventData pointerEventData;
+    private int cachedUiCheckFrame = -1;
+    private Vector2 cachedUiCheckScreenPosition;
+    private bool cachedUiCheckResult;
+
     private Transform focusedAgent;
 
+    private Transform cachedFocusAnchor;
+    private Renderer[] cachedFocusRenderers;
+    private Collider[] cachedFocusColliders;
+
     private Vector3 topDownPanOffset = Vector3.zero;
-    private bool isLeftMouseHeld = false;
-    private bool isDraggingCamera = false;
+    private bool isLeftMouseHeld;
+    private bool isDraggingCamera;
     private Vector2 dragStartScreenPosition;
     private Vector2 lastDragScreenPosition;
+
+    private Quaternion cachedTopDownRotation;
+    private Quaternion cachedFocusedRotation;
+    private Vector3 cachedPanRightOnGround;
+    private Vector3 cachedPanUpOnGround;
 
     public Vector3 LastClickedGroundPoint => lastClickedGroundPoint;
     public bool HasClickedGroundPoint => hasClickedGroundPoint;
@@ -75,15 +91,26 @@ public class AgentCameraFollow : MonoBehaviour
     {
         cam = GetComponent<Camera>();
         cam.orthographic = true;
+
+        RebuildRotationCaches();
         RefreshGroundBounds();
+
+        if (EventSystem.current != null)
+            pointerEventData = new PointerEventData(EventSystem.current);
+    }
+
+    private void OnValidate()
+    {
+        RebuildRotationCaches();
     }
 
     private void Update()
     {
-        if (Mouse.current == null)
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
             return;
 
-        HandleLeftMouseInput(Mouse.current.position.ReadValue());
+        HandleLeftMouseInput(mouse, mouse.position.ReadValue());
     }
 
     private void LateUpdate()
@@ -100,16 +127,62 @@ public class AgentCameraFollow : MonoBehaviour
     public void FocusAgent(Transform agentTransform)
     {
         focusedAgent = agentTransform;
+        CacheFocusedAgentData(agentTransform);
     }
 
     public void ClearFocusAgent()
     {
         focusedAgent = null;
+        ClearFocusedAgentCache();
     }
 
-    private void HandleLeftMouseInput(Vector2 mousePosition)
+    public void ResetTopDownPan()
     {
-        if (Mouse.current.leftButton.wasPressedThisFrame)
+        topDownPanOffset = Vector3.zero;
+    }
+
+    public void RefreshGroundBounds()
+    {
+        if (groundRoot == null)
+        {
+            hasGroundBounds = false;
+            Debug.LogWarning("[Camera] groundRoot가 연결되지 않았습니다.");
+            return;
+        }
+
+        bool foundAny =
+            TryGetCombinedBounds(
+                groundRoot.GetComponentsInChildren<Renderer>(true),
+                IsValidGroundRenderer,
+                out Bounds combinedBounds)
+            ||
+            TryGetCombinedBounds(
+                groundRoot.GetComponentsInChildren<Collider>(true),
+                IsValidGroundCollider,
+                out combinedBounds);
+
+        hasGroundBounds = foundAny;
+        groundBounds = combinedBounds;
+
+        if (!hasGroundBounds)
+            Debug.LogWarning("[Camera] groundRoot 아래에서 Ground 레이어 bounds를 찾지 못했습니다.");
+    }
+
+    public void SetGroundRoot(Transform newGroundRoot)
+    {
+        groundRoot = newGroundRoot;
+        ResetTopDownPan();
+        RefreshGroundBounds();
+    }
+
+    public void SetTargets(List<Transform> newTargets)
+    {
+        RefreshGroundBounds();
+    }
+
+    private void HandleLeftMouseInput(Mouse mouse, Vector2 mousePosition)
+    {
+        if (mouse.leftButton.wasPressedThisFrame)
         {
             isLeftMouseHeld = true;
             isDraggingCamera = false;
@@ -117,7 +190,7 @@ public class AgentCameraFollow : MonoBehaviour
             lastDragScreenPosition = mousePosition;
         }
 
-        if (isLeftMouseHeld && Mouse.current.leftButton.isPressed)
+        if (isLeftMouseHeld && mouse.leftButton.isPressed)
         {
             TryStartDrag(mousePosition);
 
@@ -125,7 +198,7 @@ public class AgentCameraFollow : MonoBehaviour
                 UpdateDragPan(mousePosition);
         }
 
-        if (Mouse.current.leftButton.wasReleasedThisFrame)
+        if (mouse.leftButton.wasReleasedThisFrame)
         {
             if (!isDraggingCamera)
             {
@@ -150,10 +223,10 @@ public class AgentCameraFollow : MonoBehaviour
         if (!enableDragPan)
             return;
 
-        if (IsPointerOverUI(mousePosition))
+        if (isDraggingCamera)
             return;
 
-        if (isDraggingCamera)
+        if (IsPointerOverUI(mousePosition))
             return;
 
         float draggedDistance = Vector2.Distance(mousePosition, dragStartScreenPosition);
@@ -169,46 +242,20 @@ public class AgentCameraFollow : MonoBehaviour
         if (screenDelta.sqrMagnitude <= Mathf.Epsilon)
             return;
 
-        Vector3 rightOnGround;
-        Vector3 upOnGround;
-        GetTopDownPanBasis(out rightOnGround, out upOnGround);
-
         float worldUnitsPerPixel = (cam.orthographicSize * 2f) / Mathf.Max(Screen.height, 1);
+
         Vector3 move =
-            (-rightOnGround * screenDelta.x - upOnGround * screenDelta.y) *
+            (-cachedPanRightOnGround * screenDelta.x - cachedPanUpOnGround * screenDelta.y) *
             worldUnitsPerPixel *
             dragPanSensitivity;
 
         topDownPanOffset += move;
     }
 
-    private void GetTopDownPanBasis(out Vector3 rightOnGround, out Vector3 upOnGround)
-    {
-        Quaternion basisRotation = Quaternion.Euler(topDownEuler);
-
-        rightOnGround = Vector3.ProjectOnPlane(basisRotation * Vector3.right, Vector3.up);
-        upOnGround = Vector3.ProjectOnPlane(basisRotation * Vector3.up, Vector3.up);
-
-        if (rightOnGround.sqrMagnitude < 0.0001f)
-            rightOnGround = Vector3.right;
-        else
-            rightOnGround.Normalize();
-
-        if (upOnGround.sqrMagnitude < 0.0001f)
-            upOnGround = Vector3.forward;
-        else
-            upOnGround.Normalize();
-    }
-
     private void ResetDragState()
     {
         isLeftMouseHeld = false;
         isDraggingCamera = false;
-    }
-
-    public void ResetTopDownPan()
-    {
-        topDownPanOffset = Vector3.zero;
     }
 
     private void UpdateTopDownView()
@@ -218,7 +265,6 @@ public class AgentCameraFollow : MonoBehaviour
 
         Vector3 center = groundBounds.center + topDownPanOffset;
         Vector3 desiredPosition;
-        Quaternion desiredRotation = Quaternion.Euler(topDownEuler);
         float desiredOrthoSize;
 
         if (topDownViewMode == TopDownViewMode.FixedView)
@@ -236,7 +282,7 @@ public class AgentCameraFollow : MonoBehaviour
         }
 
         transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, smoothSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, cachedTopDownRotation, smoothSpeed * Time.deltaTime);
         cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, desiredOrthoSize, smoothSpeed * Time.deltaTime);
     }
 
@@ -245,13 +291,31 @@ public class AgentCameraFollow : MonoBehaviour
         if (focusedAgent == null)
             return;
 
-        Quaternion desiredRotation = Quaternion.Euler(focusedViewEuler);
         Vector3 focusPoint = GetFocusedAgentWorldPoint();
-        Vector3 desiredPosition = focusPoint + desiredRotation * focusedLocalOffset;
+        Vector3 desiredPosition = focusPoint + cachedFocusedRotation * focusedLocalOffset;
 
         transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, smoothSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, cachedFocusedRotation, smoothSpeed * Time.deltaTime);
         cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, focusedOrthoSize, smoothSpeed * Time.deltaTime);
+    }
+
+    private void CacheFocusedAgentData(Transform root)
+    {
+        ClearFocusedAgentCache();
+
+        if (root == null)
+            return;
+
+        cachedFocusAnchor = FindChildRecursive(root, focusAnchorName);
+        cachedFocusRenderers = root.GetComponentsInChildren<Renderer>(true);
+        cachedFocusColliders = root.GetComponentsInChildren<Collider>(true);
+    }
+
+    private void ClearFocusedAgentCache()
+    {
+        cachedFocusAnchor = null;
+        cachedFocusRenderers = null;
+        cachedFocusColliders = null;
     }
 
     private Vector3 GetFocusedAgentWorldPoint()
@@ -259,15 +323,14 @@ public class AgentCameraFollow : MonoBehaviour
         if (focusedAgent == null)
             return Vector3.zero;
 
-        Transform anchor = FindChildRecursive(focusedAgent, focusAnchorName);
-        if (anchor != null)
-            return anchor.position + focusTargetOffset;
+        if (cachedFocusAnchor != null)
+            return cachedFocusAnchor.position + focusTargetOffset;
 
-        if (TryGetRendererBoundsCenter(focusedAgent, out Vector3 rendererCenter))
-            return rendererCenter + focusTargetOffset;
+        if (TryGetCombinedBounds(cachedFocusRenderers, IsValidFocusedRenderer, out Bounds rendererBounds))
+            return rendererBounds.center + focusTargetOffset;
 
-        if (TryGetColliderBoundsCenter(focusedAgent, out Vector3 colliderCenter))
-            return colliderCenter + focusTargetOffset;
+        if (TryGetCombinedBounds(cachedFocusColliders, IsValidFocusedCollider, out Bounds colliderBounds))
+            return colliderBounds.center + focusTargetOffset;
 
         return focusedAgent.position + focusTargetOffset;
     }
@@ -290,138 +353,10 @@ public class AgentCameraFollow : MonoBehaviour
         return null;
     }
 
-    private bool TryGetRendererBoundsCenter(Transform root, out Vector3 center)
+    private bool DetectGroundRaycast(Vector2 mousePosition, out RaycastHit hit)
     {
-        center = Vector3.zero;
-
-        if (root == null)
-            return false;
-
-        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-        bool foundAny = false;
-        Bounds combinedBounds = default;
-
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer rend = renderers[i];
-            if (rend == null || !rend.enabled)
-                continue;
-
-            if (!foundAny)
-            {
-                combinedBounds = rend.bounds;
-                foundAny = true;
-            }
-            else
-            {
-                combinedBounds.Encapsulate(rend.bounds);
-            }
-        }
-
-        if (!foundAny)
-            return false;
-
-        center = combinedBounds.center;
-        return true;
-    }
-
-    private bool TryGetColliderBoundsCenter(Transform root, out Vector3 center)
-    {
-        center = Vector3.zero;
-
-        if (root == null)
-            return false;
-
-        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
-        bool foundAny = false;
-        Bounds combinedBounds = default;
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Collider col = colliders[i];
-            if (col == null || col.isTrigger)
-                continue;
-
-            if (!foundAny)
-            {
-                combinedBounds = col.bounds;
-                foundAny = true;
-            }
-            else
-            {
-                combinedBounds.Encapsulate(col.bounds);
-            }
-        }
-
-        if (!foundAny)
-            return false;
-
-        center = combinedBounds.center;
-        return true;
-    }
-
-    public void RefreshGroundBounds()
-    {
-        if (groundRoot == null)
-        {
-            hasGroundBounds = false;
-            Debug.LogWarning("[Camera] groundRoot가 연결되지 않았습니다.");
-            return;
-        }
-
-        Renderer[] renderers = groundRoot.GetComponentsInChildren<Renderer>(true);
-
-        bool foundAny = false;
-        Bounds combinedBounds = default;
-
-        foreach (Renderer rend in renderers)
-        {
-            if (rend == null)
-                continue;
-
-            if (!IsInLayerMask(rend.gameObject.layer, groundLayer))
-                continue;
-
-            if (!foundAny)
-            {
-                combinedBounds = rend.bounds;
-                foundAny = true;
-            }
-            else
-            {
-                combinedBounds.Encapsulate(rend.bounds);
-            }
-        }
-
-        if (!foundAny)
-        {
-            Collider[] colliders = groundRoot.GetComponentsInChildren<Collider>(true);
-
-            foreach (Collider col in colliders)
-            {
-                if (col == null)
-                    continue;
-
-                if (!IsInLayerMask(col.gameObject.layer, groundLayer))
-                    continue;
-
-                if (!foundAny)
-                {
-                    combinedBounds = col.bounds;
-                    foundAny = true;
-                }
-                else
-                {
-                    combinedBounds.Encapsulate(col.bounds);
-                }
-            }
-        }
-
-        hasGroundBounds = foundAny;
-        groundBounds = combinedBounds;
-
-        if (!hasGroundBounds)
-            Debug.LogWarning("[Camera] groundRoot 아래에서 Ground 레이어 bounds를 찾지 못했습니다.");
+        Ray ray = cam.ScreenPointToRay(mousePosition);
+        return Physics.Raycast(ray, out hit, Mathf.Infinity, groundLayer, QueryTriggerInteraction.Ignore);
     }
 
     private void DetectGroundPoint(Vector2 mousePosition)
@@ -429,18 +364,15 @@ public class AgentCameraFollow : MonoBehaviour
         if (IsPointerOverUI(mousePosition))
             return;
 
-        Ray ray = cam.ScreenPointToRay(mousePosition);
-        RaycastHit hit;
+        if (!DetectGroundRaycast(mousePosition, out RaycastHit hit))
+            return;
 
-        if (Physics.Raycast(ray, out hit, Mathf.Infinity, groundLayer, QueryTriggerInteraction.Ignore))
-        {
-            lastClickedGroundPoint = hit.point;
-            hasClickedGroundPoint = true;
-            lastClickScreenPosition = mousePosition + clickLabelOffset;
-            clickLabelEndTime = Time.unscaledTime + clickLabelDuration;
+        lastClickedGroundPoint = hit.point;
+        hasClickedGroundPoint = true;
+        lastClickScreenPosition = mousePosition + clickLabelOffset;
+        clickLabelEndTime = Time.unscaledTime + clickLabelDuration;
 
-            Debug.Log($"[Camera] Ground 클릭 좌표: {lastClickedGroundPoint}");
-        }
+        Debug.Log($"[Camera] Ground 클릭 좌표: {lastClickedGroundPoint}");
     }
 
     private bool TryCopyClickedCoordinate(Vector2 mousePosition)
@@ -467,18 +399,21 @@ public class AgentCameraFollow : MonoBehaviour
         if (EventSystem.current == null)
             return false;
 
-        PointerEventData pointerData = new PointerEventData(EventSystem.current);
-        pointerData.position = screenPosition;
+        if (pointerEventData == null)
+            pointerEventData = new PointerEventData(EventSystem.current);
 
+        if (cachedUiCheckFrame == Time.frameCount && cachedUiCheckScreenPosition == screenPosition)
+            return cachedUiCheckResult;
+
+        pointerEventData.position = screenPosition;
         uiRaycastResults.Clear();
-        EventSystem.current.RaycastAll(pointerData, uiRaycastResults);
+        EventSystem.current.RaycastAll(pointerEventData, uiRaycastResults);
 
-        return uiRaycastResults.Count > 0;
-    }
+        cachedUiCheckFrame = Time.frameCount;
+        cachedUiCheckScreenPosition = screenPosition;
+        cachedUiCheckResult = uiRaycastResults.Count > 0;
 
-    private bool IsInLayerMask(int layer, LayerMask mask)
-    {
-        return ((1 << layer) & mask.value) != 0;
+        return cachedUiCheckResult;
     }
 
     private bool IsLabelVisible()
@@ -528,36 +463,118 @@ public class AgentCameraFollow : MonoBehaviour
         GUI.Box(rect, GetDisplayLabelText(), labelStyle);
     }
 
-    public void SetTargets(List<Transform> newTargets)
-    {
-        RefreshGroundBounds();
-    }
-
     private void OnDrawGizmos()
     {
-        if (showDebugInfo && hasClickedGroundPoint)
+        if (!showDebugInfo)
+            return;
+
+        if (hasClickedGroundPoint)
         {
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(lastClickedGroundPoint, 0.5f);
         }
 
-        if (showDebugInfo && hasGroundBounds)
+        if (hasGroundBounds)
         {
             Gizmos.color = Color.green;
             Gizmos.DrawWireCube(groundBounds.center, groundBounds.size);
         }
 
-        if (showDebugInfo && focusedAgent != null)
+        if (focusedAgent != null)
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(GetFocusedAgentWorldPoint(), 0.4f);
         }
     }
 
-    public void SetGroundRoot(Transform newGroundRoot)
+    private void RebuildRotationCaches()
     {
-        groundRoot = newGroundRoot;
-        ResetTopDownPan();
-        RefreshGroundBounds();
+        cachedTopDownRotation = Quaternion.Euler(topDownEuler);
+        cachedFocusedRotation = Quaternion.Euler(focusedViewEuler);
+        RebuildPanBasis();
+    }
+
+    private void RebuildPanBasis()
+    {
+        cachedPanRightOnGround = Vector3.ProjectOnPlane(cachedTopDownRotation * Vector3.right, Vector3.up);
+        cachedPanUpOnGround = Vector3.ProjectOnPlane(cachedTopDownRotation * Vector3.up, Vector3.up);
+
+        if (cachedPanRightOnGround.sqrMagnitude < 0.0001f)
+            cachedPanRightOnGround = Vector3.right;
+        else
+            cachedPanRightOnGround.Normalize();
+
+        if (cachedPanUpOnGround.sqrMagnitude < 0.0001f)
+            cachedPanUpOnGround = Vector3.forward;
+        else
+            cachedPanUpOnGround.Normalize();
+    }
+
+    private bool IsInLayerMask(int layer, LayerMask mask)
+    {
+        return ((1 << layer) & mask.value) != 0;
+    }
+
+    private bool IsValidGroundRenderer(Renderer rend)
+    {
+        return rend != null && IsInLayerMask(rend.gameObject.layer, groundLayer);
+    }
+
+    private bool IsValidGroundCollider(Collider col)
+    {
+        return col != null && IsInLayerMask(col.gameObject.layer, groundLayer);
+    }
+
+    private bool IsValidFocusedRenderer(Renderer rend)
+    {
+        return rend != null && rend.enabled;
+    }
+
+    private bool IsValidFocusedCollider(Collider col)
+    {
+        return col != null && !col.isTrigger;
+    }
+
+    private bool TryGetCombinedBounds<T>(T[] items, System.Predicate<T> isValid, out Bounds combinedBounds)
+        where T : Component
+    {
+        combinedBounds = default;
+
+        if (items == null || items.Length == 0)
+            return false;
+
+        bool foundAny = false;
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            T item = items[i];
+            if (item == null || !isValid(item))
+                continue;
+
+            Bounds itemBounds = GetBounds(item);
+
+            if (!foundAny)
+            {
+                combinedBounds = itemBounds;
+                foundAny = true;
+            }
+            else
+            {
+                combinedBounds.Encapsulate(itemBounds);
+            }
+        }
+
+        return foundAny;
+    }
+
+    private Bounds GetBounds(Component component)
+    {
+        if (component is Renderer renderer)
+            return renderer.bounds;
+
+        if (component is Collider collider)
+            return collider.bounds;
+
+        return default;
     }
 }
