@@ -8,6 +8,10 @@ public class EngineerAgent : AgentController
     [SerializeField] private GameObject trapPrefab;
     [SerializeField] private Transform deployParent;
 
+    [Header("타겟 참조")]
+    [SerializeField] private Transform targetTransform;
+    [SerializeField] private bool autoFindTargetIfMissing = true;
+
     [Header("설치 설정")]
     [SerializeField] private float deployY = 0f;
     [SerializeField] private float placementNavMeshSampleRadius = 2f;
@@ -16,6 +20,10 @@ public class EngineerAgent : AgentController
     [SerializeField] private LayerMask placementGroundLayer;
     [SerializeField] private bool replaceExistingBarricade = true;
     [SerializeField] private bool replaceExistingTrap = false;
+
+    [Header("설치 회전 보정")]
+    [SerializeField] private float barricadeYawOffset = 0f;
+    [SerializeField] private float trapYawOffset = 0f;
 
     [Header("함정 사용 횟수")]
     [SerializeField][Min(0)] private int trapMaxUses = 3;
@@ -32,6 +40,7 @@ public class EngineerAgent : AgentController
         base.Awake();
 
         remainingTrapUses = Mathf.Max(0, trapMaxUses);
+        CacheTargetTransform();
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -84,7 +93,7 @@ public class EngineerAgent : AgentController
         }
 
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
-        Quaternion spawnRotation = BuildBarricadeRotation();
+        Quaternion spawnRotation = BuildPlacementRotationTowardTarget(spawnPos, barricadeYawOffset);
 
         if (replaceExistingBarricade && currentBarricade != null)
         {
@@ -107,7 +116,7 @@ public class EngineerAgent : AgentController
 
         currentBarricade = spawnedBarricade;
 
-        Debug.Log($"[Engineer {AgentID}] 바리케이드 설치: {spawnPos}");
+        Debug.Log($"[Engineer {AgentID}] 바리케이드 설치: {spawnPos}, 회전: {spawnRotation.eulerAngles}");
     }
 
     private void DeployTrap(Vector3 targetPos)
@@ -125,6 +134,7 @@ public class EngineerAgent : AgentController
         }
 
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
+        Quaternion spawnRotation = BuildPlacementRotationTowardTarget(spawnPos, trapYawOffset);
 
         if (replaceExistingTrap && currentTrap != null)
         {
@@ -135,7 +145,7 @@ public class EngineerAgent : AgentController
         GameObject spawnedTrap = Instantiate(
             trapPrefab,
             spawnPos,
-            Quaternion.identity,
+            spawnRotation,
             deployParent != null ? deployParent : null
         );
 
@@ -144,9 +154,35 @@ public class EngineerAgent : AgentController
 
         remainingTrapUses--;
 
-        Debug.Log($"[Engineer {AgentID}] 감속 함정 설치: {spawnPos} | 남은 횟수: {remainingTrapUses}");
+        Debug.Log($"[Engineer {AgentID}] 감속 함정 설치: {spawnPos}, 회전: {spawnRotation.eulerAngles} | 남은 횟수: {remainingTrapUses}");
     }
 
+    private Quaternion BuildPlacementRotationTowardTarget(Vector3 spawnPos, float yawOffset)
+    {
+        CacheTargetTransform();
+
+        Vector3 direction;
+
+        if (targetTransform != null)
+            direction = targetTransform.position - spawnPos;
+        else
+            direction = transform.forward;
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = transform.forward;
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = Vector3.forward;
+
+        Quaternion baseRotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        Quaternion offsetRotation = Quaternion.Euler(0f, yawOffset, 0f);
+
+        return baseRotation * offsetRotation;
+    }
     private Vector3 BuildSpawnPosition(Vector3 targetPos)
     {
         Vector3 desiredPosition = targetPos;
@@ -181,15 +217,49 @@ public class EngineerAgent : AgentController
         );
     }
 
-    private Quaternion BuildBarricadeRotation()
+    private void CacheTargetTransform()
     {
-        Vector3 forward = transform.forward;
-        forward.y = 0f;
+        if (targetTransform != null)
+            return;
 
-        if (forward.sqrMagnitude < 0.0001f)
-            return Quaternion.identity;
+        if (!autoFindTargetIfMissing)
+            return;
 
-        return Quaternion.LookRotation(forward.normalized, Vector3.up);
+        TargetController foundTarget = FindFirstObjectByType<TargetController>();
+        if (foundTarget != null)
+            targetTransform = foundTarget.transform;
+    }
+
+    private Quaternion BuildPlacementRotation(Vector3 spawnPos, float yawOffset)
+    {
+        CacheTargetTransform();
+
+        Vector3 direction;
+
+        if (targetTransform != null)
+        {
+            direction = targetTransform.position - transform.position;
+        }
+        else
+        {
+            direction = spawnPos - transform.position;
+        }
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude < 0.0001f)
+        {
+            direction = transform.forward;
+            direction.y = 0f;
+        }
+
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = Vector3.forward;
+
+        Quaternion baseRotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        Quaternion offsetRotation = Quaternion.Euler(0f, yawOffset, 0f);
+
+        return baseRotation * offsetRotation;
     }
 
     public void ResetSlowTrapUses()

@@ -108,7 +108,7 @@ public class TargetVisibilityController : MonoBehaviour
 
         // 드론 정찰 범위에 들어와 노출된 상태라면,
         // 직접 시야와 상관없이 카메라에 보이도록 처리
-        if (targetController != null && targetController.IsRevealedToPlayer)
+        if (targetController != null && GameManager.Instance.IsTargetDebugRevealEnabled)
         {
             visibleReason = "ReconReveal";
             return true;

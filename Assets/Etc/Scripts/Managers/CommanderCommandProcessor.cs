@@ -10,6 +10,13 @@ public class CommanderCommandProcessor : MonoBehaviour
     [SerializeField] private bool autoBindAgentsFromScene = true;
     [SerializeField] private bool sortAgentsById = true;
 
+    [Header("World Point Resolve")]
+    [SerializeField] private AgentCameraFollow commandCamera;
+    [SerializeField] private LayerMask commandGroundLayer;
+    [SerializeField] private float coordinateMatchTolerance = 0.2f;
+    [SerializeField] private float groundProbeHeight = 50f;
+    [SerializeField] private float groundProbeDistance = 200f;
+
     private readonly List<AgentController> agents = new List<AgentController>();
     private readonly Dictionary<int, AgentController> agentById = new Dictionary<int, AgentController>();
     private readonly Dictionary<int, Coroutine> scheduledCommandByAgentId = new Dictionary<int, Coroutine>();
@@ -62,6 +69,9 @@ public class CommanderCommandProcessor : MonoBehaviour
     {
         EnsureHelpers();
         RefreshAgentsFromScene(true);
+
+        if (commandCamera == null)
+            commandCamera = FindFirstObjectByType<AgentCameraFollow>();
     }
 
     private void OnDisable()
@@ -402,12 +412,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (ShouldUseInstructionCoordinate(originalInstruction, validatedSkill) &&
             commandValidator.TryExtractCoordinate(originalInstruction, out float parsedX, out float parsedZ))
         {
-            Vector3 parsedDestination = new Vector3(
-                parsedX,
-                targetAgent.transform.position.y,
-                parsedZ
-            );
-
+            Vector3 parsedDestination = ResolveWorldPointFromCoordinate(targetAgent, parsedX, parsedZ);
             Debug.Log($"[Commender] Agent {targetAgent.AgentID} 좌표를 원문에서 직접 사용: {parsedDestination}");
             return parsedDestination;
         }
@@ -464,7 +469,67 @@ public class CommanderCommandProcessor : MonoBehaviour
             Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 명령에 pos가 없습니다. 현재 위치 기준으로 처리합니다.");
         }
 
-        return new Vector3(x, targetAgent.transform.position.y, z);
+        return ResolveWorldPointFromCoordinate(targetAgent, x, z);
+    }
+
+    private Vector3 ResolveWorldPointFromCoordinate(AgentController targetAgent, float x, float z)
+    {
+        if (TryGetMatchedClickedGroundPoint(x, z, out Vector3 clickedPoint))
+        {
+            Debug.Log($"[Commender] 클릭 좌표 기반 월드 위치 사용: {clickedPoint}");
+            return clickedPoint;
+        }
+
+        if (TryRaycastGroundPoint(targetAgent, x, z, out Vector3 raycastPoint))
+        {
+            Debug.Log($"[Commender] 레이캐스트 기반 월드 위치 사용: {raycastPoint}");
+            return raycastPoint;
+        }
+
+        Vector3 fallback = new Vector3(x, targetAgent.transform.position.y, z);
+        Debug.LogWarning($"[Commender] 좌표 ({x:F2}, {z:F2})의 높이를 찾지 못해 현재 Agent 높이로 대체합니다: {fallback}");
+        return fallback;
+    }
+
+    private bool TryGetMatchedClickedGroundPoint(float x, float z, out Vector3 point)
+    {
+        point = default;
+
+        if (commandCamera == null)
+            return false;
+
+        if (!commandCamera.HasClickedGroundPoint)
+            return false;
+
+        Vector3 clicked = commandCamera.LastClickedGroundPoint;
+
+        if (Mathf.Abs(clicked.x - x) > coordinateMatchTolerance)
+            return false;
+
+        if (Mathf.Abs(clicked.z - z) > coordinateMatchTolerance)
+            return false;
+
+        point = clicked;
+        return true;
+    }
+
+    private bool TryRaycastGroundPoint(AgentController targetAgent, float x, float z, out Vector3 point)
+    {
+        point = default;
+
+        if (commandGroundLayer.value == 0)
+            return false;
+
+        float agentY = targetAgent != null ? targetAgent.transform.position.y : 0f;
+        float originY = Mathf.Max(agentY, 0f) + groundProbeHeight;
+        Vector3 origin = new Vector3(x, originY, z);
+        float distance = groundProbeHeight + groundProbeDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, distance, commandGroundLayer, QueryTriggerInteraction.Ignore))
+            return false;
+
+        point = hit.point;
+        return true;
     }
 
     private void ScheduleCommand(

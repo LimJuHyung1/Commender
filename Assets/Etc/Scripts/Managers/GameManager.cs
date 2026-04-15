@@ -10,31 +10,36 @@ public class GameManager : MonoBehaviour
     public class StageRule
     {
         public string stageName = "Stage";
-        [TextArea] public string missionDescription = "타겟을 체포하세요.";
+        public string missionDescription = "타겟을 체포하세요.";
         public bool useTimeLimit = false;
         public float timeLimitSeconds = 300f;
         public bool clearOnTargetCaught = true;
     }
 
+    public static GameManager Instance { get; private set; }
+
     [Header("Stage Rules")]
     [SerializeField] private StageRule[] stageRules;
 
-    [Header("UI ����")]
+    [Header("UI 설정")]
     [SerializeField] private GameObject resultPanel;
     [SerializeField] private Text resultTitleText;
     [SerializeField] private Text resultMessageText;
     [SerializeField] private Text missionText;
     [SerializeField] private Text timerText;
 
-    [Header("Scene �̵�")]
+    [Header("Scene 이동")]
     [SerializeField] private string lobbySceneName = "Lobby";
     [SerializeField] private bool autoReturnToLobbyOnWin = true;
     [SerializeField] private bool autoReturnToLobbyOnFail = false;
     [SerializeField] private float returnDelaySeconds = 2.0f;
 
-    [Header("����")]
+    [Header("시간 배속")]
     [SerializeField] private float winTimeScale = 0.5f;
     [SerializeField] private float failTimeScale = 0.5f;
+
+    [Header("Debug Target Reveal")]
+    [SerializeField] private bool startWithTargetDebugReveal = false;
 
     private bool stageFinished = false;
     private bool timerRunning = false;
@@ -44,12 +49,29 @@ public class GameManager : MonoBehaviour
 
     private const string SelectedStageKey = "SelectedStageIndex";
 
+    public bool IsTargetDebugRevealEnabled { get; private set; }
+
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+
         Time.timeScale = 1.0f;
+        IsTargetDebugRevealEnabled = startWithTargetDebugReveal;
 
         if (resultPanel != null)
             resultPanel.SetActive(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+            Instance = null;
     }
 
     private void Start()
@@ -301,5 +323,25 @@ public class GameManager : MonoBehaviour
     {
         Time.timeScale = 1.0f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    public void ToggleTargetDebugReveal()
+    {
+        IsTargetDebugRevealEnabled = !IsTargetDebugRevealEnabled;
+    }
+
+    public void EnableTargetDebugReveal()
+    {
+        IsTargetDebugRevealEnabled = true;
+    }
+
+    public void DisableTargetDebugReveal()
+    {
+        IsTargetDebugRevealEnabled = false;
+    }
+
+    public void SetTargetDebugReveal(bool enabled)
+    {
+        IsTargetDebugRevealEnabled = enabled;
     }
 }

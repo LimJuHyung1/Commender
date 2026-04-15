@@ -39,6 +39,26 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private Vector3 focusedLocalOffset = new Vector3(0f, 0f, -7f);
     [SerializeField] private float focusedOrthoSize = 6f;
 
+    [Header("Focused Agent Orbit")]
+    [SerializeField] private bool enableFocusedOrbit = true;
+    [SerializeField] private bool allowOrbitWhenPointerOverUI = true;
+    [SerializeField] private bool resetOrbitOnFocusChanged = true;
+    [SerializeField] private float orbitSensitivity = 0.2f;
+    [SerializeField] private float orbitStartThreshold = 3f;
+    [SerializeField] private float minOrbitPitch = 15f;
+    [SerializeField] private float maxOrbitPitch = 80f;
+
+    [Header("Mouse Wheel Zoom")]
+    [SerializeField] private bool enableWheelZoom = true;
+    [SerializeField] private bool allowWheelZoomWhenPointerOverUI = true;
+    [SerializeField] private float wheelZoomSensitivity = 5f;
+    [SerializeField] private float minTopDownOrthoSize = 8f;
+    [SerializeField] private float maxTopDownOrthoSize = 30f;
+    [SerializeField] private float minFocusedOrthoSize = 3f;
+    [SerializeField] private float maxFocusedOrthoSize = 12f;
+    [SerializeField] private float minFitZoomOffset = -12f;
+    [SerializeField] private float maxFitZoomOffset = 12f;
+
     [Header("Ground Click Settings")]
     [SerializeField] private bool showDebugInfo = true;
     [SerializeField] private float clickLabelDuration = 2f;
@@ -79,13 +99,28 @@ public class AgentCameraFollow : MonoBehaviour
     private Vector2 dragStartScreenPosition;
     private Vector2 lastDragScreenPosition;
 
+    private bool isRightMouseHeld;
+    private bool isOrbitDragging;
+    private Vector2 orbitDragStartScreenPosition;
+    private Vector2 lastOrbitDragScreenPosition;
+    private float focusedOrbitYaw;
+    private float focusedOrbitPitch;
+    private float focusedOrbitRoll;
+
+    private float currentTopDownOrthoSize;
+    private float currentFocusedOrthoSize;
+    private float currentFitZoomOffset;
+
     private Quaternion cachedTopDownRotation;
-    private Quaternion cachedFocusedRotation;
     private Vector3 cachedPanRightOnGround;
     private Vector3 cachedPanUpOnGround;
 
     public Vector3 LastClickedGroundPoint => lastClickedGroundPoint;
     public bool HasClickedGroundPoint => hasClickedGroundPoint;
+
+    public bool HasFocusedAgent => focusedAgent != null;
+    public bool IsFocusedOrbitInputActive => focusedAgent != null && isRightMouseHeld;
+    public bool IsFocusedOrbitDragging => focusedAgent != null && isOrbitDragging;
 
     private void Awake()
     {
@@ -93,6 +128,8 @@ public class AgentCameraFollow : MonoBehaviour
         cam.orthographic = true;
 
         RebuildRotationCaches();
+        ResetFocusedOrbitAngles();
+        ResetZoomStates();
         RefreshGroundBounds();
 
         if (EventSystem.current != null)
@@ -101,6 +138,18 @@ public class AgentCameraFollow : MonoBehaviour
 
     private void OnValidate()
     {
+        if (maxOrbitPitch < minOrbitPitch)
+            maxOrbitPitch = minOrbitPitch;
+
+        if (maxTopDownOrthoSize < minTopDownOrthoSize)
+            maxTopDownOrthoSize = minTopDownOrthoSize;
+
+        if (maxFocusedOrthoSize < minFocusedOrthoSize)
+            maxFocusedOrthoSize = minFocusedOrthoSize;
+
+        if (maxFitZoomOffset < minFitZoomOffset)
+            maxFitZoomOffset = minFitZoomOffset;
+
         RebuildRotationCaches();
     }
 
@@ -110,7 +159,11 @@ public class AgentCameraFollow : MonoBehaviour
         if (mouse == null)
             return;
 
-        HandleLeftMouseInput(mouse, mouse.position.ReadValue());
+        Vector2 mousePosition = mouse.position.ReadValue();
+
+        HandleLeftMouseInput(mouse, mousePosition);
+        HandleRightMouseInput(mouse, mousePosition);
+        HandleWheelZoom(mouse, mousePosition);
     }
 
     private void LateUpdate()
@@ -126,19 +179,30 @@ public class AgentCameraFollow : MonoBehaviour
 
     public void FocusAgent(Transform agentTransform)
     {
+        bool focusChanged = focusedAgent != agentTransform;
+
         focusedAgent = agentTransform;
         CacheFocusedAgentData(agentTransform);
+
+        if (focusChanged || resetOrbitOnFocusChanged)
+            ResetFocusedOrbitAngles();
     }
 
     public void ClearFocusAgent()
     {
         focusedAgent = null;
         ClearFocusedAgentCache();
+        ResetFocusedOrbitDragState();
     }
 
     public void ResetTopDownPan()
     {
         topDownPanOffset = Vector3.zero;
+    }
+
+    public void ResetZoom()
+    {
+        ResetZoomStates();
     }
 
     public void RefreshGroundBounds()
@@ -215,6 +279,94 @@ public class AgentCameraFollow : MonoBehaviour
         }
     }
 
+    private void HandleRightMouseInput(Mouse mouse, Vector2 mousePosition)
+    {
+        if (!enableFocusedOrbit)
+        {
+            ResetFocusedOrbitDragState();
+            return;
+        }
+
+        if (mouse.rightButton.wasPressedThisFrame)
+        {
+            if (focusedAgent == null)
+            {
+                ResetFocusedOrbitDragState();
+                return;
+            }
+
+            if (!allowOrbitWhenPointerOverUI && IsPointerOverUI(mousePosition))
+            {
+                ResetFocusedOrbitDragState();
+                return;
+            }
+
+            isRightMouseHeld = true;
+            isOrbitDragging = false;
+            orbitDragStartScreenPosition = mousePosition;
+            lastOrbitDragScreenPosition = mousePosition;
+        }
+
+        if (isRightMouseHeld && mouse.rightButton.isPressed)
+        {
+            if (focusedAgent == null)
+            {
+                ResetFocusedOrbitDragState();
+                return;
+            }
+
+            TryStartFocusedOrbit(mousePosition);
+
+            if (isOrbitDragging)
+                UpdateFocusedOrbit(mousePosition);
+        }
+
+        if (mouse.rightButton.wasReleasedThisFrame)
+            ResetFocusedOrbitDragState();
+    }
+
+    private void HandleWheelZoom(Mouse mouse, Vector2 mousePosition)
+    {
+        if (!enableWheelZoom)
+            return;
+
+        if (!allowWheelZoomWhenPointerOverUI && IsPointerOverUI(mousePosition))
+            return;
+
+        float scrollY = mouse.scroll.ReadValue().y;
+        if (Mathf.Abs(scrollY) <= Mathf.Epsilon)
+            return;
+
+        float zoomDelta = -scrollY * wheelZoomSensitivity * 0.05f;
+
+        if (focusedAgent != null)
+        {
+            currentFocusedOrthoSize = Mathf.Clamp(
+                currentFocusedOrthoSize + zoomDelta,
+                minFocusedOrthoSize,
+                maxFocusedOrthoSize
+            );
+            return;
+        }
+
+        if (topDownViewMode == TopDownViewMode.FixedView)
+        {
+            currentTopDownOrthoSize = Mathf.Clamp(
+                currentTopDownOrthoSize + zoomDelta,
+                minTopDownOrthoSize,
+                maxTopDownOrthoSize
+            );
+        }
+        else
+        {
+            currentFitZoomOffset = Mathf.Clamp(
+                currentFitZoomOffset + zoomDelta,
+                minFitZoomOffset,
+                maxFitZoomOffset
+            );
+        }
+    }
+
     private void TryStartDrag(Vector2 mousePosition)
     {
         if (focusedAgent != null)
@@ -252,10 +404,69 @@ public class AgentCameraFollow : MonoBehaviour
         topDownPanOffset += move;
     }
 
+    private void TryStartFocusedOrbit(Vector2 mousePosition)
+    {
+        if (focusedAgent == null)
+            return;
+
+        if (isOrbitDragging)
+            return;
+
+        if (!allowOrbitWhenPointerOverUI && IsPointerOverUI(mousePosition))
+            return;
+
+        float draggedDistance = Vector2.Distance(mousePosition, orbitDragStartScreenPosition);
+        if (draggedDistance >= orbitStartThreshold)
+            isOrbitDragging = true;
+    }
+
+    private void UpdateFocusedOrbit(Vector2 mousePosition)
+    {
+        Vector2 screenDelta = mousePosition - lastOrbitDragScreenPosition;
+        lastOrbitDragScreenPosition = mousePosition;
+
+        if (screenDelta.sqrMagnitude <= Mathf.Epsilon)
+            return;
+
+        focusedOrbitYaw += screenDelta.x * orbitSensitivity;
+        focusedOrbitPitch -= screenDelta.y * orbitSensitivity;
+        focusedOrbitPitch = Mathf.Clamp(focusedOrbitPitch, minOrbitPitch, maxOrbitPitch);
+    }
+
     private void ResetDragState()
     {
         isLeftMouseHeld = false;
         isDraggingCamera = false;
+    }
+
+    private void ResetFocusedOrbitDragState()
+    {
+        isRightMouseHeld = false;
+        isOrbitDragging = false;
+    }
+
+    private void ResetFocusedOrbitAngles()
+    {
+        focusedOrbitPitch = focusedViewEuler.x;
+        focusedOrbitYaw = focusedViewEuler.y;
+        focusedOrbitRoll = focusedViewEuler.z;
+    }
+
+    private void ResetZoomStates()
+    {
+        currentTopDownOrthoSize = Mathf.Clamp(
+            fixedTopDownOrthoSize,
+            minTopDownOrthoSize,
+            maxTopDownOrthoSize
+        );
+
+        currentFocusedOrthoSize = Mathf.Clamp(
+            focusedOrthoSize,
+            minFocusedOrthoSize,
+            maxFocusedOrthoSize
+        );
+
+        currentFitZoomOffset = 0f;
     }
 
     private void UpdateTopDownView()
@@ -270,7 +481,7 @@ public class AgentCameraFollow : MonoBehaviour
         if (topDownViewMode == TopDownViewMode.FixedView)
         {
             desiredPosition = center + topDownLocalOffset;
-            desiredOrthoSize = fixedTopDownOrthoSize;
+            desiredOrthoSize = currentTopDownOrthoSize;
         }
         else
         {
@@ -278,7 +489,13 @@ public class AgentCameraFollow : MonoBehaviour
 
             float sizeFromX = groundBounds.extents.x / Mathf.Max(cam.aspect, 0.01f);
             float sizeFromZ = groundBounds.extents.z;
-            desiredOrthoSize = Mathf.Max(sizeFromX, sizeFromZ) + fitPadding;
+            float baseOrthoSize = Mathf.Max(sizeFromX, sizeFromZ) + fitPadding;
+
+            desiredOrthoSize = Mathf.Clamp(
+                baseOrthoSize + currentFitZoomOffset,
+                minTopDownOrthoSize,
+                maxTopDownOrthoSize
+            );
         }
 
         transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
@@ -292,11 +509,12 @@ public class AgentCameraFollow : MonoBehaviour
             return;
 
         Vector3 focusPoint = GetFocusedAgentWorldPoint();
-        Vector3 desiredPosition = focusPoint + cachedFocusedRotation * focusedLocalOffset;
+        Quaternion orbitRotation = Quaternion.Euler(focusedOrbitPitch, focusedOrbitYaw, focusedOrbitRoll);
+        Vector3 desiredPosition = focusPoint + orbitRotation * focusedLocalOffset;
 
         transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, cachedFocusedRotation, smoothSpeed * Time.deltaTime);
-        cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, focusedOrthoSize, smoothSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, orbitRotation, smoothSpeed * Time.deltaTime);
+        cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, currentFocusedOrthoSize, smoothSpeed * Time.deltaTime);
     }
 
     private void CacheFocusedAgentData(Transform root)
@@ -361,6 +579,9 @@ public class AgentCameraFollow : MonoBehaviour
 
     private void DetectGroundPoint(Vector2 mousePosition)
     {
+        if (focusedAgent != null)
+            return;
+
         if (IsPointerOverUI(mousePosition))
             return;
 
@@ -490,7 +711,6 @@ public class AgentCameraFollow : MonoBehaviour
     private void RebuildRotationCaches()
     {
         cachedTopDownRotation = Quaternion.Euler(topDownEuler);
-        cachedFocusedRotation = Quaternion.Euler(focusedViewEuler);
         RebuildPanBasis();
     }
 

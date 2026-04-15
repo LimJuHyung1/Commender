@@ -23,6 +23,7 @@ public class CommanderUIController : MonoBehaviour
     private int currentFocusedInputIndex = -1;
     private AgentOutline currentHighlightedOutline;
     private bool uiInteractable = true;
+    private bool pendingRefocusAfterOrbit;
 
     private Coroutine tabMoveRoutine;
 
@@ -46,6 +47,7 @@ public class CommanderUIController : MonoBehaviour
         HandleFunctionKeyFocus();
         HandleTabInputNavigation();
         HandleSubmitHotkey();
+        HandleOrbitFocusRetention();
         UpdateFocusedInputPresentation();
     }
 
@@ -75,6 +77,7 @@ public class CommanderUIController : MonoBehaviour
                 tabMoveRoutine = null;
             }
 
+            pendingRefocusAfterOrbit = false;
             currentFocusedInputIndex = -1;
             RestoreAllPlaceholderTexts();
             ApplyAllJammedPlaceholders();
@@ -153,7 +156,7 @@ public class CommanderUIController : MonoBehaviour
 
             if (!TryGetAgentAtInputIndex(i, out AgentController agent))
             {
-                Debug.LogWarning($"[CommenderUI] Input index {i} 에 연결된 Agent가 없습니다.");
+                Debug.LogWarning($"[CommanderUI] Input index {i} 에 연결된 Agent가 없습니다.");
                 continue;
             }
 
@@ -334,6 +337,9 @@ public class CommanderUIController : MonoBehaviour
 
         int currentIndex = GetSelectedInputIndex();
         if (currentIndex < 0)
+            currentIndex = GetEffectiveFocusedInputIndex();
+
+        if (currentIndex < 0)
             return;
 
         bool movePrevious =
@@ -377,7 +383,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         int selectedIndex = GetSelectedInputIndex();
-        int focusedIndex = GetFocusedInputIndex();
+        int focusedIndex = GetEffectiveFocusedInputIndex();
 
         if (selectedIndex < 0 && focusedIndex < 0)
             return;
@@ -398,6 +404,8 @@ public class CommanderUIController : MonoBehaviour
                 input.DeactivateInputField();
             }
         }
+
+        pendingRefocusAfterOrbit = false;
 
         if (EventSystem.current != null)
             EventSystem.current.SetSelectedGameObject(null);
@@ -438,7 +446,7 @@ public class CommanderUIController : MonoBehaviour
 
     private int GetSelectedInputIndex()
     {
-        if (EventSystem.current == null)
+        if (agentInputs == null || EventSystem.current == null)
             return -1;
 
         GameObject selectedObject = EventSystem.current.currentSelectedGameObject;
@@ -476,9 +484,92 @@ public class CommanderUIController : MonoBehaviour
         return -1;
     }
 
-    private void UpdateFocusedInputPresentation(bool force = false)
+    private int GetEffectiveFocusedInputIndex()
     {
         int focusedIndex = GetFocusedInputIndex();
+        if (focusedIndex >= 0)
+            return focusedIndex;
+
+        if (ShouldRetainFocusDuringOrbitInput() && CanFocusInputIndex(currentFocusedInputIndex))
+            return currentFocusedInputIndex;
+
+        return -1;
+    }
+
+    private void HandleOrbitFocusRetention()
+    {
+        if (ShouldRetainFocusDuringOrbitInput())
+        {
+            if (GetFocusedInputIndex() < 0 && CanFocusInputIndex(currentFocusedInputIndex))
+                pendingRefocusAfterOrbit = true;
+
+            return;
+        }
+
+        if (!pendingRefocusAfterOrbit)
+            return;
+
+        TryRestoreFocusAfterOrbit();
+    }
+
+    private bool ShouldRetainFocusDuringOrbitInput()
+    {
+        if (!uiInteractable)
+            return false;
+
+        if (currentFocusedInputIndex < 0)
+            return false;
+
+        if (!CanFocusInputIndex(currentFocusedInputIndex))
+            return false;
+
+        if (agentCameraFollow == null || !agentCameraFollow.HasFocusedAgent)
+            return false;
+
+        Mouse mouse = Mouse.current;
+        if (mouse != null && mouse.rightButton.isPressed)
+            return true;
+
+        return agentCameraFollow.IsFocusedOrbitInputActive;
+    }
+
+    private void TryRestoreFocusAfterOrbit()
+    {
+        if (!uiInteractable)
+        {
+            pendingRefocusAfterOrbit = false;
+            return;
+        }
+
+        if (ShouldRetainFocusDuringOrbitInput())
+            return;
+
+        if (GetFocusedInputIndex() >= 0)
+        {
+            pendingRefocusAfterOrbit = false;
+            return;
+        }
+
+        int selectedIndex = GetSelectedInputIndex();
+        if (selectedIndex >= 0)
+        {
+            pendingRefocusAfterOrbit = false;
+            return;
+        }
+
+        if (!CanFocusInputIndex(currentFocusedInputIndex))
+        {
+            pendingRefocusAfterOrbit = false;
+            return;
+        }
+
+        FocusInputField(currentFocusedInputIndex);
+        pendingRefocusAfterOrbit = false;
+    }
+
+    private void UpdateFocusedInputPresentation(bool force = false)
+    {
+        int focusedIndex = GetEffectiveFocusedInputIndex();
 
         if (!force && focusedIndex == currentFocusedInputIndex)
             return;
@@ -531,6 +622,8 @@ public class CommanderUIController : MonoBehaviour
         if (nextInput == null || !nextInput.interactable)
             return;
 
+        pendingRefocusAfterOrbit = false;
+
         if (EventSystem.current != null)
             EventSystem.current.SetSelectedGameObject(nextInput.gameObject);
 
@@ -550,6 +643,8 @@ public class CommanderUIController : MonoBehaviour
             FocusInputField(nextIndex);
             return;
         }
+
+        pendingRefocusAfterOrbit = false;
 
         if (EventSystem.current != null)
             EventSystem.current.SetSelectedGameObject(null);
@@ -659,7 +754,7 @@ public class CommanderUIController : MonoBehaviour
         if (agents.Count != agentInputs.Count)
         {
             Debug.LogWarning(
-                $"[CommenderUI] agents 수({agents.Count})와 agentInputs 수({agentInputs.Count})가 다릅니다. " +
+                $"[CommanderUI] agents 수({agents.Count})와 agentInputs 수({agentInputs.Count})가 다릅니다. " +
                 $"입력칸 인덱스와 AgentID 매핑을 확인해주세요."
             );
         }
