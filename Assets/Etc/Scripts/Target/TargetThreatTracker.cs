@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -97,7 +97,7 @@ public class TargetThreatTracker : MonoBehaviour
     {
         if (detectionCollider != null)
         {
-            Debug.Log($"<color=gray>[TargetThreatTracker]</color> ¿¬¸·Åº ÀûÁß! °¨Áö ¹üÀ§¸¦ {targetRadius}·Î º¯°æÇÕ´Ï´Ù.");
+            Debug.Log($"<color=gray>[TargetThreatTracker]</color> ï¿½ï¿½ï¿½ï¿½Åº ï¿½ï¿½ï¿½ï¿½! ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ {targetRadius}ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½.");
             detectionCollider.radius = Mathf.Max(0f, targetRadius);
         }
 
@@ -106,7 +106,7 @@ public class TargetThreatTracker : MonoBehaviour
         RestoreDetectionRadius();
         smokeRoutine = null;
 
-        Debug.Log("<color=gray>[TargetThreatTracker]</color> ¿¬¸· È¿°ú Á¾·á. °¨Áö ¹üÀ§ º¹±¸.");
+        Debug.Log("<color=gray>[TargetThreatTracker]</color> ï¿½ï¿½ï¿½ï¿½ È¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½.");
     }
 
     public void AddReconReveal()
@@ -114,7 +114,7 @@ public class TargetThreatTracker : MonoBehaviour
         reconRevealCount++;
         UpdatePlayerRevealVisual();
 
-        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> ÇÃ·¹ÀÌ¾î Á¤Âû ³ëÃâ ½ÃÀÛ. count = {reconRevealCount}");
+        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> ï¿½Ã·ï¿½ï¿½Ì¾ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½. count = {reconRevealCount}");
     }
 
     public void RemoveReconReveal()
@@ -122,7 +122,7 @@ public class TargetThreatTracker : MonoBehaviour
         reconRevealCount = Mathf.Max(0, reconRevealCount - 1);
         UpdatePlayerRevealVisual();
 
-        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> ÇÃ·¹ÀÌ¾î Á¤Âû ³ëÃâ ÇØÁ¦. count = {reconRevealCount}");
+        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> ï¿½Ã·ï¿½ï¿½Ì¾ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½. count = {reconRevealCount}");
     }
 
     public bool HasAnyThreat()
@@ -435,7 +435,7 @@ public class TargetThreatTracker : MonoBehaviour
 
             float dot = Vector3.Dot(escapeForward, toAgent.normalized);
 
-            // dot°¡ À½¼öÀÏ¼ö·Ï Å¸°ÙÀÇ µÚÂÊ
+            // dotï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½ Å¸ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
             if (dot > behindDotThreshold)
                 continue;
 

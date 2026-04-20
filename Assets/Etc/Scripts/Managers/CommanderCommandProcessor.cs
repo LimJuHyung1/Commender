@@ -495,6 +495,13 @@ public class CommanderCommandProcessor : MonoBehaviour
     {
         point = default;
 
+        if (CopiedCoordinateCache.TryGet(x, z, coordinateMatchTolerance, out Vector3 copiedPoint))
+        {
+            point = copiedPoint;
+            Debug.Log($"[Commender] 복사 좌표 캐시 기반 월드 위치 사용: {point}");
+            return true;
+        }
+
         if (commandCamera == null)
             return false;
 
@@ -510,6 +517,7 @@ public class CommanderCommandProcessor : MonoBehaviour
             return false;
 
         point = clicked;
+        Debug.Log($"[Commender] 카메라 마지막 클릭 좌표 기반 월드 위치 사용: {point}");
         return true;
     }
 

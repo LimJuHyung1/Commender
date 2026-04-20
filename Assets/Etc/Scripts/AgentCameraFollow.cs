@@ -607,6 +607,12 @@ public class AgentCameraFollow : MonoBehaviour
         if (!labelRect.Contains(guiMousePosition))
             return false;
 
+        CopiedCoordinateCache.Save(
+    float.Parse(lastClickedGroundPoint.x.ToString("F1")),
+    float.Parse(lastClickedGroundPoint.z.ToString("F1")),
+    lastClickedGroundPoint
+);
+
         string copyText = GetCopyCoordinateText();
         GUIUtility.systemCopyBuffer = copyText;
         copiedLabelEndTime = Time.unscaledTime + copiedLabelDuration;

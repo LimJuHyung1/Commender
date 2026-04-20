@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -223,7 +223,7 @@ public class TargetSkillController : MonoBehaviour
         if (writeLog)
         {
             Debug.Log(
-                $"[TargetSkillController] ³­ÀÌµµ ½ºÅ³ Àû¿ë: {skillSet} " +
+                $"[TargetSkillController] ï¿½ï¿½ï¿½Ìµï¿½ ï¿½ï¿½Å³ ï¿½ï¿½ï¿½ï¿½: {skillSet} " +
                 $"(Barricade={enableBarricadeSkill}, Hologram={enableHologramSkill}, Smoke={enableSmokeSkill}, " +
                 $"EmergencyEscape={enableEmergencyEscapeSkill}, CommunicationJam={enableCommunicationJamSkill})"
             );
@@ -304,7 +304,7 @@ public class TargetSkillController : MonoBehaviour
         nextHologramReadyTime = Time.time + hologramCooldown;
 
         if (writeLog)
-            Debug.Log($"[TargetSkillController] È¦·Î±×·¥ »ý¼º: {spawnPosition}");
+            Debug.Log($"[TargetSkillController] È¦ï¿½Î±×·ï¿½ ï¿½ï¿½ï¿½ï¿½: {spawnPosition}");
 
         return true;
     }
@@ -323,7 +323,7 @@ public class TargetSkillController : MonoBehaviour
         nextSmokeReadyTime = Time.time + smokeCooldown;
 
         if (writeLog)
-            Debug.Log($"[TargetSkillController] ¿¬¸·Åº »ý¼º: {spawnPosition}");
+            Debug.Log($"[TargetSkillController] ï¿½ï¿½ï¿½ï¿½Åº ï¿½ï¿½ï¿½ï¿½: {spawnPosition}");
 
         return true;
     }
@@ -344,7 +344,7 @@ public class TargetSkillController : MonoBehaviour
         if (writeLog)
         {
             Debug.Log(
-                $"[TargetSkillController] Åë½Å ¹æÇØ ¹ßµ¿: AgentID {randomAgentId}, Áö¼Ó½Ã°£ {communicationJamDuration}ÃÊ");
+                $"[TargetSkillController] ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ßµï¿½: AgentID {randomAgentId}, ï¿½ï¿½ï¿½Ó½Ã°ï¿½ {communicationJamDuration}ï¿½ï¿½");
         }
 
         return true;
@@ -361,7 +361,7 @@ public class TargetSkillController : MonoBehaviour
         bool activated = escapeMotor.TryActivateEmergencyEscape();
 
         if (activated && writeLog)
-            Debug.Log("[TargetSkillController] ±ä±Þ Å»Ãâ ¹ßµ¿ ¿äÃ» ¼º°ø");
+            Debug.Log("[TargetSkillController] ï¿½ï¿½ï¿½ Å»ï¿½ï¿½ ï¿½ßµï¿½ ï¿½ï¿½Ã» ï¿½ï¿½ï¿½ï¿½");
 
         return activated;
     }
@@ -538,7 +538,7 @@ public class TargetSkillController : MonoBehaviour
         TrimActiveBarricades();
 
         if (writeLog)
-            Debug.Log($"[TargetSkillController] ¹Ù¸®ÄÉÀÌµå »ý¼º: {spawnPosition}");
+            Debug.Log($"[TargetSkillController] ï¿½Ù¸ï¿½ï¿½ï¿½ï¿½Ìµï¿½ ï¿½ï¿½ï¿½ï¿½: {spawnPosition}");
     }
 
     private Vector3 GetHologramSpawnPosition()

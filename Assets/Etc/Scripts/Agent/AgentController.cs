@@ -13,6 +13,7 @@ public abstract class AgentController : MonoBehaviour
     [Header("Optional References")]
     [SerializeField] protected VisionSensor visionSensor;
     [SerializeField] protected Light spotLight;
+    [SerializeField] private AgentStateController stateIconController;
 
     [Header("Animation")]
     [SerializeField] protected Animator animator;
@@ -21,25 +22,22 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] private bool useMoveSpeedParameter = true;
     [SerializeField] private float movingThreshold = 0.05f;
 
-    private float lookAroundAngle = 70f;
-    private float lookAroundTurnSpeed = 240f;
-    private float lookAroundPauseSeconds = 0.08f;
+    [Header("Look Around")]
+    [SerializeField] private float lookAroundAngle = 70f;
+    [SerializeField] private float lookAroundTurnSpeed = 240f;
+    [SerializeField] private float lookAroundPauseSeconds = 0.08f;
 
-    // AgentController.cs 에 추가
-
+    [Header("Command")]
     [SerializeField] protected ChatServiceOpenAI commandChatService;
     [SerializeField, TextArea(6, 20)] private string commandSystemPromptOverride;
 
-    public ChatServiceOpenAI CommandChatService => commandChatService;
-    public string CommandSystemPromptOverride => commandSystemPromptOverride;
+    [Header("Chase")]
+    [SerializeField] private float chaseRepathInterval = 0.15f;
+    [SerializeField] private float chaseDestinationThreshold = 0.25f;
 
-    [Header("State")]
     protected NavMeshAgent navAgent;
     protected Transform currentTarget;
     protected bool isManualMoving = false;
-
-    [SerializeField] private float chaseRepathInterval = 0.15f;
-    [SerializeField] private float chaseDestinationThreshold = 0.25f;
 
     private float chaseRepathTimer = 0f;
     private Vector3 lastChaseDestination;
@@ -52,6 +50,9 @@ public abstract class AgentController : MonoBehaviour
     private bool isLookingAround = false;
     private bool previousNavUpdateRotation = true;
 
+    public ChatServiceOpenAI CommandChatService => commandChatService;
+    public string CommandSystemPromptOverride => commandSystemPromptOverride;
+
     public int AgentID => agentID;
     public Transform CurrentTarget => currentTarget;
     public bool IsManualMoving => isManualMoving;
@@ -59,6 +60,7 @@ public abstract class AgentController : MonoBehaviour
     public bool IsLookingAround => isLookingAround;
     public LayerMask TargetLayer => targetLayer;
     public AgentStatsSO Stats => stats;
+    public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
 
     public abstract void ExecuteSkill(string skillName, Vector3 targetPos);
 
@@ -88,14 +90,19 @@ public abstract class AgentController : MonoBehaviour
         if (commandChatService == null)
             commandChatService = GetComponentInChildren<ChatServiceOpenAI>(true);
 
+        if (stateIconController == null)
+            stateIconController = GetComponentInChildren<AgentStateController>(true);
+
         CacheAnimatorParameterHashes();
         ApplyCommonStats();
         UpdateAnimationState(true);
+        UpdateStateIcon();
     }
 
     protected virtual void OnDisable()
     {
         StopLookAroundInternal(false);
+        UpdateStateIcon();
     }
 
     protected virtual void OnValidate()
@@ -107,7 +114,7 @@ public abstract class AgentController : MonoBehaviour
     {
         if (stats == null)
         {
-            Debug.LogWarning($"[Agent {agentID}] AgentStatsSO�� ������� �ʾҽ��ϴ�.");
+            Debug.LogWarning($"[Agent {agentID}] AgentStatsSO가 설정되지 않았습니다.");
             return;
         }
 
@@ -156,6 +163,7 @@ public abstract class AgentController : MonoBehaviour
         if (isLookingAround)
         {
             UpdateAnimationState();
+            UpdateStateIcon();
             return;
         }
 
@@ -163,6 +171,7 @@ public abstract class AgentController : MonoBehaviour
         {
             CheckDestinationReached();
             UpdateAnimationState();
+            UpdateStateIcon();
             return;
         }
 
@@ -185,6 +194,7 @@ public abstract class AgentController : MonoBehaviour
         }
 
         UpdateAnimationState();
+        UpdateStateIcon();
     }
 
     protected virtual void CheckDestinationReached()
@@ -192,14 +202,34 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent.pathPending)
             return;
 
+        if (navAgent.pathStatus == NavMeshPathStatus.PathInvalid ||
+            navAgent.pathStatus == NavMeshPathStatus.PathPartial)
+        {
+            isManualMoving = false;
+            navAgent.ResetPath();
+            UpdateAnimationState(true);
+            UpdateStateIcon();
+            Debug.LogWarning($"[Agent {AgentID}] Manual move failed. Path is not complete.");
+            return;
+        }
+
+        if (!navAgent.hasPath)
+            return;
+
         if (navAgent.remainingDistance <= navAgent.stoppingDistance)
         {
-            if (!navAgent.hasPath || navAgent.velocity.sqrMagnitude <= 0.01f)
+            if (navAgent.velocity.sqrMagnitude <= 0.01f)
             {
-                isManualMoving = false;
-                navAgent.ResetPath();
-                UpdateAnimationState(true);
-                Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
+                float realDistance = Vector3.Distance(transform.position, navAgent.destination);
+
+                if (realDistance <= navAgent.stoppingDistance + 0.15f)
+                {
+                    isManualMoving = false;
+                    navAgent.ResetPath();
+                    UpdateAnimationState(true);
+                    UpdateStateIcon();
+                    Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
+                }
             }
         }
     }
@@ -211,7 +241,7 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual void MoveTo(Vector3 destination)
     {
-        Debug.Log($"[Agent {AgentID}] MoveTo ȣ���. destination={destination}, currentTarget={(currentTarget != null ? currentTarget.name : "null")}");
+        Debug.Log($"[Agent {AgentID}] MoveTo 호출. destination={destination}, currentTarget={(currentTarget != null ? currentTarget.name : "null")}");
 
         if (navAgent == null)
             return;
@@ -221,28 +251,42 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            Debug.Log($"[Agent {AgentID}] ���� �߰� ���̹Ƿ� MoveTo�� �����մϴ�.");
+            Debug.Log($"[Agent {AgentID}] 현재 추적 중이므로 MoveTo를 무시합니다.");
             return;
         }
 
         currentTarget = null;
-        isManualMoving = true;
+        isManualMoving = false;
         hasLastChaseDestination = false;
 
         NavMeshHit hit;
-        if (NavMesh.SamplePosition(destination, out hit, 2.0f, NavMesh.AllAreas))
+        if (!NavMesh.SamplePosition(destination, out hit, 2.0f, navAgent.areaMask))
         {
-            navAgent.isStopped = false;
-            navAgent.SetDestination(hit.position);
             UpdateAnimationState(true);
-            Debug.Log($"[Agent {AgentID}] Manual move started: {hit.position}");
-        }
-        else
-        {
-            isManualMoving = false;
-            UpdateAnimationState(true);
+            UpdateStateIcon();
             Debug.LogWarning($"[Agent {AgentID}] Failed to find valid NavMesh position near {destination}");
+            return;
         }
+
+        NavMeshPath path = new NavMeshPath();
+        bool pathFound = navAgent.CalculatePath(hit.position, path);
+
+        if (!pathFound || path.status != NavMeshPathStatus.PathComplete)
+        {
+            navAgent.ResetPath();
+            UpdateAnimationState(true);
+            UpdateStateIcon();
+            Debug.LogWarning($"[Agent {AgentID}] 도달 불가 목적지입니다. destination={destination}, sampled={hit.position}, pathStatus={path.status}");
+            return;
+        }
+
+        navAgent.isStopped = false;
+        navAgent.SetDestination(hit.position);
+        isManualMoving = true;
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+
+        Debug.Log($"[Agent {AgentID}] Manual move started: {hit.position}");
     }
 
     public bool TryStartLookAround()
@@ -252,13 +296,13 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            Debug.LogWarning($"[Agent {AgentID}] ���� �߰� ���̹Ƿ� �ֺ� �ѷ����⸦ ������ �� �����ϴ�.");
+            Debug.LogWarning($"[Agent {AgentID}] 현재 추적 중이므로 주변 둘러보기를 시작할 수 없습니다.");
             return false;
         }
 
         if (isManualMoving)
         {
-            Debug.LogWarning($"[Agent {AgentID}] ���� �̵� ���̹Ƿ� �ֺ� �ѷ����⸦ ������ �� �����ϴ�.");
+            Debug.LogWarning($"[Agent {AgentID}] 현재 이동 중이므로 주변 둘러보기를 시작할 수 없습니다.");
             return false;
         }
 
@@ -280,7 +324,8 @@ public abstract class AgentController : MonoBehaviour
         }
 
         UpdateAnimationState(true);
-        Debug.Log($"[Agent {AgentID}] �ֺ� �ѷ����� ����");
+        UpdateStateIcon();
+        Debug.Log($"[Agent {AgentID}] 주변 둘러보기 시작");
 
         float startY = transform.eulerAngles.y;
 
@@ -297,7 +342,7 @@ public abstract class AgentController : MonoBehaviour
         yield return RotateToYaw(startY);
 
         FinishLookAround();
-        Debug.Log($"[Agent {AgentID}] �ֺ� �ѷ����� ����");
+        Debug.Log($"[Agent {AgentID}] 주변 둘러보기 종료");
     }
 
     private IEnumerator RotateToYaw(float targetYaw)
@@ -339,6 +384,7 @@ public abstract class AgentController : MonoBehaviour
         isLookingAround = false;
         lookAroundRoutine = null;
         UpdateAnimationState(true);
+        UpdateStateIcon();
     }
 
     private void StopLookAroundInternal(bool logMessage)
@@ -361,9 +407,10 @@ public abstract class AgentController : MonoBehaviour
 
         isLookingAround = false;
         UpdateAnimationState(true);
+        UpdateStateIcon();
 
         if (logMessage)
-            Debug.Log($"[Agent {AgentID}] �ֺ� �ѷ����⸦ �ߴ��߽��ϴ�.");
+            Debug.Log($"[Agent {AgentID}] 주변 둘러보기를 중단했습니다.");
     }
 
     public virtual void SetChaseTarget(Transform target)
@@ -383,6 +430,7 @@ public abstract class AgentController : MonoBehaviour
 
         navAgent.SetDestination(currentTarget.position);
         UpdateAnimationState(true);
+        UpdateStateIcon();
 
         Debug.Log($"[Agent {AgentID}] Chase target assigned: {target.name}");
     }
@@ -398,11 +446,10 @@ public abstract class AgentController : MonoBehaviour
         currentTarget = null;
 
         if (!isManualMoving && navAgent != null)
-        {
             navAgent.ResetPath();
-        }
 
         UpdateAnimationState(true);
+        UpdateStateIcon();
         Debug.Log($"[Agent {AgentID}] Chase target cleared: {target.name}");
     }
 
@@ -411,17 +458,17 @@ public abstract class AgentController : MonoBehaviour
         currentTarget = null;
 
         if (!isManualMoving && navAgent != null)
-        {
             navAgent.ResetPath();
-        }
 
         UpdateAnimationState(true);
+        UpdateStateIcon();
         Debug.Log($"[Agent {AgentID}] Chase stopped.");
     }
 
     public virtual void ReapplyStats()
     {
         ApplyCommonStats();
+        UpdateStateIcon();
     }
 
     protected virtual void UpdateAnimationState(bool immediate = false)
@@ -438,7 +485,7 @@ public abstract class AgentController : MonoBehaviour
 
         if (useMoveSpeedParameter)
         {
-            float normalizedSpeed = 0f;
+            float normalizedSpeed;
 
             if (stats != null && stats.moveSpeed > 0.01f)
                 normalizedSpeed = Mathf.Clamp01(speed / stats.moveSpeed);
@@ -450,6 +497,26 @@ public abstract class AgentController : MonoBehaviour
             else
                 animator.SetFloat(moveSpeedParameterHash, normalizedSpeed, 0.1f, Time.deltaTime);
         }
+    }
+
+    protected virtual void UpdateStateIcon()
+    {
+        if (stateIconController == null)
+            return;
+
+        if (IsSmokeDebuffed)
+        {
+            stateIconController.SetState(AgentStateController.AgentAwarenessState.BlindedBySmoke);
+            return;
+        }
+
+        if (currentTarget != null)
+        {
+            stateIconController.SetState(AgentStateController.AgentAwarenessState.ChasingTarget);
+            return;
+        }
+
+        stateIconController.ClearState();
     }
 
     private void CacheAnimatorParameterHashes()

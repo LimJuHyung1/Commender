@@ -10,6 +10,7 @@ public class StageMapManager : MonoBehaviour
         public string difficultyName = "Easy";
         [Min(1)] public int difficultyProfileNumber = 1;
         public GameObject mapPrefab;
+        public bool useFloorViewController = false;
     }
 
     [System.Serializable]
@@ -79,6 +80,8 @@ public class StageMapManager : MonoBehaviour
 
         currentMap = Instantiate(selectedDifficultyEntry.mapPrefab, Vector3.zero, Quaternion.identity);
 
+        ConfigureFloorViewController(selectedDifficultyEntry);
+
         if (!CacheMapPoints())
         {
             Debug.LogError("[StageMapManager] 맵 내부 포인트를 찾지 못했습니다.");
@@ -98,8 +101,35 @@ public class StageMapManager : MonoBehaviour
         Debug.Log(
             $"[StageMapManager] 맵 생성 완료: " +
             $"Stage={CurrentStageDisplayName}, Difficulty={CurrentDifficultyDisplayName}, " +
-            $"Profile={selectedDifficultyEntry.difficultyProfileNumber}"
+            $"Profile={selectedDifficultyEntry.difficultyProfileNumber}, " +
+            $"UseFloorView={selectedDifficultyEntry.useFloorViewController}"
         );
+    }
+
+    private void ConfigureFloorViewController(DifficultyMapEntry selectedDifficultyEntry)
+    {
+        FloorViewController floorViewController = FindFloorViewController();
+        if (floorViewController == null)
+            return;
+
+        floorViewController.SetSearchRoot(currentMap != null ? currentMap.transform : null);
+        floorViewController.SetSystemEnabled(selectedDifficultyEntry != null && selectedDifficultyEntry.useFloorViewController);
+    }
+
+    private FloorViewController FindFloorViewController()
+    {
+        FloorViewController floorViewController = null;
+
+        if (currentMap != null)
+            floorViewController = currentMap.GetComponentInChildren<FloorViewController>(true);
+
+        if (floorViewController == null)
+            floorViewController = FindFirstObjectByType<FloorViewController>(FindObjectsInactive.Include);
+
+        if (floorViewController == null)
+            Debug.LogWarning("[StageMapManager] FloorViewController를 찾지 못했습니다.");
+
+        return floorViewController;
     }
 
     private DifficultyMapEntry GetSelectedDifficultyEntry(int stageIndex, int difficultyIndex)
@@ -114,6 +144,19 @@ public class StageMapManager : MonoBehaviour
         int clampedDifficultyIndex = Mathf.Clamp(difficultyIndex, 0, stageEntry.difficultyMaps.Length - 1);
         currentDifficultyIndex = clampedDifficultyIndex;
 
+        return stageEntry.difficultyMaps[clampedDifficultyIndex];
+    }
+
+    private DifficultyMapEntry GetDifficultyEntry(int stageIndex, int difficultyIndex)
+    {
+        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
+            return null;
+
+        StageEntry stageEntry = stages[stageIndex];
+        if (stageEntry == null || stageEntry.difficultyMaps == null || stageEntry.difficultyMaps.Length == 0)
+            return null;
+
+        int clampedDifficultyIndex = Mathf.Clamp(difficultyIndex, 0, stageEntry.difficultyMaps.Length - 1);
         return stageEntry.difficultyMaps[clampedDifficultyIndex];
     }
 
@@ -417,6 +460,13 @@ public class StageMapManager : MonoBehaviour
 
     public void ClearStage()
     {
+        FloorViewController floorViewController = FindFirstObjectByType<FloorViewController>(FindObjectsInactive.Include);
+        if (floorViewController != null)
+        {
+            floorViewController.SetSystemEnabled(false);
+            floorViewController.SetSearchRoot(null);
+        }
+
         if (currentTarget != null)
         {
             Destroy(currentTarget);
@@ -460,7 +510,7 @@ public class StageMapManager : MonoBehaviour
 
     public string GetDifficultyDisplayName(int stageIndex, int difficultyIndex)
     {
-        DifficultyMapEntry entry = GetSelectedDifficultyEntry(stageIndex, difficultyIndex);
+        DifficultyMapEntry entry = GetDifficultyEntry(stageIndex, difficultyIndex);
         if (entry != null && !string.IsNullOrWhiteSpace(entry.difficultyName))
             return entry.difficultyName;
 
@@ -468,7 +518,7 @@ public class StageMapManager : MonoBehaviour
         {
             case 0: return "Easy";
             case 1: return "Normal";
-            case 2: return "Difficult";
+            case 2: return "Hard";
             default: return $"난이도 {difficultyIndex + 1}";
         }
     }

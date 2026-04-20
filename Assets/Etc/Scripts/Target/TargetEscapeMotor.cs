@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -289,7 +289,7 @@ public class TargetEscapeMotor : MonoBehaviour
         if (emergencyEscapeRoutine != null)
             StopCoroutine(emergencyEscapeRoutine);
 
-        Debug.Log($"[TargetEscapeMotor] ±ä±Þ È¸ÇÇ ¹ßµ¿. ³²Àº È½¼ö={RemainingEmergencyEscapeCount}");
+        Debug.Log($"[TargetEscapeMotor] ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ßµï¿½. ï¿½ï¿½ï¿½ï¿½ È½ï¿½ï¿½={RemainingEmergencyEscapeCount}");
         emergencyEscapeRoutine = StartCoroutine(EmergencyEscapeRoutine());
         return true;
     }
@@ -401,7 +401,7 @@ public class TargetEscapeMotor : MonoBehaviour
             navAgent.acceleration = Mathf.Max(navAgent.acceleration, settings.emergencyEscapeAcceleration);
         }
 
-        Debug.Log("[TargetEscapeMotor] ±ä±Þ È¸ÇÇ ½ÃÀÛ");
+        Debug.Log("[TargetEscapeMotor] ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
 
         float elapsed = 0f;
         while (elapsed < settings.emergencyEscapeDuration)
@@ -428,7 +428,7 @@ public class TargetEscapeMotor : MonoBehaviour
         bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
         RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
 
-        Debug.Log("[TargetEscapeMotor] ±ä±Þ È¸ÇÇ Á¾·á");
+        Debug.Log("[TargetEscapeMotor] ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
     }
 
     private IEnumerator RootRoutine(float duration)
@@ -436,7 +436,7 @@ public class TargetEscapeMotor : MonoBehaviour
         isRooted = true;
         ResetAgentPath(true);
 
-        Debug.Log($"[TargetEscapeMotor] ¼Ó¹Ú ¹ßµ¿. {duration}ÃÊ µ¿¾È Á¤Áö");
+        Debug.Log($"[TargetEscapeMotor] ï¿½Ó¹ï¿½ ï¿½ßµï¿½. {duration}ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
 
         yield return new WaitForSeconds(duration);
 
@@ -446,7 +446,7 @@ public class TargetEscapeMotor : MonoBehaviour
         isRooted = false;
         rootRoutine = null;
 
-        Debug.Log("[TargetEscapeMotor] ¼Ó¹Ú Á¾·á");
+        Debug.Log("[TargetEscapeMotor] ï¿½Ó¹ï¿½ ï¿½ï¿½ï¿½ï¿½");
 
         if (threatTracker != null && threatTracker.HasAnyThreat())
         {
@@ -459,7 +459,7 @@ public class TargetEscapeMotor : MonoBehaviour
     {
         duration = Mathf.Max(0.01f, duration);
 
-        Debug.Log($"[TargetEscapeMotor] °¨¼Ó ¹ßµ¿. {duration:0.##}ÃÊ µ¿¾È ÀÌµ¿ ¼Óµµ x{activeSlowMultiplier:0.##}");
+        Debug.Log($"[TargetEscapeMotor] ï¿½ï¿½ï¿½ï¿½ ï¿½ßµï¿½. {duration:0.##}ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ìµï¿½ ï¿½Óµï¿½ x{activeSlowMultiplier:0.##}");
 
         yield return new WaitForSeconds(duration);
 
@@ -467,7 +467,7 @@ public class TargetEscapeMotor : MonoBehaviour
         activeSlowMultiplier = 1f;
         slowRoutine = null;
 
-        Debug.Log("[TargetEscapeMotor] °¨¼Ó Á¾·á");
+        Debug.Log("[TargetEscapeMotor] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½");
 
         bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
         RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
@@ -479,21 +479,21 @@ public class TargetEscapeMotor : MonoBehaviour
     private bool CanUseEmergencyEscape(bool writeLog)
     {
         if (!settings.enableEmergencyEscape)
-            return FailEmergencyEscape(writeLog, "±ä±Þ È¸ÇÇ ºñÈ°¼ºÈ­ »óÅÂÀÔ´Ï´Ù.");
+            return FailEmergencyEscape(writeLog, "ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ï¿½È°ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.");
 
         if (RemainingEmergencyEscapeCount <= 0)
-            return FailEmergencyEscape(writeLog, "±ä±Þ È¸ÇÇ »ç¿ë °¡´É È½¼ö°¡ ¾ø½À´Ï´Ù.");
+            return FailEmergencyEscape(writeLog, "ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.");
 
         if (isEmergencyEscaping)
-            return FailEmergencyEscape(writeLog, "ÀÌ¹Ì ±ä±Þ È¸ÇÇ ÁßÀÔ´Ï´Ù.");
+            return FailEmergencyEscape(writeLog, "ï¿½Ì¹ï¿½ ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ ï¿½ï¿½ï¿½Ô´Ï´ï¿½.");
 
         if (isRooted)
-            return FailEmergencyEscape(writeLog, "¼Ó¹Ú »óÅÂ¿¡¼­´Â »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.");
+            return FailEmergencyEscape(writeLog, "ï¿½Ó¹ï¿½ ï¿½ï¿½ï¿½Â¿ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.");
 
         if (navAgent == null)
         {
             if (writeLog)
-                Debug.LogWarning("[TargetEscapeMotor] NavMeshAgent°¡ ¾ø¾î ±ä±Þ È¸ÇÇ¸¦ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.");
+                Debug.LogWarning("[TargetEscapeMotor] NavMeshAgentï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ È¸ï¿½Ç¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.");
             return false;
         }
 

@@ -50,6 +50,9 @@ public class StageIntroController : MonoBehaviour
     private Vector3 focusPoint;
     private Vector3 initialCameraOffset;
 
+    private AudioListener introAudioListener;
+    private AudioListener gameplayAudioListener;
+
     private float previousTimeScale = 1f;
     private bool introFinished;
 
@@ -61,6 +64,7 @@ public class StageIntroController : MonoBehaviour
 
     private void Awake()
     {
+        CacheAudioListeners();
         CacheBarPositions();
         ApplyInitialVisualState();
         LockGameplay();
@@ -93,7 +97,7 @@ public class StageIntroController : MonoBehaviour
 
     private IEnumerator BeginIntroRoutine()
     {
-        // StageMapManager가 Start()에서 맵을 생성하므로 한 프레임 대기
+        // StageMapManager가 Start에서 맵을 생성하므로 한 프레임 대기
         yield return null;
 
         UpdateStageInfoText();
@@ -129,6 +133,27 @@ public class StageIntroController : MonoBehaviour
         yield return StartCoroutine(AnimateBars(show: false));
 
         UnlockGameplay();
+    }
+
+    private void CacheAudioListeners()
+    {
+        introAudioListener = introCamera != null ? introCamera.GetComponent<AudioListener>() : null;
+        gameplayAudioListener = gameplayCamera != null ? gameplayCamera.GetComponent<AudioListener>() : null;
+
+        if (introCamera != null && introAudioListener == null)
+            introAudioListener = introCamera.GetComponentInChildren<AudioListener>(true);
+
+        if (gameplayCamera != null && gameplayAudioListener == null)
+            gameplayAudioListener = gameplayCamera.GetComponentInChildren<AudioListener>(true);
+    }
+
+    private void SetActiveAudioListener(bool useIntroCamera)
+    {
+        if (introAudioListener != null)
+            introAudioListener.enabled = useIntroCamera;
+
+        if (gameplayAudioListener != null)
+            gameplayAudioListener.enabled = !useIntroCamera;
     }
 
     private void CacheBarPositions()
@@ -167,6 +192,8 @@ public class StageIntroController : MonoBehaviour
 
         if (gameplayCamera != null)
             gameplayCamera.enabled = false;
+
+        SetActiveAudioListener(true);
 
         if (stageInfoText != null)
             stageInfoText.text = "";
@@ -218,6 +245,8 @@ public class StageIntroController : MonoBehaviour
 
         if (gameplayCamera != null)
             gameplayCamera.enabled = true;
+
+        SetActiveAudioListener(false);
 
         if (disableDuringIntroBehaviours != null)
         {
