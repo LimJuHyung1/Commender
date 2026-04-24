@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using CodeMonkey.HealthSystemCM;
 using UnityEngine;
 using UnityEngine.AI;
@@ -7,59 +6,38 @@ using UnityEngine.AI;
 [RequireComponent(typeof(NavMeshAgent))]
 [RequireComponent(typeof(TargetThreatTracker))]
 [RequireComponent(typeof(TargetEscapeMotor))]
+[RequireComponent(typeof(TargetWanderMotor))]
 public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver
 {
-    [Serializable]
-    private class DifficultyAnchor
-    {
-        [Min(1)]
-        public int stageNumber = 1;
-
-        [Range(0f, 1f)]
-        public float catchDifficulty = 0f;
-
-        public bool isBossStage = false;
-    }
-
-    private struct RuntimeDifficultyProfile
-    {
-        public float maxHealth;
-        public float startHealth;
-        public float fleeHealthDrainPerSecond;
-
-        public float recoveryDelayAfterStop;
-        public float recoveryAmountTotal;
-        public float recoveryDuration;
-
-        public ThreatSettings threatSettings;
-        public EscapeSettings escapeSettings;
-    }
-
     [Header("References")]
-    [SerializeField] private TargetThreatTracker threatTracker;
-    [SerializeField] private TargetEscapeMotor escapeMotor;
-    [SerializeField] private TargetSkillController skillController;
+    public TargetThreatTracker threatTracker;
+    public TargetEscapeMotor escapeMotor;
+    public TargetSkillController skillController;
 
-    [Header("Difficulty")]
-    [SerializeField] private bool applyDifficultyOnAwake = true;
-    [SerializeField][Min(1)] private int currentStageNumber = 1;
-    [SerializeField] private List<DifficultyAnchor> difficultyAnchors = new List<DifficultyAnchor>();
+    [Header("Health")]
+    public float maxHealth = 100f;
+    public float startHealth = 100f;
+
+    [Header("Flee Health Drain")]
+    public float fleeHealthDrainPerSecond = 12f;
+
+    [Header("Safe Recovery")]
+    public float recoveryDelayAfterSafe = 2f;
+    public float recoveryAmountTotal = 30f;
+    public float recoveryDuration = 1.5f;
 
     private NavMeshAgent navAgent;
+    private TargetWanderMotor wanderMotor;
     private HealthSystem healthSystem;
 
-    private float maxHealth = 100f;
-    private float startHealth = 100f;
-    private float fleeHealthDrainPerSecond = 12f;
-    private float recoveryDelayAfterStop = 10f;
-    private float recoveryAmountTotal = 20f;
-    private float recoveryDuration = 2f;
-
-    private float stoppedRecoveryTimer = 0f;
-    private bool isRecoveringAfterStop = false;
+    private float safeRecoveryTimer = 0f;
+    private bool isRecoveringAfterSafe = false;
     private float recoveryStartHealth = 0f;
 
+    private bool hadThreatLastFrame = false;
+
     public bool IsRevealedToPlayer => threatTracker != null && threatTracker.IsRevealedToPlayer;
+    public bool HasActiveThreat => threatTracker != null && threatTracker.HasAnyThreat();
     public bool IsRooted => escapeMotor != null && escapeMotor.IsRooted;
     public bool IsSlowed => escapeMotor != null && escapeMotor.IsSlowed;
     public bool HasUsedEmergencyEscape => escapeMotor != null && escapeMotor.HasUsedEmergencyEscape;
@@ -83,16 +61,19 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (skillController == null)
             skillController = GetComponent<TargetSkillController>();
 
+        wanderMotor = GetComponent<TargetWanderMotor>();
+
         if (escapeMotor != null && threatTracker != null)
             escapeMotor.SetThreatTracker(threatTracker);
 
         if (escapeMotor != null && skillController != null)
             escapeMotor.SetSkillController(skillController);
 
-        if (applyDifficultyOnAwake)
-            ApplyDifficultyForStage(currentStageNumber, false);
-        else
-            RecreateHealthSystem();
+        ClampValues();
+        RecreateHealthSystem();
+
+        if (skillController != null)
+            skillController.ResetRuntimeState(true, true);
     }
 
     private void OnDestroy()
@@ -103,22 +84,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private void OnValidate()
     {
-        if (currentStageNumber < 1)
-            currentStageNumber = 1;
-
-        if (difficultyAnchors == null)
-            return;
-
-        for (int i = 0; i < difficultyAnchors.Count; i++)
-        {
-            if (difficultyAnchors[i] == null)
-                continue;
-
-            if (difficultyAnchors[i].stageNumber < 1)
-                difficultyAnchors[i].stageNumber = 1;
-
-            difficultyAnchors[i].catchDifficulty = Mathf.Clamp01(difficultyAnchors[i].catchDifficulty);
-        }
+        ClampValues();
     }
 
     private void Update()
@@ -126,246 +92,78 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (escapeMotor == null || threatTracker == null)
             return;
 
-        if (escapeMotor.IsRooted)
-            return;
+        bool hasThreat = threatTracker.HasAnyThreat();
+        HandleThreatTransition(hasThreat);
 
         if (healthSystem == null || healthSystem.IsDead())
-            return;
+        {
+            if (wanderMotor != null)
+                wanderMotor.StopWandering(true);
 
-        bool hasThreat = threatTracker.HasAnyThreat();
+            hadThreatLastFrame = hasThreat;
+            return;
+        }
+
+        if (escapeMotor.IsRooted)
+        {
+            if (wanderMotor != null)
+                wanderMotor.StopWandering(true);
+
+            hadThreatLastFrame = hasThreat;
+            return;
+        }
 
         escapeMotor.RefreshDynamicMovementSettings(hasThreat, GetHealthRatio());
 
         if (hasThreat)
         {
-            stoppedRecoveryTimer = 0f;
-            isRecoveringAfterStop = false;
-
-            TryAutoEmergencyEscape();
-
-            float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
-            healthSystem.Damage(damageAmount);
-
-            if (healthSystem != null && !healthSystem.IsDead())
-                escapeMotor.TryFleeFromThreats();
+            HandleThreatState();
         }
         else
         {
-            HandleStoppedRecovery();
-        }
-    }
-
-    [ContextMenu("Apply Current Stage Difficulty")]
-    public void ApplyCurrentStageDifficulty()
-    {
-        ApplyDifficultyForStage(currentStageNumber, true);
-    }
-
-    public void SetStageNumber(int stageNumber)
-    {
-        currentStageNumber = Mathf.Max(1, stageNumber);
-    }
-
-    public void ApplyDifficultyForCurrentStage()
-    {
-        ApplyDifficultyForStage(currentStageNumber, true);
-    }
-
-    public void ApplyDifficultyForStage(int stageNumber)
-    {
-        ApplyDifficultyForStage(stageNumber, true);
-    }
-
-    private void ApplyDifficultyForStage(int stageNumber, bool writeLog)
-    {
-        currentStageNumber = Mathf.Max(1, stageNumber);
-
-        DifficultyAnchor resolved = ResolveAnchor(currentStageNumber);
-        if (resolved == null)
-        {
-            Debug.LogWarning("[Target] 유효한 difficulty anchor를 찾지 못했습니다.");
-            RecreateHealthSystem();
-            return;
+            HandleSafeState();
         }
 
-        RuntimeDifficultyProfile profile = BuildProfile(resolved.catchDifficulty, resolved.isBossStage);
-
-        maxHealth = profile.maxHealth;
-        startHealth = profile.startHealth;
-        fleeHealthDrainPerSecond = profile.fleeHealthDrainPerSecond;
-        recoveryDelayAfterStop = profile.recoveryDelayAfterStop;
-        recoveryAmountTotal = profile.recoveryAmountTotal;
-        recoveryDuration = profile.recoveryDuration;
-
-        if (threatTracker != null)
-            threatTracker.ApplySettings(profile.threatSettings);
-
-        if (escapeMotor != null)
-        {
-            escapeMotor.ApplySettings(profile.escapeSettings);
-            escapeMotor.ResetRuntimeState(true);
-        }
-
-        stoppedRecoveryTimer = 0f;
-        isRecoveringAfterStop = false;
-        recoveryStartHealth = 0f;
-
-        RecreateHealthSystem();
-
-        if (navAgent != null && healthSystem != null && !healthSystem.IsDead())
-        {
-            navAgent.isStopped = false;
-            navAgent.ResetPath();
-        }
-
-        if (writeLog)
-        {
-            Debug.Log(
-                $"[Target] Stage {currentStageNumber} 난이도 프로필 적용 " +
-                $"(catchDifficulty={resolved.catchDifficulty:F2}, boss={resolved.isBossStage})"
-            );
-        }
+        hadThreatLastFrame = hasThreat;
     }
 
-    private DifficultyAnchor ResolveAnchor(int stageNumber)
+    private void HandleThreatState()
     {
-        List<DifficultyAnchor> sortedAnchors = GetSortedAnchors();
-        if (sortedAnchors.Count == 0)
-            return null;
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
 
-        for (int i = 0; i < sortedAnchors.Count; i++)
+        if (wanderMotor != null && wanderMotor.IsWandering)
+            wanderMotor.StopWandering(true);
+
+        escapeMotor.RefreshDynamicMovementSettings(true, GetHealthRatio());
+
+        TryAutoEmergencyEscape();
+
+        float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
+        healthSystem.Damage(damageAmount);
+
+        if (healthSystem != null && !healthSystem.IsDead())
+            escapeMotor.TryFleeFromThreats();
+    }
+
+    private void HandleSafeState()
+    {
+        HandleSafeRecovery();
+
+        if (wanderMotor != null)
+            wanderMotor.TickSafeWander(false);
+    }
+
+    private void HandleThreatTransition(bool hasThreat)
+    {
+        if (hadThreatLastFrame && !hasThreat)
         {
-            if (sortedAnchors[i].stageNumber == stageNumber)
-                return CloneAnchor(sortedAnchors[i]);
+            safeRecoveryTimer = 0f;
+            isRecoveringAfterSafe = false;
+
+            if (wanderMotor != null)
+                wanderMotor.BeginSafeDelay(true);
         }
-
-        if (stageNumber <= sortedAnchors[0].stageNumber)
-            return CloneAnchor(sortedAnchors[0]);
-
-        if (stageNumber >= sortedAnchors[sortedAnchors.Count - 1].stageNumber)
-            return CloneAnchor(sortedAnchors[sortedAnchors.Count - 1]);
-
-        DifficultyAnchor lower = null;
-        DifficultyAnchor upper = null;
-
-        for (int i = 0; i < sortedAnchors.Count - 1; i++)
-        {
-            DifficultyAnchor current = sortedAnchors[i];
-            DifficultyAnchor next = sortedAnchors[i + 1];
-
-            if (current.stageNumber < stageNumber && stageNumber < next.stageNumber)
-            {
-                lower = current;
-                upper = next;
-                break;
-            }
-        }
-
-        if (lower == null || upper == null)
-            return CloneAnchor(sortedAnchors[0]);
-
-        float t = Mathf.InverseLerp(lower.stageNumber, upper.stageNumber, stageNumber);
-        return LerpAnchor(lower, upper, t, stageNumber);
-    }
-
-    private List<DifficultyAnchor> GetSortedAnchors()
-    {
-        List<DifficultyAnchor> sorted = new List<DifficultyAnchor>();
-
-        if (difficultyAnchors == null)
-            return sorted;
-
-        for (int i = 0; i < difficultyAnchors.Count; i++)
-        {
-            if (difficultyAnchors[i] != null)
-                sorted.Add(difficultyAnchors[i]);
-        }
-
-        sorted.Sort((a, b) => a.stageNumber.CompareTo(b.stageNumber));
-        return sorted;
-    }
-
-    private DifficultyAnchor CloneAnchor(DifficultyAnchor source)
-    {
-        if (source == null)
-            return null;
-
-        return new DifficultyAnchor
-        {
-            stageNumber = source.stageNumber,
-            catchDifficulty = Mathf.Clamp01(source.catchDifficulty),
-            isBossStage = source.isBossStage
-        };
-    }
-
-    private DifficultyAnchor LerpAnchor(DifficultyAnchor a, DifficultyAnchor b, float t, int targetStageNumber)
-    {
-        return new DifficultyAnchor
-        {
-            stageNumber = targetStageNumber,
-            catchDifficulty = Mathf.Lerp(a.catchDifficulty, b.catchDifficulty, t),
-            isBossStage = false
-        };
-    }
-
-    private RuntimeDifficultyProfile BuildProfile(float catchDifficulty, bool isBossStage)
-    {
-        float t = Mathf.Clamp01(catchDifficulty);
-
-        RuntimeDifficultyProfile profile = new RuntimeDifficultyProfile();
-
-        profile.maxHealth = Mathf.Lerp(90f, 150f, t);
-        profile.startHealth = profile.maxHealth;
-
-        profile.fleeHealthDrainPerSecond = Mathf.Lerp(16f, 8f, t);
-
-        profile.recoveryDelayAfterStop = Mathf.Lerp(12f, 5f, t);
-        profile.recoveryAmountTotal = Mathf.Lerp(5f, 25f, t);
-        profile.recoveryDuration = Mathf.Lerp(3.5f, 1.5f, t);
-
-        profile.threatSettings = new ThreatSettings
-        {
-            detectionRadius = Mathf.Lerp(4.5f, 7.5f, t) * 1.5f,
-            reconDroneWeight = Mathf.Lerp(0.4f, 1.0f, t),
-            reconDroneInfluenceRadius = Mathf.Lerp(8f, 15f, t),
-            hologramInfluenceRadius = Mathf.Lerp(10f, 18f, t)
-        };
-
-        profile.escapeSettings = new EscapeSettings
-        {
-            repathCooldown = Mathf.Lerp(0.35f, 0.18f, t),
-            fleeMoveSpeed = Mathf.Lerp(11f, 17f, t),
-            fleeAngularSpeed = Mathf.Lerp(720f, 1200f, t),
-            fleeAcceleration = Mathf.Lerp(30f, 55f, t),
-
-            minNearestThreatDistanceGain = Mathf.Lerp(0.2f, 0.8f, t),
-            minPathStartAlignment = Mathf.Lerp(-0.2f, 0.05f, t),
-
-            safeSearchRadius = Mathf.Lerp(14f, 24f, t),
-            safePointSampleCount = Mathf.RoundToInt(Mathf.Lerp(10f, 24f, t)),
-            safePointMinDistance = Mathf.Lerp(4f, 9f, t),
-            navMeshSampleRadius = Mathf.Lerp(3f, 5f, t),
-            fleeDirectionBias = Mathf.Lerp(1.0f, 2.5f, t),
-
-            usePanicBoost = t >= 0.45f,
-            panicHealthThresholdRatio = Mathf.Lerp(0.25f, 0.5f, t),
-            panicSpeedMultiplier = Mathf.Lerp(1.05f, 1.3f, t),
-            panicSearchRadiusMultiplier = Mathf.Lerp(1.05f, 1.25f, t),
-            panicSampleCountBonus = Mathf.RoundToInt(Mathf.Lerp(2f, 8f, t)),
-            panicFleeDirectionBiasBonus = Mathf.Lerp(0.2f, 1.0f, t),
-
-            enableEmergencyEscape = isBossStage,
-            emergencyEscapeCharges = isBossStage ? 1 : 0,
-            autoUseEmergencyEscape = isBossStage,
-            emergencyEscapeAutoTriggerHealthRatio = Mathf.Lerp(0.3f, 0.45f, t),
-            emergencyEscapeAutoTriggerThreatDistance = Mathf.Lerp(4f, 7f, t),
-            emergencyEscapeDuration = Mathf.Lerp(0.6f, 1.0f, t),
-            emergencyEscapeSpeed = Mathf.Lerp(18f, 24f, t),
-            emergencyEscapeAcceleration = Mathf.Lerp(25f, 40f, t),
-            emergencyEscapeRepathInterval = Mathf.Lerp(0.25f, 0.15f, t)
-        };
-
-        return profile;
     }
 
     private void RecreateHealthSystem()
@@ -382,35 +180,34 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private void HealthSystem_OnDead(object sender, EventArgs e)
     {
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
+
         if (navAgent != null)
         {
             navAgent.isStopped = true;
             navAgent.ResetPath();
         }
 
-        Debug.Log("<color=red>[Target]</color> 체력이 0이 되어 더 이상 도망칠 수 없습니다.");
+        Debug.Log("[Target] 체력이 0이 되어 더 이상 도망칠 수 없습니다.");
     }
 
-    private void HandleStoppedRecovery()
+    private void HandleSafeRecovery()
     {
-        if (escapeMotor == null || healthSystem == null || healthSystem.IsDead())
+        if (healthSystem == null || healthSystem.IsDead())
             return;
 
-        if (!escapeMotor.IsCompletelyStopped())
+        if (healthSystem.GetHealth() >= healthSystem.GetHealthMax())
+            return;
+
+        safeRecoveryTimer += Time.deltaTime;
+
+        if (safeRecoveryTimer < recoveryDelayAfterSafe)
+            return;
+
+        if (!isRecoveringAfterSafe)
         {
-            stoppedRecoveryTimer = 0f;
-            isRecoveringAfterStop = false;
-            return;
-        }
-
-        stoppedRecoveryTimer += Time.deltaTime;
-
-        if (stoppedRecoveryTimer < recoveryDelayAfterStop)
-            return;
-
-        if (!isRecoveringAfterStop)
-        {
-            isRecoveringAfterStop = true;
+            isRecoveringAfterSafe = true;
             recoveryStartHealth = healthSystem.GetHealth();
         }
 
@@ -438,11 +235,11 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (healthSystem == null)
             return 1f;
 
-        float max = healthSystem.GetHealthMax();
-        if (max <= 0.01f)
+        float healthMax = healthSystem.GetHealthMax();
+        if (healthMax <= 0.01f)
             return 1f;
 
-        return healthSystem.GetHealth() / max;
+        return healthSystem.GetHealth() / healthMax;
     }
 
     public HealthSystem GetHealthSystem()
@@ -490,8 +287,11 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (escapeMotor == null)
             return;
 
-        stoppedRecoveryTimer = 0f;
-        isRecoveringAfterStop = false;
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
+
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
 
         escapeMotor.ApplyRoot(duration);
     }
@@ -501,8 +301,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (escapeMotor == null)
             return;
 
-        stoppedRecoveryTimer = 0f;
-        isRecoveringAfterStop = false;
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
 
         escapeMotor.ApplySlow(multiplier, duration);
     }
@@ -525,6 +325,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public bool TryActivateEmergencyEscape()
     {
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
+
         if (skillController != null)
             return skillController.TryUseEmergencyEscape();
 
@@ -547,22 +350,44 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (!escapeMotor.ShouldAutoTriggerEmergencyEscape(healthRatio))
             return false;
 
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
+
         return escapeMotor.TryActivateEmergencyEscape();
     }
 
     public void ResetRuntimeState(bool resetEmergencyEscapeUsage = true)
     {
-        stoppedRecoveryTimer = 0f;
-        isRecoveringAfterStop = false;
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
         recoveryStartHealth = 0f;
+        hadThreatLastFrame = false;
+
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
 
         if (escapeMotor != null)
             escapeMotor.ResetRuntimeState(resetEmergencyEscapeUsage);
+
+        if (skillController != null)
+            skillController.ResetRuntimeState(true, true);
 
         if (navAgent != null && healthSystem != null && !healthSystem.IsDead())
         {
             navAgent.isStopped = false;
             navAgent.ResetPath();
         }
+    }
+
+    private void ClampValues()
+    {
+        maxHealth = Mathf.Max(1f, maxHealth);
+        startHealth = Mathf.Clamp(startHealth, 0f, maxHealth);
+
+        fleeHealthDrainPerSecond = Mathf.Max(0f, fleeHealthDrainPerSecond);
+
+        recoveryDelayAfterSafe = Mathf.Max(0f, recoveryDelayAfterSafe);
+        recoveryAmountTotal = Mathf.Max(0f, recoveryAmountTotal);
+        recoveryDuration = Mathf.Max(0.01f, recoveryDuration);
     }
 }

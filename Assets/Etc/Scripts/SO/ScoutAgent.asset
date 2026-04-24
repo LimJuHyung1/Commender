@@ -17,7 +17,7 @@ MonoBehaviour:
   acceleration: 8.5
   stoppingDistance: 1
   angularSpeed: 150
-  viewRadius: 10
+  viewRadius: 8
   viewAngle: 90
   useSpotLight: 1
   spotLightColor: {r: 1, g: 1, b: 1, a: 1}
@@ -31,7 +31,6 @@ MonoBehaviour:
   reconDuration: 7
   reconRadius: 6.5
   wallSightDuration: 4.5
-  barricadeLifetime: 0
   slowTrapDuration: 0
   slowTrapStrength: 0
   decoyDuration: 0

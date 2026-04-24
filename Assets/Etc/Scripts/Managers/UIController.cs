@@ -171,12 +171,12 @@ public class UIController : MonoBehaviour
         return null;
     }
 
-    public void SetMissionText(string stageName, string missionDescription)
+    public void SetMissionText(string missionDescription)
     {
         if (missionText == null)
             return;
 
-        missionText.text = $"[{stageName}] {missionDescription}";
+        missionText.text = missionDescription;
     }
 
     public void SetTimerVisible(bool visible)
@@ -185,12 +185,18 @@ public class UIController : MonoBehaviour
             return;
 
         timerText.gameObject.SetActive(visible);
+
+        if (!visible)
+            timerText.text = "00:00";
     }
 
     public void SetTimerText(float remainingTime)
     {
         if (timerText == null)
             return;
+
+        if (!timerText.gameObject.activeSelf)
+            timerText.gameObject.SetActive(true);
 
         int totalSeconds = Mathf.CeilToInt(Mathf.Max(0f, remainingTime));
         int minutes = totalSeconds / 60;

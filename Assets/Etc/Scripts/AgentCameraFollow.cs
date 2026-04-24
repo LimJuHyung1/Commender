@@ -51,7 +51,7 @@ public class AgentCameraFollow : MonoBehaviour
     [Header("Mouse Wheel Zoom")]
     [SerializeField] private bool enableWheelZoom = true;
     [SerializeField] private bool allowWheelZoomWhenPointerOverUI = true;
-    [SerializeField] private float wheelZoomSensitivity = 5f;
+    [SerializeField] private float wheelZoomSensitivity = 25f;
     [SerializeField] private float minTopDownOrthoSize = 8f;
     [SerializeField] private float maxTopDownOrthoSize = 30f;
     [SerializeField] private float minFocusedOrthoSize = 3f;
@@ -64,9 +64,18 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private float clickLabelDuration = 2f;
     [SerializeField] private Vector2 clickLabelOffset = new Vector2(16f, -24f);
 
+    [Header("Ground Click Spawn")]
+    [SerializeField] private GameObject clickSpawnPrefab;
+    [SerializeField] private bool spawnOnGroundClick = true;
+    [SerializeField] private float spawnSurfaceOffset = 0.02f;
+    [SerializeField] private bool alignToGroundNormal = true;
+
     [Header("Copy Settings")]
     [SerializeField] private float copiedLabelDuration = 1.0f;
     [SerializeField] private Vector2 labelSize = new Vector2(140f, 28f);
+
+    [Header("Intro Block")]
+    [SerializeField] private StageIntroController stageIntroController;
 
     private Camera cam;
 
@@ -115,6 +124,8 @@ public class AgentCameraFollow : MonoBehaviour
     private Vector3 cachedPanRightOnGround;
     private Vector3 cachedPanUpOnGround;
 
+    private GameObject lastSpawnedObject;
+
     public Vector3 LastClickedGroundPoint => lastClickedGroundPoint;
     public bool HasClickedGroundPoint => hasClickedGroundPoint;
 
@@ -126,6 +137,9 @@ public class AgentCameraFollow : MonoBehaviour
     {
         cam = GetComponent<Camera>();
         cam.orthographic = true;
+
+        if (stageIntroController == null)
+            stageIntroController = FindFirstObjectByType<StageIntroController>();
 
         RebuildRotationCaches();
         ResetFocusedOrbitAngles();
@@ -150,11 +164,24 @@ public class AgentCameraFollow : MonoBehaviour
         if (maxFitZoomOffset < minFitZoomOffset)
             maxFitZoomOffset = minFitZoomOffset;
 
+        if (spawnSurfaceOffset < 0f)
+            spawnSurfaceOffset = 0f;
+
         RebuildRotationCaches();
     }
 
     private void Update()
     {
+        if (IsIntroBlockingInput())
+        {
+            ResetDragState();
+            ResetFocusedOrbitDragState();
+            hasClickedGroundPoint = false;
+            clickLabelEndTime = 0f;
+            copiedLabelEndTime = 0f;
+            return;
+        }
+
         Mouse mouse = Mouse.current;
         if (mouse == null)
             return;
@@ -579,6 +606,9 @@ public class AgentCameraFollow : MonoBehaviour
 
     private void DetectGroundPoint(Vector2 mousePosition)
     {
+        if (IsIntroBlockingInput())
+            return;
+
         if (focusedAgent != null)
             return;
 
@@ -593,7 +623,28 @@ public class AgentCameraFollow : MonoBehaviour
         lastClickScreenPosition = mousePosition + clickLabelOffset;
         clickLabelEndTime = Time.unscaledTime + clickLabelDuration;
 
+        TrySpawnPrefabAtGroundPoint(hit);
+
         Debug.Log($"[Camera] Ground Å¬¸¯ ÁÂÇ¥: {lastClickedGroundPoint}");
+    }
+
+    private void TrySpawnPrefabAtGroundPoint(RaycastHit hit)
+    {
+        if (!spawnOnGroundClick)
+            return;
+
+        if (clickSpawnPrefab == null)
+            return;
+
+        if (lastSpawnedObject != null)
+            Destroy(lastSpawnedObject);
+
+        Vector3 spawnPosition = hit.point + hit.normal * spawnSurfaceOffset;
+        Quaternion spawnRotation = alignToGroundNormal
+            ? Quaternion.FromToRotation(Vector3.up, hit.normal)
+            : Quaternion.identity;
+
+        lastSpawnedObject = Instantiate(clickSpawnPrefab, spawnPosition, spawnRotation);
     }
 
     private bool TryCopyClickedCoordinate(Vector2 mousePosition)
@@ -608,10 +659,10 @@ public class AgentCameraFollow : MonoBehaviour
             return false;
 
         CopiedCoordinateCache.Save(
-    float.Parse(lastClickedGroundPoint.x.ToString("F1")),
-    float.Parse(lastClickedGroundPoint.z.ToString("F1")),
-    lastClickedGroundPoint
-);
+            float.Parse(lastClickedGroundPoint.x.ToString("F1")),
+            float.Parse(lastClickedGroundPoint.z.ToString("F1")),
+            lastClickedGroundPoint
+        );
 
         string copyText = GetCopyCoordinateText();
         GUIUtility.systemCopyBuffer = copyText;
@@ -676,6 +727,9 @@ public class AgentCameraFollow : MonoBehaviour
 
     private void OnGUI()
     {
+        if (IsIntroBlockingInput())
+            return;
+
         if (!IsLabelVisible())
             return;
 
@@ -802,5 +856,11 @@ public class AgentCameraFollow : MonoBehaviour
             return collider.bounds;
 
         return default;
+    }
+
+    private bool IsIntroBlockingInput()
+    {
+        return StageIntroController.Instance != null &&
+               StageIntroController.Instance.IsIntroPlaying;
     }
 }

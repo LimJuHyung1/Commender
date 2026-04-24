@@ -6,6 +6,7 @@ using UnityEngine;
 public class ThreatSettings
 {
     public float detectionRadius = 5f;
+    public float pursuitMemoryDuration = 4f;
     public float reconDroneWeight = 0.8f;
     public float reconDroneInfluenceRadius = 12f;
     public float hologramInfluenceRadius = 15f;
@@ -15,11 +16,15 @@ public class ThreatSettings
 public class TargetThreatTracker : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private LayerMask agentLayer;
-    [SerializeField] private GameObject playerRevealMarker;
+    public LayerMask agentLayer;
+    public GameObject playerRevealMarker;
+
+    [Header("Threat Memory")]
+    public float pursuitMemoryDuration = 4f;
 
     private SphereCollider detectionCollider;
     private readonly List<Transform> nearbyAgents = new List<Transform>();
+    private readonly List<RememberedThreat> rememberedThreats = new List<RememberedThreat>();
 
     private Coroutine smokeRoutine;
 
@@ -29,6 +34,13 @@ public class TargetThreatTracker : MonoBehaviour
     private float hologramInfluenceRadius = 15f;
 
     private int reconRevealCount = 0;
+
+    private class RememberedThreat
+    {
+        public Transform target;
+        public Vector3 lastPosition;
+        public float expireTime;
+    }
 
     public bool IsRevealedToPlayer => reconRevealCount > 0;
     public SphereCollider DetectionCollider => detectionCollider;
@@ -49,6 +61,8 @@ public class TargetThreatTracker : MonoBehaviour
             defaultDetectionRadius = detectionCollider.radius;
         }
 
+        pursuitMemoryDuration = Mathf.Max(0f, pursuitMemoryDuration);
+
         UpdatePlayerRevealVisual();
     }
 
@@ -61,7 +75,8 @@ public class TargetThreatTracker : MonoBehaviour
         }
 
         RestoreDetectionRadius();
-        CleanupNearbyAgents();
+        nearbyAgents.Clear();
+        rememberedThreats.Clear();
         UpdatePlayerRevealVisual();
     }
 
@@ -97,8 +112,8 @@ public class TargetThreatTracker : MonoBehaviour
     {
         if (detectionCollider != null)
         {
-            Debug.Log($"<color=gray>[TargetThreatTracker]</color> ����ź ����! ���� ������ {targetRadius}�� �����մϴ�.");
             detectionCollider.radius = Mathf.Max(0f, targetRadius);
+            Debug.Log($"[TargetThreatTracker] Smoke debuff applied. Detection radius = {targetRadius}");
         }
 
         yield return new WaitForSeconds(duration);
@@ -106,7 +121,7 @@ public class TargetThreatTracker : MonoBehaviour
         RestoreDetectionRadius();
         smokeRoutine = null;
 
-        Debug.Log("<color=gray>[TargetThreatTracker]</color> ���� ȿ�� ����. ���� ���� ����.");
+        Debug.Log("[TargetThreatTracker] Smoke debuff ended. Detection radius restored.");
     }
 
     public void AddReconReveal()
@@ -114,7 +129,7 @@ public class TargetThreatTracker : MonoBehaviour
         reconRevealCount++;
         UpdatePlayerRevealVisual();
 
-        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> �÷��̾� ���� ���� ����. count = {reconRevealCount}");
+        Debug.Log($"[TargetThreatTracker] Recon reveal added. count = {reconRevealCount}");
     }
 
     public void RemoveReconReveal()
@@ -122,14 +137,17 @@ public class TargetThreatTracker : MonoBehaviour
         reconRevealCount = Mathf.Max(0, reconRevealCount - 1);
         UpdatePlayerRevealVisual();
 
-        Debug.Log($"<color=yellow>[TargetThreatTracker]</color> �÷��̾� ���� ���� ����. count = {reconRevealCount}");
+        Debug.Log($"[TargetThreatTracker] Recon reveal removed. count = {reconRevealCount}");
     }
 
     public bool HasAnyThreat()
     {
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         if (nearbyAgents.Count > 0)
+            return true;
+
+        if (rememberedThreats.Count > 0)
             return true;
 
         if (HasAnyDecoySignalInRange())
@@ -143,7 +161,7 @@ public class TargetThreatTracker : MonoBehaviour
 
     public float GetNearestThreatDistance(Vector3 position, float fallbackDistance = 999f)
     {
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         float nearest = float.MaxValue;
 
@@ -154,6 +172,17 @@ public class TargetThreatTracker : MonoBehaviour
                 continue;
 
             float distance = Vector3.Distance(position, agent.position);
+            if (distance < nearest)
+                nearest = distance;
+        }
+
+        for (int i = rememberedThreats.Count - 1; i >= 0; i--)
+        {
+            RememberedThreat threat = rememberedThreats[i];
+            if (threat == null)
+                continue;
+
+            float distance = Vector3.Distance(position, threat.lastPosition);
             if (distance < nearest)
                 nearest = distance;
         }
@@ -194,7 +223,7 @@ public class TargetThreatTracker : MonoBehaviour
 
     public float GetNearestRealAgentDistance(float fallbackDistance = 9999f)
     {
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         float nearest = float.MaxValue;
 
@@ -217,7 +246,7 @@ public class TargetThreatTracker : MonoBehaviour
 
     public Vector3 CalculateCombinedFleeDirection()
     {
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         Vector3 combinedFleeDirection = Vector3.zero;
 
@@ -228,8 +257,37 @@ public class TargetThreatTracker : MonoBehaviour
                 continue;
 
             Vector3 awayFromAgent = transform.position - agent.position;
+            awayFromAgent.y = 0f;
+
             float distance = awayFromAgent.magnitude;
+            if (distance <= 0.001f)
+                continue;
+
             combinedFleeDirection += awayFromAgent.normalized / (distance + 0.1f);
+        }
+
+        for (int i = rememberedThreats.Count - 1; i >= 0; i--)
+        {
+            RememberedThreat threat = rememberedThreats[i];
+            if (threat == null)
+                continue;
+
+            if (threat.target != null && nearbyAgents.Contains(threat.target))
+                continue;
+
+            Vector3 awayFromRememberedThreat = transform.position - threat.lastPosition;
+            awayFromRememberedThreat.y = 0f;
+
+            float distance = awayFromRememberedThreat.magnitude;
+            if (distance <= 0.001f)
+                continue;
+
+            float remainingTime = Mathf.Max(0f, threat.expireTime - Time.time);
+            float memoryWeight = pursuitMemoryDuration <= 0.01f
+                ? 0f
+                : Mathf.Clamp01(remainingTime / pursuitMemoryDuration);
+
+            combinedFleeDirection += awayFromRememberedThreat.normalized * memoryWeight / (distance + 0.1f);
         }
 
         if (Noisemaker.ActiveNoisemakers != null)
@@ -243,12 +301,16 @@ public class TargetThreatTracker : MonoBehaviour
                     continue;
 
                 Vector3 awayFromSignal = transform.position - signal.Position;
-                float sqrDistance = awayFromSignal.sqrMagnitude;
+                awayFromSignal.y = 0f;
 
+                float sqrDistance = awayFromSignal.sqrMagnitude;
                 if (sqrDistance > sqrRange)
                     continue;
 
                 float distance = Mathf.Sqrt(sqrDistance);
+                if (distance <= 0.001f)
+                    continue;
+
                 combinedFleeDirection += awayFromSignal.normalized * reconDroneWeight / (distance + 0.1f);
             }
         }
@@ -264,12 +326,16 @@ public class TargetThreatTracker : MonoBehaviour
                     continue;
 
                 Vector3 awayFromHologram = transform.position - hologram.Position;
-                float sqrDistance = awayFromHologram.sqrMagnitude;
+                awayFromHologram.y = 0f;
 
+                float sqrDistance = awayFromHologram.sqrMagnitude;
                 if (sqrDistance > sqrRange)
                     continue;
 
                 float distance = Mathf.Sqrt(sqrDistance);
+                if (distance <= 0.001f)
+                    continue;
+
                 combinedFleeDirection += awayFromHologram.normalized * hologram.ThreatWeight / (distance + 0.1f);
             }
         }
@@ -279,7 +345,7 @@ public class TargetThreatTracker : MonoBehaviour
 
     public float GetDistanceScoreFromAgents(Vector3 candidate)
     {
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         float score = 0f;
 
@@ -289,8 +355,16 @@ public class TargetThreatTracker : MonoBehaviour
             if (agent == null)
                 continue;
 
-            float distance = Vector3.Distance(candidate, agent.position);
-            score += distance;
+            score += Vector3.Distance(candidate, agent.position);
+        }
+
+        for (int i = rememberedThreats.Count - 1; i >= 0; i--)
+        {
+            RememberedThreat threat = rememberedThreats[i];
+            if (threat == null)
+                continue;
+
+            score += Vector3.Distance(candidate, threat.lastPosition);
         }
 
         return score;
@@ -309,8 +383,7 @@ public class TargetThreatTracker : MonoBehaviour
             if (signal == null)
                 continue;
 
-            float distance = Vector3.Distance(candidate, signal.Position);
-            score += distance;
+            score += Vector3.Distance(candidate, signal.Position);
         }
 
         return score;
@@ -329,8 +402,7 @@ public class TargetThreatTracker : MonoBehaviour
             if (hologram == null)
                 continue;
 
-            float distance = Vector3.Distance(candidate, hologram.Position);
-            score += distance * hologram.ThreatWeight;
+            score += Vector3.Distance(candidate, hologram.Position) * hologram.ThreatWeight;
         }
 
         return score;
@@ -382,6 +454,7 @@ public class TargetThreatTracker : MonoBehaviour
             return;
 
         defaultDetectionRadius = Mathf.Max(0f, settings.detectionRadius);
+        pursuitMemoryDuration = Mathf.Max(0f, settings.pursuitMemoryDuration);
         reconDroneWeight = Mathf.Max(0f, settings.reconDroneWeight);
         reconDroneInfluenceRadius = Mathf.Max(0f, settings.reconDroneInfluenceRadius);
         hologramInfluenceRadius = Mathf.Max(0f, settings.hologramInfluenceRadius);
@@ -390,26 +463,17 @@ public class TargetThreatTracker : MonoBehaviour
             RestoreDetectionRadius();
     }
 
-    private void CleanupNearbyAgents()
-    {
-        for (int i = nearbyAgents.Count - 1; i >= 0; i--)
-        {
-            if (nearbyAgents[i] == null)
-                nearbyAgents.RemoveAt(i);
-        }
-    }
-
     public bool TryGetNearestRealAgentBehind(
-    Vector3 escapeForward,
-    float maxDistance,
-    float behindDotThreshold,
-    out Transform nearestAgent,
-    out float nearestDistance)
+        Vector3 escapeForward,
+        float maxDistance,
+        float behindDotThreshold,
+        out Transform nearestAgent,
+        out float nearestDistance)
     {
         nearestAgent = null;
         nearestDistance = maxDistance;
 
-        CleanupNearbyAgents();
+        CleanupThreats();
 
         escapeForward.y = 0f;
         if (escapeForward.sqrMagnitude <= 0.0001f)
@@ -435,7 +499,6 @@ public class TargetThreatTracker : MonoBehaviour
 
             float dot = Vector3.Dot(escapeForward, toAgent.normalized);
 
-            // dot�� �����ϼ��� Ÿ���� ����
             if (dot > behindDotThreshold)
                 continue;
 
@@ -453,6 +516,69 @@ public class TargetThreatTracker : MonoBehaviour
         return true;
     }
 
+    private void CleanupThreats()
+    {
+        for (int i = nearbyAgents.Count - 1; i >= 0; i--)
+        {
+            Transform agent = nearbyAgents[i];
+
+            if (agent == null)
+            {
+                nearbyAgents.RemoveAt(i);
+                continue;
+            }
+
+            RememberThreat(agent);
+        }
+
+        for (int i = rememberedThreats.Count - 1; i >= 0; i--)
+        {
+            RememberedThreat threat = rememberedThreats[i];
+
+            if (threat == null)
+            {
+                rememberedThreats.RemoveAt(i);
+                continue;
+            }
+
+            if (threat.target != null)
+                threat.lastPosition = threat.target.position;
+
+            if (Time.time > threat.expireTime)
+                rememberedThreats.RemoveAt(i);
+        }
+    }
+
+    private void RememberThreat(Transform threat)
+    {
+        if (threat == null)
+            return;
+
+        RememberedThreat remembered = FindRememberedThreat(threat);
+
+        if (remembered == null)
+        {
+            remembered = new RememberedThreat();
+            rememberedThreats.Add(remembered);
+        }
+
+        remembered.target = threat;
+        remembered.lastPosition = threat.position;
+        remembered.expireTime = Time.time + pursuitMemoryDuration;
+    }
+
+    private RememberedThreat FindRememberedThreat(Transform threat)
+    {
+        for (int i = 0; i < rememberedThreats.Count; i++)
+        {
+            RememberedThreat remembered = rememberedThreats[i];
+
+            if (remembered != null && remembered.target == threat)
+                return remembered;
+        }
+
+        return null;
+    }
 
     private void UpdatePlayerRevealVisual()
     {
@@ -465,8 +591,25 @@ public class TargetThreatTracker : MonoBehaviour
         if (((1 << other.gameObject.layer) & agentLayer) == 0)
             return;
 
-        if (!nearbyAgents.Contains(other.transform))
-            nearbyAgents.Add(other.transform);
+        Transform agent = other.transform;
+
+        if (!nearbyAgents.Contains(agent))
+            nearbyAgents.Add(agent);
+
+        RememberThreat(agent);
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        if (((1 << other.gameObject.layer) & agentLayer) == 0)
+            return;
+
+        Transform agent = other.transform;
+
+        if (!nearbyAgents.Contains(agent))
+            nearbyAgents.Add(agent);
+
+        RememberThreat(agent);
     }
 
     private void OnTriggerExit(Collider other)
@@ -474,7 +617,11 @@ public class TargetThreatTracker : MonoBehaviour
         if (((1 << other.gameObject.layer) & agentLayer) == 0)
             return;
 
-        if (nearbyAgents.Contains(other.transform))
-            nearbyAgents.Remove(other.transform);
+        Transform agent = other.transform;
+
+        if (nearbyAgents.Contains(agent))
+            nearbyAgents.Remove(agent);
+
+        RememberThreat(agent);
     }
 }

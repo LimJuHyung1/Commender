@@ -11,6 +11,7 @@ public class CommanderUIController : MonoBehaviour
     [SerializeField] private List<InputField> agentInputs = new List<InputField>();
     [SerializeField] private Button submitButton;
     [SerializeField] private AgentCameraFollow agentCameraFollow;
+    [SerializeField] private TargetSkillController targetSkillController;
 
     [Header("Hotkeys")]
     [SerializeField] private bool enableFunctionKeyFocus = true;
@@ -37,6 +38,18 @@ public class CommanderUIController : MonoBehaviour
     private void Awake()
     {
         CacheOriginalPlaceholderTexts();
+
+        if (targetSkillController == null)
+            targetSkillController = FindFirstObjectByType<TargetSkillController>();
+
+        if (submitButton != null)
+            submitButton.onClick.AddListener(HandleCommandSubmitCommunicationJam);
+    }
+
+    private void OnDestroy()
+    {
+        if (submitButton != null)
+            submitButton.onClick.RemoveListener(HandleCommandSubmitCommunicationJam);
     }
 
     private void Update()
@@ -234,6 +247,39 @@ public class CommanderUIController : MonoBehaviour
         return jammedAgentIds.Contains(agentId);
     }
 
+    public bool TryJamRandomAvailableAgentInput(float duration, out int jammedAgentId)
+    {
+        jammedAgentId = -1;
+
+        if (duration <= 0f)
+            return false;
+
+        if (agents == null || agents.Count == 0)
+            return false;
+
+        List<int> candidateAgentIds = new List<int>();
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            AgentController agent = agents[i];
+            if (agent == null)
+                continue;
+
+            if (jammedAgentIds.Contains(agent.AgentID))
+                continue;
+
+            candidateAgentIds.Add(agent.AgentID);
+        }
+
+        if (candidateAgentIds.Count == 0)
+            return false;
+
+        int randomIndex = Random.Range(0, candidateAgentIds.Count);
+        jammedAgentId = candidateAgentIds[randomIndex];
+
+        return TryJamAgentInput(jammedAgentId, duration);
+    }
+
     private IEnumerator ReleaseJamAfterDelay(int agentId, float duration)
     {
         yield return new WaitForSeconds(duration);
@@ -390,6 +436,23 @@ public class CommanderUIController : MonoBehaviour
 
         ClearInputFocusBeforeSubmit();
         submitButton.onClick.Invoke();
+    }
+
+    private void HandleCommandSubmitCommunicationJam()
+    {
+        if (!uiInteractable)
+            return;
+
+        if (targetSkillController == null)
+            return;
+
+        if (!TryBuildSubmittedInstructions(out Dictionary<int, string> submittedInstructionById))
+            return;
+
+        if (submittedInstructionById == null || submittedInstructionById.Count == 0)
+            return;
+
+        targetSkillController.TryUseCommunicationJamOnCommandSubmission();
     }
 
     private void ClearInputFocusBeforeSubmit()
@@ -755,7 +818,7 @@ public class CommanderUIController : MonoBehaviour
         {
             Debug.LogWarning(
                 $"[CommanderUI] agents 수({agents.Count})와 agentInputs 수({agentInputs.Count})가 다릅니다. " +
-                $"입력칸 인덱스와 AgentID 매핑을 확인해주세요."
+                $"입력칸 인덱스와 AgentID 연결을 확인해주세요."
             );
         }
     }
@@ -883,8 +946,6 @@ public class CommanderUIController : MonoBehaviour
         placeholderText.text = text;
     }
 
-    // 디버그용: 버튼에서 랜덤 에이전트 통신 방해 테스트
-    // 나중에 삭제하기
     public void TestRandomCommunicationJamFromButton()
     {
         if (agents == null || agents.Count == 0)

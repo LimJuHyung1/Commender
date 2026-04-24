@@ -4,30 +4,33 @@ using UnityEngine;
 public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
 {
     [Header("References")]
-    [SerializeField] private AgentController owner;
-    [SerializeField] private Transform eyePoint;
+    public AgentController owner;
+    public Transform eyePoint;
 
     [Header("Target Search")]
-    [SerializeField] private LayerMask targetLayer;
-    [SerializeField] private LayerMask obstacleMask;
-    [SerializeField] private int maxTargets = 4;
+    public LayerMask targetLayer;
+    public LayerMask obstacleMask;
+    public int maxTargets = 4;
 
     [Header("Vision Settings")]
-    [SerializeField] private float viewRadius = 7.5f;
-    [SerializeField, Range(1f, 360f)] private float viewAngle = 60f;
-    [SerializeField] private float checkInterval = 0.1f;
-    [SerializeField] private float targetEyeHeight = 0.5f;
-    [SerializeField] private bool useHorizontalOnly = true;
+    public float viewRadius = 7.5f;
+    [Range(1f, 360f)] public float viewAngle = 60f;
+    public float checkInterval = 0.1f;
+    public float targetEyeHeight = 0.5f;
+    public bool useHorizontalOnly = true;
+
+    [Header("Detection Confirm")]
+    public float detectionConfirmDuration = 0.3f;
 
     [Header("Behaviour")]
-    [SerializeField] private bool autoChaseOnSight = true;
-    [SerializeField] private bool debugLog = false;
+    public bool autoChaseOnSight = true;
+    public bool debugLog = false;
 
     [Header("Lose Sight")]
-    [SerializeField] private float loseSightGraceDuration = 1.25f;
+    public float loseSightGraceDuration = 0.15f;
 
     [Header("Smoke Debuff")]
-    [SerializeField] private float minimumViewRadius = 0.5f;
+    public float minimumViewRadius = 0.5f;
 
     private bool isSeeingTarget = false;
     private bool wallSightEnabled = false;
@@ -36,6 +39,9 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     private Transform currentSeenTarget;
     private Transform pendingLostTarget;
     private float loseSightGraceTimer = 0f;
+
+    private Transform candidateTarget;
+    private float candidateStartTime = -1f;
 
     private Collider[] targetResults;
     private readonly RaycastHit[] rayHits = new RaycastHit[1];
@@ -240,10 +246,8 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         if (pendingLostTarget == null)
             return;
 
-        if (loseSightGraceTimer <= 0f)
-            return;
-
         loseSightGraceTimer -= Time.deltaTime;
+
         if (loseSightGraceTimer > 0f)
             return;
 
@@ -254,12 +258,51 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     {
         if (owner == null)
         {
-            SetSeeingState(false, null);
+            UpdateDetectionConfirmation(null);
             return;
         }
 
         Transform bestTarget = FindBestVisibleTarget();
-        SetSeeingState(bestTarget != null, bestTarget);
+        UpdateDetectionConfirmation(bestTarget);
+    }
+
+    private void UpdateDetectionConfirmation(Transform bestTarget)
+    {
+        if (bestTarget == null)
+        {
+            candidateTarget = null;
+            candidateStartTime = -1f;
+
+            SetSeeingState(false, null);
+            return;
+        }
+
+        if (isSeeingTarget && currentSeenTarget == bestTarget)
+        {
+            candidateTarget = null;
+            candidateStartTime = -1f;
+
+            SetSeeingState(true, bestTarget);
+            return;
+        }
+
+        if (candidateTarget != bestTarget)
+        {
+            candidateTarget = bestTarget;
+            candidateStartTime = Time.time;
+        }
+
+        float visibleDuration = Time.time - candidateStartTime;
+
+        if (detectionConfirmDuration <= 0f || visibleDuration >= detectionConfirmDuration)
+        {
+            Transform confirmedTarget = candidateTarget;
+
+            candidateTarget = null;
+            candidateStartTime = -1f;
+
+            SetSeeingState(true, confirmedTarget);
+        }
     }
 
     private Transform FindBestVisibleTarget()
@@ -416,6 +459,13 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     private void StartLostSightGrace(Transform target)
     {
         pendingLostTarget = target;
+
+        if (loseSightGraceDuration <= 0f)
+        {
+            FinalizeLostTarget();
+            return;
+        }
+
         loseSightGraceTimer = loseSightGraceDuration;
     }
 
@@ -449,6 +499,9 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         pendingLostTarget = null;
         loseSightGraceTimer = 0f;
         checkTimer = 0f;
+
+        candidateTarget = null;
+        candidateStartTime = -1f;
 
         isSeeingTarget = false;
         currentSeenTarget = null;

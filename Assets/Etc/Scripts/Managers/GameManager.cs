@@ -5,28 +5,20 @@ using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
-    [System.Serializable]
-    public class StageRule
-    {
-        public string stageName = "Stage";
-        public string missionDescription = "타겟을 체포하세요.";
-        public bool useTimeLimit = false;
-        public float timeLimitSeconds = 300f;
-        public bool clearOnTargetCaught = true;
-    }
-
     public static GameManager Instance { get; private set; }
 
     [Header("References")]
     [SerializeField] private UIController uiController;
     [SerializeField] private StageMapManager stageMapManager;
 
-    [Header("Stage Rules")]
-    [SerializeField] private StageRule[] stageRules;
+    [Header("Stage Settings")]
+    [SerializeField] private string missionDescription = "제한 시간 안에 타겟을 체포하세요.";
+    [SerializeField] private float timeLimitSeconds = 300f;
 
     [Header("Scene 이동")]
     [SerializeField] private string lobbySceneName = "Lobby";
-    [SerializeField] private bool autoReturnToLobbyOnWin = true;
+    [SerializeField] private bool autoLoadNextStageOnWin = true;
+    [SerializeField] private bool autoReturnToLobbyOnFinalWin = true;
     [SerializeField] private bool autoReturnToLobbyOnFail = false;
     [SerializeField] private float returnDelaySeconds = 2.0f;
 
@@ -40,10 +32,6 @@ public class GameManager : MonoBehaviour
     private bool stageFinished = false;
     private bool timerRunning = false;
     private float remainingTime = 0f;
-    private int currentStageIndex = 0;
-    private StageRule currentRule;
-
-    private const string SelectedStageKey = "SelectedStageIndex";
 
     public bool IsTargetDebugRevealEnabled { get; private set; }
     public bool IsStageFinished => stageFinished;
@@ -67,6 +55,9 @@ public class GameManager : MonoBehaviour
         {
             uiController.HideResultPanel();
             uiController.CloseOptionPanelImmediate();
+            uiController.SetMissionText(missionDescription);
+            uiController.SetTimerText(0f);
+            uiController.SetTimerVisible(false);
         }
     }
 
@@ -78,7 +69,7 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        SetupCurrentStageRule();
+        SetupStage();
     }
 
     private void Update()
@@ -105,87 +96,23 @@ public class GameManager : MonoBehaviour
             stageMapManager = FindFirstObjectByType<StageMapManager>();
     }
 
-    private void SetupCurrentStageRule()
+    private void SetupStage()
     {
-        currentStageIndex = GetCurrentStageIndex();
+        ResolveReferences();
 
-        string currentStageDisplayName = GetCurrentStageDisplayName();
-        currentRule = BuildRuntimeStageRule(currentStageIndex, currentStageDisplayName);
+        stageFinished = false;
+        timerRunning = true;
+        remainingTime = Mathf.Max(0.1f, timeLimitSeconds);
 
         if (uiController != null)
-            uiController.SetMissionText(currentRule.stageName, currentRule.missionDescription);
-
-        if (currentRule.useTimeLimit)
         {
-            remainingTime = Mathf.Max(0.1f, currentRule.timeLimitSeconds);
-            timerRunning = true;
-
-            if (uiController != null)
-            {
-                uiController.SetTimerVisible(true);
-                uiController.SetTimerText(remainingTime);
-            }
-        }
-        else
-        {
-            timerRunning = false;
-
-            if (uiController != null)
-                uiController.SetTimerVisible(false);
+            uiController.HideResultPanel();
+            uiController.SetMissionText(missionDescription);
+            uiController.SetTimerText(remainingTime);
+            uiController.SetTimerVisible(true);
         }
 
-        Debug.Log($"[GameManager] {currentRule.stageName} 규칙 적용: " +
-                  $"useTimeLimit={currentRule.useTimeLimit}, " +
-                  $"timeLimit={currentRule.timeLimitSeconds}, " +
-                  $"clearOnTargetCaught={currentRule.clearOnTargetCaught}");
-    }
-
-    private string GetCurrentStageDisplayName()
-    {
-        int selectedStageIndex = GetCurrentStageIndex();
-
-        if (stageMapManager != null)
-            return stageMapManager.GetStageDisplayName(selectedStageIndex);
-
-        return $"Stage {selectedStageIndex + 1}";
-    }
-
-    private StageRule BuildRuntimeStageRule(int stageIndex, string stageDisplayName)
-    {
-        StageRule sourceRule = GetStageRule(stageIndex);
-
-        StageRule runtimeRule = new StageRule();
-        runtimeRule.stageName = stageDisplayName;
-        runtimeRule.missionDescription = sourceRule.missionDescription;
-        runtimeRule.useTimeLimit = sourceRule.useTimeLimit;
-        runtimeRule.timeLimitSeconds = sourceRule.timeLimitSeconds;
-        runtimeRule.clearOnTargetCaught = sourceRule.clearOnTargetCaught;
-
-        return runtimeRule;
-    }
-
-    private int GetCurrentStageIndex()
-    {
-        return PlayerPrefs.GetInt(SelectedStageKey, 0);
-    }
-
-    private StageRule GetStageRule(int stageIndex)
-    {
-        if (stageRules != null &&
-            stageIndex >= 0 &&
-            stageIndex < stageRules.Length &&
-            stageRules[stageIndex] != null)
-        {
-            return stageRules[stageIndex];
-        }
-
-        StageRule fallbackRule = new StageRule();
-        fallbackRule.stageName = $"Stage {stageIndex + 1}";
-        fallbackRule.missionDescription = "타겟을 체포하세요.";
-        fallbackRule.useTimeLimit = false;
-        fallbackRule.timeLimitSeconds = 60f;
-        fallbackRule.clearOnTargetCaught = true;
-        return fallbackRule;
+        Debug.Log($"[GameManager] 스테이지 시작: mission={missionDescription}, timeLimit={timeLimitSeconds}");
     }
 
     private void UpdateStageTimer()
@@ -215,19 +142,37 @@ public class GameManager : MonoBehaviour
         if (stageFinished)
             return;
 
-        if (currentRule != null && !currentRule.clearOnTargetCaught)
-        {
-            Debug.Log("[GameManager] 현재 스테이지는 타겟 체포만으로 클리어되지 않습니다.");
-            return;
-        }
-
         string message = target != null
             ? $"축하합니다! {target.name}을(를) 체포했습니다!"
             : "축하합니다! 타겟을 체포했습니다!";
 
+        CaptureSequenceController captureSequenceController = FindFirstObjectByType<CaptureSequenceController>();
+
+        if (captureSequenceController != null)
+        {
+            stageFinished = true;
+            timerRunning = false;
+
+            StartCoroutine(CompleteStageAfterCaptureSequence(captureSequenceController, target, message));
+            return;
+        }
+
         CompleteStage(message);
     }
 
+    private IEnumerator CompleteStageAfterCaptureSequence(
+        CaptureSequenceController captureSequenceController,
+        GameObject target,
+        string message)
+    {
+        AgentController catchingAgent = CatchZone.LastCatchingAgent;
+
+        yield return captureSequenceController.PlayCaptureSequence(catchingAgent, target);
+
+        stageFinished = false;
+        CompleteStage(message);
+    }
+    
     public void CompleteStage(string message)
     {
         if (stageFinished)
@@ -235,6 +180,8 @@ public class GameManager : MonoBehaviour
 
         stageFinished = true;
         timerRunning = false;
+
+        ResolveReferences();
 
         Debug.Log($"<color=green>[GameManager]</color> 스테이지 클리어: {message}");
 
@@ -246,8 +193,17 @@ public class GameManager : MonoBehaviour
 
         Time.timeScale = winTimeScale;
 
-        if (autoReturnToLobbyOnWin)
+        if (autoLoadNextStageOnWin)
+        {
+            if (HasNextStage())
+                StartCoroutine(LoadNextStageAfterDelay());
+            else if (autoReturnToLobbyOnFinalWin)
+                StartCoroutine(ReturnToLobbyAfterDelay());
+        }
+        else if (autoReturnToLobbyOnFinalWin)
+        {
             StartCoroutine(ReturnToLobbyAfterDelay());
+        }
     }
 
     public void FailStage(string message)
@@ -281,16 +237,39 @@ public class GameManager : MonoBehaviour
 
     private void UnlockNextStage()
     {
-        if (stageMapManager == null)
-            stageMapManager = FindFirstObjectByType<StageMapManager>();
+        ResolveReferences();
 
         if (stageMapManager == null)
         {
-            Debug.LogWarning("[GameManager] StageMapManager를 찾지 못해서 다음 스테이지를 해금하지 못했습니다.");
+            Debug.LogWarning("[GameManager] StageMapManager를 찾지 못해서 다음 스테이지 처리를 하지 못했습니다.");
             return;
         }
 
         stageMapManager.CompleteStage();
+    }
+
+    private bool HasNextStage()
+    {
+        ResolveReferences();
+        return stageMapManager != null && stageMapManager.HasNextStage();
+    }
+
+    private IEnumerator LoadNextStageAfterDelay()
+    {
+        yield return new WaitForSecondsRealtime(returnDelaySeconds);
+
+        ResolveReferences();
+
+        if (stageMapManager == null)
+        {
+            ReturnToLobby();
+            yield break;
+        }
+
+        stageMapManager.SelectNextStage();
+
+        Time.timeScale = 1.0f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     private IEnumerator ReturnToLobbyAfterDelay()
@@ -317,6 +296,11 @@ public class GameManager : MonoBehaviour
     public void ReturnToLobby()
     {
         Time.timeScale = 1.0f;
+
+        ResolveReferences();
+        if (stageMapManager != null)
+            stageMapManager.ResetToFirstStageSelection();
+
         SceneManager.LoadScene(lobbySceneName);
     }
 

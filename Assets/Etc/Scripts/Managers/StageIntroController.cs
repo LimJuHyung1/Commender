@@ -13,7 +13,7 @@ public class StageIntroController : MonoBehaviour
     [SerializeField] private RectTransform topBlackBar;
     [SerializeField] private RectTransform bottomBlackBar;
     [SerializeField] private Text stageInfoText;
-    [SerializeField] private string titleFormat = "{0} ({1})";
+    [SerializeField] private string titleFormat = "{0}";
 
     [Header("Timing")]
     [SerializeField] private float introDuration = 5f;
@@ -56,6 +56,10 @@ public class StageIntroController : MonoBehaviour
     private float previousTimeScale = 1f;
     private bool introFinished;
 
+    public static StageIntroController Instance { get; private set; }
+    private bool gameplayUnlocked;
+    public bool IsIntroPlaying => !gameplayUnlocked;
+
     private void Reset()
     {
         orbitEase = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
@@ -64,6 +68,9 @@ public class StageIntroController : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
+        gameplayUnlocked = false;
+
         CacheAudioListeners();
         CacheBarPositions();
         ApplyInitialVisualState();
@@ -83,6 +90,9 @@ public class StageIntroController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this)
+            Instance = null;
+
         if (!introFinished && pauseTimeScaleDuringIntro)
             Time.timeScale = previousTimeScale;
     }
@@ -97,7 +107,6 @@ public class StageIntroController : MonoBehaviour
 
     private IEnumerator BeginIntroRoutine()
     {
-        // StageMapManager가 Start에서 맵을 생성하므로 한 프레임 대기
         yield return null;
 
         UpdateStageInfoText();
@@ -132,6 +141,7 @@ public class StageIntroController : MonoBehaviour
 
         yield return StartCoroutine(AnimateBars(show: false));
 
+        gameplayUnlocked = true;
         UnlockGameplay();
     }
 
@@ -289,8 +299,22 @@ public class StageIntroController : MonoBehaviour
         }
 
         string stageName = stageMapManager.CurrentStageDisplayName;
-        string difficultyName = stageMapManager.CurrentDifficultyDisplayName;
-        stageInfoText.text = string.Format(titleFormat, stageName, difficultyName);
+
+        if (string.IsNullOrWhiteSpace(titleFormat))
+        {
+            stageInfoText.text = stageName;
+            return;
+        }
+
+        try
+        {
+            stageInfoText.text = string.Format(titleFormat, stageName);
+        }
+        catch (System.FormatException)
+        {
+            Debug.LogWarning($"[StageIntroController] titleFormat 값이 잘못되었습니다: {titleFormat}");
+            stageInfoText.text = stageName;
+        }
     }
 
     private void ResolveFocusPoint()
@@ -311,23 +335,20 @@ public class StageIntroController : MonoBehaviour
         GameObject groundRoot = GameObject.Find(groundRootName);
         if (groundRoot != null)
         {
-            if (TryGetBoundsCenterFromRenderers(groundRoot.transform, out Vector3 rendererCenter))
+            Bounds bounds = new Bounds(groundRoot.transform.position, Vector3.zero);
+            Renderer[] renderers = groundRoot.GetComponentsInChildren<Renderer>(true);
+
+            if (renderers != null && renderers.Length > 0)
             {
-                focusPoint = rendererCenter;
+                for (int i = 0; i < renderers.Length; i++)
+                    bounds.Encapsulate(renderers[i].bounds);
+
+                focusPoint = bounds.center + Vector3.up * lookHeight;
                 return;
             }
-
-            if (TryGetBoundsCenterFromColliders(groundRoot.transform, out Vector3 colliderCenter))
-            {
-                focusPoint = colliderCenter;
-                return;
-            }
-
-            focusPoint = groundRoot.transform.position;
-            return;
         }
 
-        focusPoint = Vector3.zero;
+        focusPoint = Vector3.up * lookHeight;
     }
 
     private void PrepareIntroCamera()
@@ -336,11 +357,7 @@ public class StageIntroController : MonoBehaviour
             return;
 
         initialCameraOffset = introCamera.transform.position - focusPoint;
-
-        if (initialCameraOffset.sqrMagnitude < 0.01f)
-            initialCameraOffset = new Vector3(-14f, 10f, -14f);
-
-        UpdateOrbit(0f);
+        introCamera.transform.LookAt(focusPoint);
     }
 
     private void UpdateOrbit(float normalized)
@@ -349,18 +366,15 @@ public class StageIntroController : MonoBehaviour
             return;
 
         float eased = orbitEase != null ? orbitEase.Evaluate(normalized) : normalized;
-        float angle = orbitDegrees * eased;
+        float angle = Mathf.Lerp(0f, orbitDegrees, eased);
+        Quaternion rotation = Quaternion.AngleAxis(angle, Vector3.up);
 
-        Vector3 rotatedOffset = Quaternion.Euler(0f, angle, 0f) * initialCameraOffset;
-        Vector3 cameraPosition = focusPoint + rotatedOffset;
-
-        introCamera.transform.position = cameraPosition;
-        introCamera.transform.LookAt(focusPoint + Vector3.up * lookHeight);
+        introCamera.transform.position = focusPoint + rotation * initialCameraOffset;
+        introCamera.transform.LookAt(focusPoint);
     }
 
     private IEnumerator AnimateBars(bool show)
     {
-        float duration = Mathf.Max(0.01f, barSlideDuration);
         float elapsed = 0f;
 
         Vector2 startTop = topBlackBar != null ? topBlackBar.anchoredPosition : Vector2.zero;
@@ -369,18 +383,18 @@ public class StageIntroController : MonoBehaviour
         Vector2 targetTop = show ? topShownPos : topHiddenPos;
         Vector2 targetBottom = show ? bottomShownPos : bottomHiddenPos;
 
-        while (elapsed < duration)
+        while (elapsed < barSlideDuration)
         {
-            float t = elapsed / duration;
-            float eased = barEase != null ? barEase.Evaluate(t) : t;
+            elapsed += Time.unscaledDeltaTime;
+            float normalized = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, barSlideDuration));
+            float eased = barEase != null ? barEase.Evaluate(normalized) : normalized;
 
             if (topBlackBar != null)
-                topBlackBar.anchoredPosition = Vector2.LerpUnclamped(startTop, targetTop, eased);
+                topBlackBar.anchoredPosition = Vector2.Lerp(startTop, targetTop, eased);
 
             if (bottomBlackBar != null)
-                bottomBlackBar.anchoredPosition = Vector2.LerpUnclamped(startBottom, targetBottom, eased);
+                bottomBlackBar.anchoredPosition = Vector2.Lerp(startBottom, targetBottom, eased);
 
-            elapsed += Time.unscaledDeltaTime;
             yield return null;
         }
 
@@ -393,110 +407,25 @@ public class StageIntroController : MonoBehaviour
 
     private bool IsSkipInputPressedThisFrame()
     {
-        Keyboard keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.anyKey.wasPressedThisFrame)
+        if (Keyboard.current != null && Keyboard.current.anyKey.wasPressedThisFrame)
             return true;
 
-        Mouse mouse = Mouse.current;
-        if (mouse != null)
-        {
-            if (mouse.leftButton.wasPressedThisFrame ||
-                mouse.rightButton.wasPressedThisFrame ||
-                mouse.middleButton.wasPressedThisFrame)
-            {
-                return true;
-            }
-        }
+        if (Mouse.current != null && (Mouse.current.leftButton.wasPressedThisFrame || Mouse.current.rightButton.wasPressedThisFrame))
+            return true;
 
-        Gamepad gamepad = Gamepad.current;
-        if (gamepad != null)
+        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
+            return true;
+
+        if (Gamepad.current != null)
         {
-            if (gamepad.buttonSouth.wasPressedThisFrame ||
-                gamepad.buttonNorth.wasPressedThisFrame ||
-                gamepad.buttonEast.wasPressedThisFrame ||
-                gamepad.buttonWest.wasPressedThisFrame ||
-                gamepad.startButton.wasPressedThisFrame)
+            if (Gamepad.current.buttonSouth.wasPressedThisFrame ||
+                Gamepad.current.buttonEast.wasPressedThisFrame ||
+                Gamepad.current.startButton.wasPressedThisFrame)
             {
                 return true;
             }
         }
 
         return false;
-    }
-
-    private bool TryGetBoundsCenterFromRenderers(Transform root, out Vector3 center)
-    {
-        center = Vector3.zero;
-
-        if (root == null)
-            return false;
-
-        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-        if (renderers == null || renderers.Length == 0)
-            return false;
-
-        bool hasBounds = false;
-        Bounds bounds = new Bounds();
-
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer r = renderers[i];
-            if (r == null)
-                continue;
-
-            if (!hasBounds)
-            {
-                bounds = r.bounds;
-                hasBounds = true;
-            }
-            else
-            {
-                bounds.Encapsulate(r.bounds);
-            }
-        }
-
-        if (!hasBounds)
-            return false;
-
-        center = bounds.center;
-        return true;
-    }
-
-    private bool TryGetBoundsCenterFromColliders(Transform root, out Vector3 center)
-    {
-        center = Vector3.zero;
-
-        if (root == null)
-            return false;
-
-        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
-        if (colliders == null || colliders.Length == 0)
-            return false;
-
-        bool hasBounds = false;
-        Bounds bounds = new Bounds();
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Collider c = colliders[i];
-            if (c == null)
-                continue;
-
-            if (!hasBounds)
-            {
-                bounds = c.bounds;
-                hasBounds = true;
-            }
-            else
-            {
-                bounds.Encapsulate(c.bounds);
-            }
-        }
-
-        if (!hasBounds)
-            return false;
-
-        center = bounds.center;
-        return true;
     }
 }

@@ -5,30 +5,22 @@ using Unity.AI.Navigation;
 public class StageMapManager : MonoBehaviour
 {
     [System.Serializable]
-    public class DifficultyMapEntry
+    public class StageEntry
     {
-        public string difficultyName = "Easy";
-        [Min(1)] public int difficultyProfileNumber = 1;
+        public string stageName;
         public GameObject mapPrefab;
         public bool useFloorViewController = false;
     }
 
-    [System.Serializable]
-    public class StageEntry
-    {
-        public string stageName;
-        public DifficultyMapEntry[] difficultyMaps;
-    }
-
     [Header("Stages")]
-    [SerializeField] private StageEntry[] stages;
+    public StageEntry[] stages;
 
     [Header("Unit Prefabs")]
-    [SerializeField] private GameObject targetPrefab;
-    [SerializeField] private GameObject[] agentPrefabs;
+    public GameObject targetPrefab;
+    public GameObject[] agentPrefabs;
 
     [Header("Options")]
-    [SerializeField] private bool buildNavMeshOnSpawn = false;
+    public bool buildNavMeshOnSpawn = false;
 
     private GameObject currentMap;
     private GameObject currentTarget;
@@ -40,15 +32,12 @@ public class StageMapManager : MonoBehaviour
     private Transform fallbackTargetSpawnPoint;
 
     private int currentStageIndex = 0;
-    private int currentDifficultyIndex = 0;
 
     public int CurrentStageIndex => currentStageIndex;
-    public int CurrentDifficultyIndex => currentDifficultyIndex;
+    public int StageCount => stages != null ? stages.Length : 0;
     public string CurrentStageDisplayName => GetStageDisplayName(currentStageIndex);
-    public string CurrentDifficultyDisplayName => GetDifficultyDisplayName(currentStageIndex, currentDifficultyIndex);
 
     private const string SelectedStageKey = "SelectedStageIndex";
-    private const string SelectedDifficultyKey = "SelectedDifficultyIndex";
     private const string UnlockedStageCountKey = "UnlockedStageCount";
 
     private void Start()
@@ -61,7 +50,6 @@ public class StageMapManager : MonoBehaviour
         ClearStage();
 
         currentStageIndex = PlayerPrefs.GetInt(SelectedStageKey, 0);
-        currentDifficultyIndex = PlayerPrefs.GetInt(SelectedDifficultyKey, 0);
 
         if (stages == null || stages.Length == 0)
         {
@@ -71,16 +59,16 @@ public class StageMapManager : MonoBehaviour
 
         currentStageIndex = Mathf.Clamp(currentStageIndex, 0, stages.Length - 1);
 
-        DifficultyMapEntry selectedDifficultyEntry = GetSelectedDifficultyEntry(currentStageIndex, currentDifficultyIndex);
-        if (selectedDifficultyEntry == null || selectedDifficultyEntry.mapPrefab == null)
+        StageEntry selectedStageEntry = GetStageEntry(currentStageIndex);
+        if (selectedStageEntry == null || selectedStageEntry.mapPrefab == null)
         {
-            Debug.LogError("[StageMapManager] 선택된 스테이지/난이도에 맞는 맵 프리팹이 없습니다.");
+            Debug.LogError("[StageMapManager] 선택된 스테이지에 맞는 맵 프리팹이 없습니다.");
             return;
         }
 
-        currentMap = Instantiate(selectedDifficultyEntry.mapPrefab, Vector3.zero, Quaternion.identity);
+        currentMap = Instantiate(selectedStageEntry.mapPrefab, Vector3.zero, Quaternion.identity);
 
-        ConfigureFloorViewController(selectedDifficultyEntry);
+        ConfigureFloorViewController(selectedStageEntry);
 
         if (!CacheMapPoints())
         {
@@ -100,20 +88,27 @@ public class StageMapManager : MonoBehaviour
 
         Debug.Log(
             $"[StageMapManager] 맵 생성 완료: " +
-            $"Stage={CurrentStageDisplayName}, Difficulty={CurrentDifficultyDisplayName}, " +
-            $"Profile={selectedDifficultyEntry.difficultyProfileNumber}, " +
-            $"UseFloorView={selectedDifficultyEntry.useFloorViewController}"
+            $"Stage={CurrentStageDisplayName}, " +
+            $"UseFloorView={selectedStageEntry.useFloorViewController}"
         );
     }
 
-    private void ConfigureFloorViewController(DifficultyMapEntry selectedDifficultyEntry)
+    private StageEntry GetStageEntry(int stageIndex)
+    {
+        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
+            return null;
+
+        return stages[stageIndex];
+    }
+
+    private void ConfigureFloorViewController(StageEntry selectedStageEntry)
     {
         FloorViewController floorViewController = FindFloorViewController();
         if (floorViewController == null)
             return;
 
         floorViewController.SetSearchRoot(currentMap != null ? currentMap.transform : null);
-        floorViewController.SetSystemEnabled(selectedDifficultyEntry != null && selectedDifficultyEntry.useFloorViewController);
+        floorViewController.SetSystemEnabled(selectedStageEntry != null && selectedStageEntry.useFloorViewController);
     }
 
     private FloorViewController FindFloorViewController()
@@ -132,46 +127,6 @@ public class StageMapManager : MonoBehaviour
         return floorViewController;
     }
 
-    private DifficultyMapEntry GetSelectedDifficultyEntry(int stageIndex, int difficultyIndex)
-    {
-        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
-            return null;
-
-        StageEntry stageEntry = stages[stageIndex];
-        if (stageEntry == null || stageEntry.difficultyMaps == null || stageEntry.difficultyMaps.Length == 0)
-            return null;
-
-        int clampedDifficultyIndex = Mathf.Clamp(difficultyIndex, 0, stageEntry.difficultyMaps.Length - 1);
-        currentDifficultyIndex = clampedDifficultyIndex;
-
-        return stageEntry.difficultyMaps[clampedDifficultyIndex];
-    }
-
-    private DifficultyMapEntry GetDifficultyEntry(int stageIndex, int difficultyIndex)
-    {
-        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
-            return null;
-
-        StageEntry stageEntry = stages[stageIndex];
-        if (stageEntry == null || stageEntry.difficultyMaps == null || stageEntry.difficultyMaps.Length == 0)
-            return null;
-
-        int clampedDifficultyIndex = Mathf.Clamp(difficultyIndex, 0, stageEntry.difficultyMaps.Length - 1);
-        return stageEntry.difficultyMaps[clampedDifficultyIndex];
-    }
-
-    private int GetDifficultyCountForStage(int stageIndex)
-    {
-        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
-            return 0;
-
-        StageEntry stageEntry = stages[stageIndex];
-        if (stageEntry == null || stageEntry.difficultyMaps == null)
-            return 0;
-
-        return stageEntry.difficultyMaps.Length;
-    }
-
     private bool CacheMapPoints()
     {
         if (currentMap == null)
@@ -184,6 +139,9 @@ public class StageMapManager : MonoBehaviour
 
         if (groundRoot == null)
             Debug.LogWarning("[StageMapManager] GroundRoot를 찾지 못했습니다.");
+
+        if (agentSpawnPointsRoot == null)
+            Debug.LogWarning("[StageMapManager] AgentSpawnPoints를 찾지 못했습니다.");
 
         if (targetSpawnPointsRoot == null && fallbackTargetSpawnPoint == null)
             Debug.LogWarning("[StageMapManager] TargetSpawnPoints 또는 TargetSpawnPoint를 찾지 못했습니다.");
@@ -223,7 +181,10 @@ public class StageMapManager : MonoBehaviour
     private void SpawnTarget()
     {
         if (targetPrefab == null)
+        {
+            Debug.LogWarning("[StageMapManager] targetPrefab이 설정되어 있지 않습니다.");
             return;
+        }
 
         Transform spawnPoint = GetRandomTargetSpawnPoint();
         if (spawnPoint == null)
@@ -234,61 +195,6 @@ public class StageMapManager : MonoBehaviour
 
         currentTarget = Instantiate(targetPrefab, spawnPoint.position, spawnPoint.rotation);
         Debug.Log($"[StageMapManager] 타겟 생성 위치: {spawnPoint.name}");
-
-        ApplyTargetDifficulty();
-    }
-
-    private void ApplyTargetDifficulty()
-    {
-        if (currentTarget == null)
-            return;
-
-        TargetController targetController = currentTarget.GetComponent<TargetController>();
-        if (targetController == null)
-        {
-            Debug.LogWarning("[StageMapManager] TargetController를 찾지 못했습니다.");
-            return;
-        }
-
-        DifficultyMapEntry selectedDifficultyEntry = GetSelectedDifficultyEntry(currentStageIndex, currentDifficultyIndex);
-        if (selectedDifficultyEntry == null)
-        {
-            Debug.LogWarning("[StageMapManager] 선택된 난이도 데이터를 찾지 못했습니다.");
-            return;
-        }
-
-        targetController.SetStageNumber(selectedDifficultyEntry.difficultyProfileNumber);
-        targetController.ApplyDifficultyForCurrentStage();
-        ApplyTargetSkillSetByDifficulty();
-
-        Debug.Log(
-            $"[StageMapManager] 타겟 난이도 적용: " +
-            $"{selectedDifficultyEntry.difficultyName}, " +
-            $"프로필 번호={selectedDifficultyEntry.difficultyProfileNumber}"
-        );
-    }
-
-    private void ApplyTargetSkillSetByDifficulty()
-    {
-        if (currentTarget == null)
-            return;
-
-        TargetSkillController targetSkillController = currentTarget.GetComponent<TargetSkillController>();
-        if (targetSkillController == null)
-            targetSkillController = currentTarget.GetComponentInChildren<TargetSkillController>(true);
-
-        if (targetSkillController == null)
-        {
-            Debug.LogWarning("[StageMapManager] TargetSkillController를 찾지 못했습니다.");
-            return;
-        }
-
-        targetSkillController.ApplySkillSetByDifficultyIndex(currentDifficultyIndex);
-
-        Debug.Log(
-            $"[StageMapManager] 타겟 스킬 세트 적용: DifficultyIndex={currentDifficultyIndex}, " +
-            $"DifficultyName={CurrentDifficultyDisplayName}"
-        );
     }
 
     private Transform GetRandomTargetSpawnPoint()
@@ -319,8 +225,17 @@ public class StageMapManager : MonoBehaviour
 
     private void SpawnAgents()
     {
-        if (agentPrefabs == null || agentPrefabs.Length == 0 || agentSpawnPointsRoot == null)
+        if (agentPrefabs == null || agentPrefabs.Length == 0)
+        {
+            Debug.LogWarning("[StageMapManager] agentPrefabs가 비어 있습니다.");
             return;
+        }
+
+        if (agentSpawnPointsRoot == null)
+        {
+            Debug.LogWarning("[StageMapManager] AgentSpawnPoints가 없어서 에이전트를 생성할 수 없습니다.");
+            return;
+        }
 
         int spawnPointCount = agentSpawnPointsRoot.childCount;
         int spawnCount = Mathf.Min(agentPrefabs.Length, spawnPointCount);
@@ -388,74 +303,30 @@ public class StageMapManager : MonoBehaviour
 
     public void CompleteStage()
     {
-        int currentStageDifficultyCount = GetDifficultyCountForStage(currentStageIndex);
-        int currentUnlockedDifficultyCount = GetUnlockedDifficultyCount(currentStageIndex, currentStageDifficultyCount);
+        int nextStageIndex = currentStageIndex + 1;
+        int nextUnlockedStageCount = Mathf.Max(PlayerPrefs.GetInt(UnlockedStageCountKey, 1), nextStageIndex + 1);
 
-        bool unlockedSomething = false;
-
-        if (currentDifficultyIndex < currentStageDifficultyCount - 1)
-        {
-            int nextUnlockedDifficultyCount = Mathf.Max(
-                currentUnlockedDifficultyCount,
-                currentDifficultyIndex + 2
-            );
-
-            if (nextUnlockedDifficultyCount > currentUnlockedDifficultyCount)
-            {
-                PlayerPrefs.SetInt(GetUnlockedDifficultyKey(currentStageIndex), nextUnlockedDifficultyCount);
-                unlockedSomething = true;
-
-                Debug.Log(
-                    $"[StageMapManager] 같은 스테이지의 다음 난이도 해금: " +
-                    $"Stage={currentStageIndex}, UnlockedDifficultyCount={nextUnlockedDifficultyCount}"
-                );
-            }
-        }
-        else
-        {
-            int unlockedStageCount = PlayerPrefs.GetInt(UnlockedStageCountKey, 1);
-            int nextUnlockedStageCount = currentStageIndex + 2;
-
-            if (nextUnlockedStageCount > unlockedStageCount)
-            {
-                PlayerPrefs.SetInt(UnlockedStageCountKey, nextUnlockedStageCount);
-                unlockedSomething = true;
-
-                Debug.Log($"[StageMapManager] 다음 스테이지 해금: {nextUnlockedStageCount - 1}");
-            }
-
-            int nextStageIndex = currentStageIndex + 1;
-            if (nextStageIndex < stages.Length)
-            {
-                int nextStageUnlockedDifficultyCount = GetUnlockedDifficultyCount(
-                    nextStageIndex,
-                    GetDifficultyCountForStage(nextStageIndex)
-                );
-
-                if (nextStageUnlockedDifficultyCount < 1)
-                {
-                    PlayerPrefs.SetInt(GetUnlockedDifficultyKey(nextStageIndex), 1);
-                    unlockedSomething = true;
-
-                    Debug.Log($"[StageMapManager] 다음 스테이지 첫 난이도 해금: Stage={nextStageIndex}");
-                }
-            }
-        }
-
-        if (unlockedSomething)
-            PlayerPrefs.Save();
+        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Clamp(nextUnlockedStageCount, 1, Mathf.Max(1, StageCount)));
+        PlayerPrefs.Save();
     }
 
-    private int GetUnlockedDifficultyCount(int stageIndex, int difficultyCount)
+    public bool HasNextStage()
     {
-        int defaultValue = stageIndex == 0 ? 1 : 0;
-        int unlockedCount = PlayerPrefs.GetInt(GetUnlockedDifficultyKey(stageIndex), defaultValue);
-        return Mathf.Clamp(unlockedCount, 0, Mathf.Max(0, difficultyCount));
+        return currentStageIndex + 1 < StageCount;
     }
 
-    private string GetUnlockedDifficultyKey(int stageIndex)
+    public void SelectNextStage()
     {
-        return $"UnlockedDifficultyCount_Stage_{stageIndex}";
+        int nextStageIndex = Mathf.Clamp(currentStageIndex + 1, 0, Mathf.Max(0, StageCount - 1));
+
+        PlayerPrefs.SetInt(SelectedStageKey, nextStageIndex);
+        PlayerPrefs.Save();
+    }
+
+    public void ResetToFirstStageSelection()
+    {
+        PlayerPrefs.SetInt(SelectedStageKey, 0);
+        PlayerPrefs.Save();
     }
 
     public void ClearStage()
@@ -506,20 +377,5 @@ public class StageMapManager : MonoBehaviour
             return entry.stageName;
 
         return $"Stage {stageIndex + 1}";
-    }
-
-    public string GetDifficultyDisplayName(int stageIndex, int difficultyIndex)
-    {
-        DifficultyMapEntry entry = GetDifficultyEntry(stageIndex, difficultyIndex);
-        if (entry != null && !string.IsNullOrWhiteSpace(entry.difficultyName))
-            return entry.difficultyName;
-
-        switch (difficultyIndex)
-        {
-            case 0: return "Easy";
-            case 1: return "Normal";
-            case 2: return "Hard";
-            default: return $"난이도 {difficultyIndex + 1}";
-        }
     }
 }

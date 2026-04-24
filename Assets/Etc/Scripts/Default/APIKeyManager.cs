@@ -1,110 +1,296 @@
+using System;
 using System.IO;
 using UnityEngine;
 
+[DefaultExecutionOrder(-1000)]
 public class APIKeyManager : MonoBehaviour
 {
+    public static APIKeyManager Instance { get; private set; }
+
+    [Header("첫 실행용 원본 auth.json")]
+    [SerializeField] private TextAsset bootstrapAuthJson;
+
     private string authFilePath;
+    private AuthData cachedAuthData;
 
-    private void Start()
+    public bool IsInitialized { get; private set; }
+    public bool HasValidAuth => cachedAuthData != null && !string.IsNullOrWhiteSpace(cachedAuthData.ApiKey);
+    public string LastError { get; private set; }
+
+    private void Awake()
     {
-        string targetFolder = GetOpenAIFolderPath();
-        authFilePath = Path.Combine(targetFolder, "auth.json");
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
-        // auth.json 생성 또는 덮어쓰기 (조건문 제거)
-        Debug.Log(File.Exists(authFilePath) ? "auth.json 파일이 이미 존재합니다. 덮어씌웁니다." : "auth.json 파일이 존재하지 않습니다. 새로 생성합니다.");
-        CreateEncryptedAuthFile();
+        Instance = this;
+        Initialize();
     }
 
-    /// <summary>
-    /// .openai 폴더 경로를 가져오고, 존재하지 않으면 생성
-    /// </summary>
+    public bool Initialize()
+    {
+        if (IsInitialized)
+            return HasValidAuth;
+
+        LastError = null;
+
+        try
+        {
+            string targetFolder = GetOpenAIFolderPath();
+            authFilePath = Path.Combine(targetFolder, "auth.json");
+
+            if (TryLoadEncryptedAuthFile(authFilePath, out cachedAuthData))
+            {
+                IsInitialized = true;
+                Debug.Log($"Encrypted auth file loaded successfully: {authFilePath}");
+                return true;
+            }
+
+            Debug.Log("Encrypted auth file was not found or invalid. Trying to create a new one.");
+
+            if (TryCreateEncryptedAuthFile())
+            {
+                if (TryLoadEncryptedAuthFile(authFilePath, out cachedAuthData))
+                {
+                    IsInitialized = true;
+                    Debug.Log($"Encrypted auth file created and verified successfully: {authFilePath}");
+                    return true;
+                }
+
+                LastError = "auth.json was created, but verification failed.";
+                Debug.LogError(LastError);
+                IsInitialized = true;
+                return false;
+            }
+
+            IsInitialized = true;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LastError = $"Initialize failed: {ex.Message}";
+            Debug.LogError(LastError);
+            IsInitialized = true;
+            return false;
+        }
+    }
+
+    public bool TryGetAuthData(out AuthData authData)
+    {
+        if (!IsInitialized)
+            Initialize();
+
+        authData = cachedAuthData;
+        return authData != null && !string.IsNullOrWhiteSpace(authData.ApiKey);
+    }
+
+    public string GetAuthFilePath()
+    {
+        if (string.IsNullOrWhiteSpace(authFilePath))
+        {
+            string targetFolder = GetOpenAIFolderPath();
+            authFilePath = Path.Combine(targetFolder, "auth.json");
+        }
+
+        return authFilePath;
+    }
+
     private string GetOpenAIFolderPath()
     {
-        string userFolder = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        string userFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         string targetFolder = Path.Combine(userFolder, ".openai");
 
-        // 폴더가 존재하지 않으면 자동 생성 (이미 존재하면 아무 작업 안 함)
         Directory.CreateDirectory(targetFolder);
-        Debug.Log($"폴더 확인 및 생성 완료: {targetFolder}");
+        Debug.Log($"Folder verification and creation complete: {targetFolder}");
 
         return targetFolder;
     }
 
-    /// <summary>
-    /// auth.json을 암호화하여 저장 (존재하지 않으면 새로 생성, 있으면 덮어쓰기)
-    /// </summary>
-    private void CreateEncryptedAuthFile()
+    private bool TryCreateEncryptedAuthFile()
     {
-        string sourceAuthFilePath = Path.Combine(Application.dataPath, "auth.json");
+        AuthData sourceAuthData = null;
 
-        if (!File.Exists(sourceAuthFilePath))
+        if (TryLoadBootstrapAuthFromTextAsset(out sourceAuthData))
         {
-            Debug.LogError($"Assets 폴더 내 auth.json 파일을 찾을 수 없습니다: {sourceAuthFilePath}");
-            return;
+            return SaveEncryptedAuthFile(sourceAuthData);
+        }
+
+        if (TryLoadBootstrapAuthFromEnvironment(out sourceAuthData))
+        {
+            return SaveEncryptedAuthFile(sourceAuthData);
+        }
+
+        LastError =
+            "No bootstrap auth source found. " +
+            "Assign bootstrapAuthJson in the inspector or provide OPENAI_API_KEY environment variable.";
+
+        Debug.LogError(LastError);
+        return false;
+    }
+
+    private bool TryLoadBootstrapAuthFromTextAsset(out AuthData authData)
+    {
+        authData = null;
+
+        if (bootstrapAuthJson == null)
+        {
+            Debug.LogWarning("bootstrapAuthJson is not assigned.");
+            return false;
+        }
+
+        string json = bootstrapAuthJson.text;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            Debug.LogError("bootstrapAuthJson is empty.");
+            return false;
         }
 
         try
         {
-            string jsonContent = File.ReadAllText(sourceAuthFilePath);
-            if (string.IsNullOrEmpty(jsonContent))
+            authData = JsonUtility.FromJson<AuthData>(json);
+            if (!IsValidAuthData(authData))
             {
-                Debug.LogError("auth.json 파일의 내용이 비어 있습니다.");
-                return;
+                Debug.LogError("bootstrapAuthJson format is invalid or API key is empty.");
+                authData = null;
+                return false;
             }
 
-            AuthData tmpAuthData = JsonUtility.FromJson<AuthData>(jsonContent);
-            if (tmpAuthData == null)
-            {
-                Debug.LogError("auth.json 파일을 올바르게 파싱하지 못했습니다.");
-                return;
-            }
-
-            string encryptedJsonContent = EncryptionHelper.Encrypt(tmpAuthData.GetEncryptedJson());
-            File.WriteAllText(authFilePath, encryptedJsonContent);
-
-            Debug.Log($"암호화된 auth.json 파일 생성 완료: {authFilePath}");
+            return true;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            Debug.LogError($"auth.json 파일 처리 중 오류 발생: {ex.Message}");
+            Debug.LogError($"Failed to parse bootstrapAuthJson: {ex.Message}");
+            authData = null;
+            return false;
         }
+    }
+
+    private bool TryLoadBootstrapAuthFromEnvironment(out AuthData authData)
+    {
+        authData = null;
+
+        string apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        string organization = Environment.GetEnvironmentVariable("OPENAI_ORGANIZATION");
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return false;
+        }
+
+        authData = new AuthData
+        {
+            ApiKey = apiKey.Trim(),
+            Organization = string.IsNullOrWhiteSpace(organization) ? "" : organization.Trim()
+        };
+
+        return true;
+    }
+
+    private bool SaveEncryptedAuthFile(AuthData authData)
+    {
+        if (!IsValidAuthData(authData))
+        {
+            Debug.LogError("Cannot save auth file because auth data is invalid.");
+            return false;
+        }
+
+        try
+        {
+            string encryptedJsonContent = EncryptionHelper.Encrypt(authData.GetEncryptedJson());
+            File.WriteAllText(GetAuthFilePath(), encryptedJsonContent);
+
+            bool existsAfterWrite = File.Exists(GetAuthFilePath());
+            if (!existsAfterWrite)
+            {
+                Debug.LogError("auth.json write completed, but file does not exist afterwards.");
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to save encrypted auth file: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool TryLoadEncryptedAuthFile(string filePath, out AuthData authData)
+    {
+        authData = null;
+
+        if (string.IsNullOrWhiteSpace(filePath))
+            return false;
+
+        if (!File.Exists(filePath))
+            return false;
+
+        try
+        {
+            string encryptedContent = File.ReadAllText(filePath);
+            if (string.IsNullOrWhiteSpace(encryptedContent))
+            {
+                Debug.LogWarning("Encrypted auth file exists but is empty.");
+                return false;
+            }
+
+            string decryptedJson = EncryptionHelper.Decrypt(encryptedContent);
+            if (string.IsNullOrWhiteSpace(decryptedJson))
+            {
+                Debug.LogWarning("Decrypted auth content is empty.");
+                return false;
+            }
+
+            authData = AuthData.FromDecryptedJson(decryptedJson);
+            if (!IsValidAuthData(authData))
+            {
+                Debug.LogWarning("Decrypted auth data is invalid.");
+                authData = null;
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to read encrypted auth file: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool IsValidAuthData(AuthData authData)
+    {
+        return authData != null && !string.IsNullOrWhiteSpace(authData.ApiKey);
     }
 }
 
-[System.Serializable]
+[Serializable]
 public class AuthData
 {
-    [SerializeField]
-    private string api_key;
-
-    [SerializeField]
-    private string organization;
+    [SerializeField] private string api_key;
+    [SerializeField] private string organization;
 
     public string ApiKey
     {
-        set { api_key = value; }
-        get { return api_key; }
+        get => api_key;
+        set => api_key = value;
     }
 
     public string Organization
     {
-        set { organization = value; }
-        get { return organization; }
+        get => organization;
+        set => organization = value;
     }
 
-    // JSON 파일 저장 시 사용될 암호화된 데이터 반환 (키 이름을 수동 설정)
     public string GetEncryptedJson()
     {
-        // 수동으로 JSON 문자열을 생성
-        string json = $"{{\"api_key\":\"{api_key}\",\"organization\":\"{organization}\"}}";
-        Debug.Log($"암호화된 JSON 내용: {json}");
-        return json;
+        return JsonUtility.ToJson(this);
     }
 
-    // 복호화된 JSON을 객체로 변환하는 메서드 추가
     public static AuthData FromDecryptedJson(string json)
     {
-        // Unity의 JsonUtility를 사용하여 역직렬화 (자동 매핑)
         return JsonUtility.FromJson<AuthData>(json);
     }
 }

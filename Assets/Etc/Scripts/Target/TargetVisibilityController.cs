@@ -4,18 +4,18 @@ using UnityEngine;
 public class TargetVisibilityController : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private TargetController targetController;
-    [SerializeField] private List<VisionSensor> agentVisionSensors = new List<VisionSensor>();
+    public TargetController targetController;
+    public List<VisionSensor> agentVisionSensors = new List<VisionSensor>();
 
     [Header("Hide Targets")]
-    [SerializeField] private List<Renderer> targetRenderers = new List<Renderer>();
-    [SerializeField] private List<Canvas> targetCanvases = new List<Canvas>();
-    [SerializeField] private List<GameObject> extraVisibleObjects = new List<GameObject>();
+    public List<Renderer> targetRenderers = new List<Renderer>();
+    public List<Canvas> targetCanvases = new List<Canvas>();
+    public List<GameObject> extraVisibleObjects = new List<GameObject>();
 
     [Header("Options")]
-    [SerializeField] private bool hideWhenNotVisible = true;
-    [SerializeField] private bool autoFindSceneSensors = true;
-    [SerializeField] private bool debugVisibility = true;
+    public bool hideWhenNotVisible = true;
+    public bool autoFindSceneSensors = true;
+    public bool debugVisibility = false;
 
     private bool isCurrentlyVisible = true;
     private Transform targetRoot;
@@ -29,7 +29,7 @@ public class TargetVisibilityController : MonoBehaviour
         targetRoot = targetController != null ? targetController.transform : transform.root;
 
         if (targetRenderers.Count == 0)
-            targetRenderers.AddRange(GetComponentsInChildren<Renderer>(true));
+            CollectTargetRenderers();
 
         if (targetCanvases.Count == 0)
             targetCanvases.AddRange(GetComponentsInChildren<Canvas>(true));
@@ -68,6 +68,21 @@ public class TargetVisibilityController : MonoBehaviour
             Debug.Log($"[TargetVisibility] visible={isCurrentlyVisible}, reason={lastVisibleReason}");
     }
 
+    private void CollectTargetRenderers()
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+
+            if (renderer == null)
+                continue;
+
+            targetRenderers.Add(renderer);
+        }
+    }
+
     private void CollectSceneSensorsIfNeeded()
     {
         if (!autoFindSceneSensors)
@@ -76,8 +91,13 @@ public class TargetVisibilityController : MonoBehaviour
         for (int i = agentVisionSensors.Count - 1; i >= 0; i--)
         {
             VisionSensor sensor = agentVisionSensors[i];
-            if (sensor == null || !sensor.isActiveAndEnabled || !sensor.gameObject.activeInHierarchy)
+
+            if (sensor == null ||
+                !sensor.isActiveAndEnabled ||
+                !sensor.gameObject.activeInHierarchy)
+            {
                 agentVisionSensors.RemoveAt(i);
+            }
         }
 
         VisionSensor[] sensors = FindObjectsByType<VisionSensor>(
@@ -88,6 +108,7 @@ public class TargetVisibilityController : MonoBehaviour
         for (int i = 0; i < sensors.Length; i++)
         {
             VisionSensor sensor = sensors[i];
+
             if (sensor == null)
                 continue;
 
@@ -106,9 +127,9 @@ public class TargetVisibilityController : MonoBehaviour
         if (targetRoot == null)
             return false;
 
-        // 드론 정찰 범위에 들어와 노출된 상태라면,
-        // 직접 시야와 상관없이 카메라에 보이도록 처리
-        if (targetController != null && GameManager.Instance.IsTargetDebugRevealEnabled)
+        if (GameManager.Instance != null &&
+            targetController != null &&
+            GameManager.Instance.IsTargetDebugRevealEnabled)
         {
             visibleReason = "ReconReveal";
             return true;
@@ -117,6 +138,7 @@ public class TargetVisibilityController : MonoBehaviour
         for (int i = agentVisionSensors.Count - 1; i >= 0; i--)
         {
             VisionSensor sensor = agentVisionSensors[i];
+
             if (sensor == null)
             {
                 agentVisionSensors.RemoveAt(i);
@@ -143,20 +165,32 @@ public class TargetVisibilityController : MonoBehaviour
 
         for (int i = 0; i < targetRenderers.Count; i++)
         {
-            if (targetRenderers[i] != null)
-                targetRenderers[i].enabled = visible;
+            Renderer renderer = targetRenderers[i];
+
+            if (renderer == null)
+                continue;
+
+            renderer.enabled = visible;
         }
 
         for (int i = 0; i < targetCanvases.Count; i++)
         {
-            if (targetCanvases[i] != null)
-                targetCanvases[i].enabled = visible;
+            Canvas canvas = targetCanvases[i];
+
+            if (canvas == null)
+                continue;
+
+            canvas.enabled = visible;
         }
 
         for (int i = 0; i < extraVisibleObjects.Count; i++)
         {
-            if (extraVisibleObjects[i] != null)
-                extraVisibleObjects[i].SetActive(visible);
+            GameObject targetObject = extraVisibleObjects[i];
+
+            if (targetObject == null)
+                continue;
+
+            targetObject.SetActive(visible);
         }
     }
 

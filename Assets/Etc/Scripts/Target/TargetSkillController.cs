@@ -12,13 +12,6 @@ public enum TargetSkillType
     EmergencyEscape
 }
 
-public enum TargetDifficultySkillSet
-{
-    Easy = 0,
-    Normal = 1,
-    Hard = 2
-}
-
 public class TargetSkillController : MonoBehaviour
 {
     [Header("Common References")]
@@ -64,10 +57,8 @@ public class TargetSkillController : MonoBehaviour
     [SerializeField] private float communicationJamDuration = 15f;
 
     [Header("Emergency Escape")]
-    [SerializeField][Min(0)] private int normalEmergencyEscapeCharges = 1;
-    [SerializeField][Min(0)] private int hardEmergencyEscapeCharges = 1;
-    [SerializeField] private bool autoUseEmergencyEscapeOnNormal = true;
-    [SerializeField] private bool autoUseEmergencyEscapeOnHard = true;
+    public int emergencyEscapeCharges = 1;
+    public bool autoUseEmergencyEscape = true;
 
     [Header("Skill Toggle")]
     [SerializeField] private bool enableBarricadeSkill = true;
@@ -75,6 +66,11 @@ public class TargetSkillController : MonoBehaviour
     [SerializeField] private bool enableSmokeSkill = true;
     [SerializeField] private bool enableCommunicationJamSkill = true;
     [SerializeField] private bool enableEmergencyEscapeSkill = false;
+
+    [Header("Auto Defensive Skill Control")]
+    [SerializeField] private bool autoUseDefensiveSkillOnlyOncePerThreatEncounter = true;
+    [SerializeField] private float autoDefensiveSharedCooldown = 10f;
+    [SerializeField] private float threatResetDelay = 1f;
 
     [Header("Debug")]
     [SerializeField] private bool writeLog = true;
@@ -89,6 +85,11 @@ public class TargetSkillController : MonoBehaviour
     private float nextHologramReadyTime = -999f;
     private float nextSmokeReadyTime = -999f;
     private float nextCommunicationJamReadyTime = -999f;
+
+    private float nextAutoDefensiveReadyTime = -999f;
+    private bool wasThreatActiveLastFrame;
+    private bool autoDefensiveUsedInCurrentThreatEncounter;
+    private float threatLastLostTime = -999f;
 
     public TargetHologram CurrentHologram => currentHologram;
     public float BarricadeRemainingCooldown => Mathf.Max(0f, nextBarricadeReadyTime - Time.time);
@@ -120,11 +121,20 @@ public class TargetSkillController : MonoBehaviour
             commanderUIController = FindFirstObjectByType<CommanderUIController>();
 
         ClampValues();
+        ApplyEmergencyEscapeSettingsToEscapeMotor();
     }
 
     private void OnValidate()
     {
         ClampValues();
+
+        if (Application.isPlaying)
+            ApplyEmergencyEscapeSettingsToEscapeMotor();
+    }
+
+    private void Update()
+    {
+        UpdateThreatEncounterState();
     }
 
     private void LateUpdate()
@@ -150,84 +160,18 @@ public class TargetSkillController : MonoBehaviour
         nextSmokeReadyTime = -999f;
         nextCommunicationJamReadyTime = -999f;
 
+        nextAutoDefensiveReadyTime = -999f;
+        wasThreatActiveLastFrame = false;
+        autoDefensiveUsedInCurrentThreatEncounter = false;
+        threatLastLostTime = -999f;
+
+        ApplyEmergencyEscapeSettingsToEscapeMotor();
+
         if (destroyActiveBarricades)
             DestroyAllActiveBarricades();
 
         if (destroyActiveHologram)
             ForceClearCurrentHologram();
-    }
-
-    public void ApplySkillSetByDifficultyIndex(int difficultyIndex)
-    {
-        if (difficultyIndex <= 0)
-        {
-            ApplySkillSet(TargetDifficultySkillSet.Easy);
-            return;
-        }
-
-        if (difficultyIndex == 1)
-        {
-            ApplySkillSet(TargetDifficultySkillSet.Normal);
-            return;
-        }
-
-        ApplySkillSet(TargetDifficultySkillSet.Hard);
-    }
-
-    public void ApplySkillSet(TargetDifficultySkillSet skillSet)
-    {
-        bool useBarricade = true;
-        bool useHologram = true;
-        bool useSmoke = false;
-        bool useCommunicationJam = false;
-        bool useEmergencyEscape = false;
-        int emergencyEscapeCharges = 0;
-        bool autoUseEmergencyEscape = false;
-
-        switch (skillSet)
-        {
-            case TargetDifficultySkillSet.Easy:
-                useBarricade = true;
-                useHologram = true;
-                break;
-
-            case TargetDifficultySkillSet.Normal:
-                useBarricade = true;
-                useHologram = true;
-                useSmoke = true;
-                useEmergencyEscape = true;
-                emergencyEscapeCharges = normalEmergencyEscapeCharges;
-                autoUseEmergencyEscape = autoUseEmergencyEscapeOnNormal;
-                break;
-
-            case TargetDifficultySkillSet.Hard:
-                useBarricade = true;
-                useHologram = true;
-                useSmoke = true;
-                useEmergencyEscape = true;
-                useCommunicationJam = true;
-                emergencyEscapeCharges = hardEmergencyEscapeCharges;
-                autoUseEmergencyEscape = autoUseEmergencyEscapeOnHard;
-                break;
-        }
-
-        enableBarricadeSkill = useBarricade;
-        enableHologramSkill = useHologram;
-        enableSmokeSkill = useSmoke;
-        enableCommunicationJamSkill = useCommunicationJam;
-        enableEmergencyEscapeSkill = useEmergencyEscape;
-
-        if (escapeMotor != null)
-            escapeMotor.ConfigureEmergencyEscape(useEmergencyEscape, emergencyEscapeCharges, autoUseEmergencyEscape);
-
-        if (writeLog)
-        {
-            Debug.Log(
-                $"[TargetSkillController] ���̵� ��ų ����: {skillSet} " +
-                $"(Barricade={enableBarricadeSkill}, Hologram={enableHologramSkill}, Smoke={enableSmokeSkill}, " +
-                $"EmergencyEscape={enableEmergencyEscapeSkill}, CommunicationJam={enableCommunicationJamSkill})"
-            );
-        }
     }
 
     public bool TryUseBarricade(Vector3 escapeDestination)
@@ -260,20 +204,37 @@ public class TargetSkillController : MonoBehaviour
         if (nearestDistance < minThreatDistance)
             return false;
 
-        Vector3 desiredSpawnPosition = transform.position - escapeForward * spawnBehindDistance;
+        Vector3 behindDirection = transform.position - nearestAgent.position;
+        behindDirection.y = 0f;
 
-        if (!TryResolveBarricadeSpawnPosition(desiredSpawnPosition, out Vector3 spawnPosition))
+        if (behindDirection.sqrMagnitude < 0.0001f)
+            behindDirection = -escapeForward;
+
+        behindDirection.Normalize();
+
+        Vector3 desiredPosition = transform.position + behindDirection * spawnBehindDistance;
+
+        if (!TryResolveBarricadePosition(desiredPosition, out Vector3 finalPosition))
             return false;
 
-        if (hasLastPlacementPosition &&
-            Vector3.Distance(spawnPosition, lastPlacementPosition) < minDistanceBetweenPlacements)
-            return false;
+        if (hasLastPlacementPosition)
+        {
+            Vector3 flatDelta = finalPosition - lastPlacementPosition;
+            flatDelta.y = 0f;
 
-        SpawnBarricade(spawnPosition, escapeForward);
+            if (flatDelta.magnitude < minDistanceBetweenPlacements)
+                return false;
+        }
 
-        lastPlacementPosition = spawnPosition;
+        GameObject spawnedBarricade = Instantiate(barricadePrefab, finalPosition, Quaternion.identity);
+        RegisterBarricade(spawnedBarricade);
+
+        lastPlacementPosition = finalPosition;
         hasLastPlacementPosition = true;
         nextBarricadeReadyTime = Time.time + barricadeCooldown;
+
+        if (writeLog)
+            Debug.Log($"[TargetSkillController] 바리케이드 설치: {finalPosition}");
 
         return true;
     }
@@ -288,14 +249,11 @@ public class TargetSkillController : MonoBehaviour
             if (!destroyPreviousHologram)
                 return false;
 
-            Destroy(currentHologram.gameObject);
-            currentHologram = null;
+            ForceClearCurrentHologram();
         }
 
         Vector3 spawnPosition = GetHologramSpawnPosition();
-        Quaternion spawnRotation = copyCurrentRotation && hologramSpawnPoint != null
-            ? hologramSpawnPoint.rotation
-            : Quaternion.identity;
+        Quaternion spawnRotation = copyCurrentRotation ? transform.rotation : Quaternion.identity;
 
         TargetHologram spawned = Instantiate(hologramPrefab, spawnPosition, spawnRotation);
         spawned.Initialize(transform);
@@ -304,7 +262,7 @@ public class TargetSkillController : MonoBehaviour
         nextHologramReadyTime = Time.time + hologramCooldown;
 
         if (writeLog)
-            Debug.Log($"[TargetSkillController] Ȧ�α׷� ����: {spawnPosition}");
+            Debug.Log($"[TargetSkillController] 홀로그램 생성: {spawnPosition}");
 
         return true;
     }
@@ -323,20 +281,22 @@ public class TargetSkillController : MonoBehaviour
         nextSmokeReadyTime = Time.time + smokeCooldown;
 
         if (writeLog)
-            Debug.Log($"[TargetSkillController] ����ź ����: {spawnPosition}");
+            Debug.Log($"[TargetSkillController] 연막탄 생성: {spawnPosition}");
 
         return true;
     }
 
     public bool TryUseCommunicationJam()
     {
+        return TryUseCommunicationJamOnCommandSubmission();
+    }
+
+    public bool TryUseCommunicationJamOnCommandSubmission()
+    {
         if (!CanUseCommunicationJam())
             return false;
 
-        int randomAgentId = Random.Range(0, 4);
-        bool jamApplied = commanderUIController.TryJamAgentInput(randomAgentId, communicationJamDuration);
-
-        if (!jamApplied)
+        if (!TryJamRandomAgentInput(out int jammedAgentId))
             return false;
 
         nextCommunicationJamReadyTime = Time.time + communicationJamCooldown;
@@ -344,7 +304,7 @@ public class TargetSkillController : MonoBehaviour
         if (writeLog)
         {
             Debug.Log(
-                $"[TargetSkillController] ��� ���� �ߵ�: AgentID {randomAgentId}, ���ӽð� {communicationJamDuration}��");
+                $"[TargetSkillController] 통신 방해 발동: AgentID {jammedAgentId}, 지속시간 {communicationJamDuration}초");
         }
 
         return true;
@@ -358,10 +318,12 @@ public class TargetSkillController : MonoBehaviour
         if (escapeMotor == null)
             return false;
 
+        ApplyEmergencyEscapeSettingsToEscapeMotor();
+
         bool activated = escapeMotor.TryActivateEmergencyEscape();
 
         if (activated && writeLog)
-            Debug.Log("[TargetSkillController] ��� Ż�� �ߵ� ��û ����");
+            Debug.Log("[TargetSkillController] 긴급 탈출 발동 요청 성공");
 
         return activated;
     }
@@ -373,6 +335,8 @@ public class TargetSkillController : MonoBehaviour
 
         if (escapeMotor == null)
             return false;
+
+        ApplyEmergencyEscapeSettingsToEscapeMotor();
 
         if (!escapeMotor.ShouldAutoTriggerEmergencyEscape(healthRatio))
             return false;
@@ -386,19 +350,14 @@ public class TargetSkillController : MonoBehaviour
         {
             case TargetSkillType.Barricade:
                 return TryUseBarricade(escapeDestination);
-
             case TargetSkillType.Hologram:
                 return TryUseHologram();
-
             case TargetSkillType.Smoke:
                 return TryUseSmoke();
-
             case TargetSkillType.CommunicationJam:
                 return TryUseCommunicationJam();
-
             case TargetSkillType.EmergencyEscape:
                 return TryUseEmergencyEscape();
-
             default:
                 return false;
         }
@@ -414,10 +373,7 @@ public class TargetSkillController : MonoBehaviour
             if (TryUseSmoke())
                 return true;
 
-            if (TryUseHologram())
-                return true;
-
-            return TryUseCommunicationJam();
+            return TryUseHologram();
         }
 
         if (TryUseSmoke())
@@ -426,15 +382,79 @@ public class TargetSkillController : MonoBehaviour
         if (TryUseHologram())
             return true;
 
-        if (TryUseCommunicationJam())
-            return true;
-
         return TryUseBarricade(escapeDestination);
     }
 
     public bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
     {
-        return TryUseDefensiveSkill(escapeDestination, true);
+        if (!CanUseAutoDefensiveSkill())
+            return false;
+
+        bool used = TryUseDefensiveSkill(escapeDestination, true);
+        if (!used)
+            return false;
+
+        nextAutoDefensiveReadyTime = Time.time + autoDefensiveSharedCooldown;
+        autoDefensiveUsedInCurrentThreatEncounter = true;
+
+        if (writeLog)
+        {
+            Debug.Log(
+                $"[TargetSkillController] 자동 방어 스킬 발동: sharedCooldown={autoDefensiveSharedCooldown:0.##}, currentThreatLocked={autoUseDefensiveSkillOnlyOncePerThreatEncounter}");
+        }
+
+        return true;
+    }
+
+    private bool CanUseAutoDefensiveSkill()
+    {
+        if (Time.time < nextAutoDefensiveReadyTime)
+            return false;
+
+        if (!autoUseDefensiveSkillOnlyOncePerThreatEncounter)
+            return true;
+
+        return !autoDefensiveUsedInCurrentThreatEncounter;
+    }
+
+    private void UpdateThreatEncounterState()
+    {
+        if (threatTracker == null)
+            return;
+
+        bool hasThreat = threatTracker.HasAnyThreat();
+
+        if (hasThreat)
+        {
+            bool shouldResetEncounter =
+                !wasThreatActiveLastFrame &&
+                Time.time - threatLastLostTime >= threatResetDelay;
+
+            if (shouldResetEncounter)
+                autoDefensiveUsedInCurrentThreatEncounter = false;
+        }
+        else
+        {
+            if (wasThreatActiveLastFrame)
+                threatLastLostTime = Time.time;
+
+            if (Time.time - threatLastLostTime >= threatResetDelay)
+                autoDefensiveUsedInCurrentThreatEncounter = false;
+        }
+
+        wasThreatActiveLastFrame = hasThreat;
+    }
+
+    private bool TryJamRandomAgentInput(out int jammedAgentId)
+    {
+        jammedAgentId = -1;
+
+        if (commanderUIController == null)
+            return false;
+
+        return commanderUIController.TryJamRandomAvailableAgentInput(
+            communicationJamDuration,
+            out jammedAgentId);
     }
 
     public void ForceClearCurrentHologram()
@@ -458,9 +478,6 @@ public class TargetSkillController : MonoBehaviour
             return false;
 
         if (Time.time < nextBarricadeReadyTime)
-            return false;
-
-        if (navAgent != null && !navAgent.isOnNavMesh)
             return false;
 
         return true;
@@ -508,81 +525,16 @@ public class TargetSkillController : MonoBehaviour
         return true;
     }
 
-    private bool TryResolveBarricadeSpawnPosition(Vector3 desiredPosition, out Vector3 spawnPosition)
+    private void RegisterBarricade(GameObject spawnedBarricade)
     {
-        spawnPosition = desiredPosition;
+        if (spawnedBarricade == null)
+            return;
 
-        if (!NavMesh.SamplePosition(desiredPosition, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
-            return false;
-
-        spawnPosition = hit.position;
-
-        Vector3 flatOffset = spawnPosition - transform.position;
-        flatOffset.y = 0f;
-
-        if (flatOffset.sqrMagnitude < 0.8f * 0.8f)
-            return false;
-
-        return true;
-    }
-
-    private void SpawnBarricade(Vector3 spawnPosition, Vector3 escapeForward)
-    {
-        Quaternion rotation = escapeForward.sqrMagnitude > 0.0001f
-            ? Quaternion.LookRotation(escapeForward, Vector3.up)
-            : Quaternion.identity;
-
-        GameObject instance = Instantiate(barricadePrefab, spawnPosition, rotation);
-        activeBarricades.Enqueue(instance);
-
-        TrimActiveBarricades();
-
-        if (writeLog)
-            Debug.Log($"[TargetSkillController] �ٸ����̵� ����: {spawnPosition}");
-    }
-
-    private Vector3 GetHologramSpawnPosition()
-    {
-        Transform basis = hologramSpawnPoint != null ? hologramSpawnPoint : transform;
-        Vector3 finalPosition = basis.position + hologramSpawnOffset;
-
-        if (useForwardOffset)
-        {
-            Vector3 forward = basis.forward;
-            forward.y = 0f;
-
-            if (forward.sqrMagnitude > 0.0001f)
-                finalPosition += forward.normalized * hologramForwardDistance;
-        }
-
-        return finalPosition;
-    }
-
-    private Vector3 GetSmokeSpawnPosition()
-    {
-        Transform basis = smokeSpawnPoint != null ? smokeSpawnPoint : transform;
-        Vector3 finalPosition = basis.position + smokeSpawnOffset;
-
-        if (useSmokeForwardOffset)
-        {
-            Vector3 forward = basis.forward;
-            forward.y = 0f;
-
-            if (forward.sqrMagnitude > 0.0001f)
-                finalPosition += forward.normalized * smokeForwardDistance;
-        }
-
-        return finalPosition;
-    }
-
-    private void TrimActiveBarricades()
-    {
-        CleanupDestroyedBarricades();
+        activeBarricades.Enqueue(spawnedBarricade);
 
         while (activeBarricades.Count > maxActiveBarricades)
         {
             GameObject oldest = activeBarricades.Dequeue();
-
             if (oldest != null)
                 Destroy(oldest);
         }
@@ -590,14 +542,15 @@ public class TargetSkillController : MonoBehaviour
 
     private void CleanupDestroyedBarricades()
     {
-        int count = activeBarricades.Count;
+        if (activeBarricades.Count == 0)
+            return;
 
-        for (int i = 0; i < count; i++)
+        int originalCount = activeBarricades.Count;
+        for (int i = 0; i < originalCount; i++)
         {
-            GameObject obj = activeBarricades.Dequeue();
-
-            if (obj != null)
-                activeBarricades.Enqueue(obj);
+            GameObject barricade = activeBarricades.Dequeue();
+            if (barricade != null)
+                activeBarricades.Enqueue(barricade);
         }
     }
 
@@ -605,36 +558,81 @@ public class TargetSkillController : MonoBehaviour
     {
         while (activeBarricades.Count > 0)
         {
-            GameObject obj = activeBarricades.Dequeue();
-
-            if (obj != null)
-                Destroy(obj);
+            GameObject barricade = activeBarricades.Dequeue();
+            if (barricade != null)
+                Destroy(barricade);
         }
+    }
+
+    private bool TryResolveBarricadePosition(Vector3 desiredPosition, out Vector3 finalPosition)
+    {
+        if (NavMesh.SamplePosition(desiredPosition, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+        {
+            finalPosition = hit.position;
+            return true;
+        }
+
+        finalPosition = desiredPosition;
+        return false;
+    }
+
+    private Vector3 GetHologramSpawnPosition()
+    {
+        Transform origin = hologramSpawnPoint != null ? hologramSpawnPoint : transform;
+        Vector3 position = origin.position + hologramSpawnOffset;
+
+        if (useForwardOffset)
+            position += transform.forward * hologramForwardDistance;
+
+        return position;
+    }
+
+    private Vector3 GetSmokeSpawnPosition()
+    {
+        Transform origin = smokeSpawnPoint != null ? smokeSpawnPoint : transform;
+        Vector3 position = origin.position + smokeSpawnOffset;
+
+        if (useSmokeForwardOffset)
+            position += transform.forward * smokeForwardDistance;
+
+        return position;
+    }
+
+    private void ApplyEmergencyEscapeSettingsToEscapeMotor()
+    {
+        if (escapeMotor == null)
+            return;
+
+        escapeMotor.ConfigureEmergencyEscape(
+            enableEmergencyEscapeSkill,
+            emergencyEscapeCharges,
+            enableEmergencyEscapeSkill && autoUseEmergencyEscape
+        );
     }
 
     private void ClampValues()
     {
         barricadeCooldown = Mathf.Max(0f, barricadeCooldown);
-        minDestinationDistance = Mathf.Max(0.5f, minDestinationDistance);
-        maxThreatDistance = Mathf.Max(0.5f, maxThreatDistance);
+        minDestinationDistance = Mathf.Max(0f, minDestinationDistance);
+        maxThreatDistance = Mathf.Max(0f, maxThreatDistance);
         minThreatDistance = Mathf.Max(0f, minThreatDistance);
-        behindDotThreshold = Mathf.Clamp(behindDotThreshold, -1f, 1f);
         minDistanceBetweenPlacements = Mathf.Max(0f, minDistanceBetweenPlacements);
-
-        spawnBehindDistance = Mathf.Max(0.5f, spawnBehindDistance);
+        spawnBehindDistance = Mathf.Max(0f, spawnBehindDistance);
         navMeshSampleRadius = Mathf.Max(0.1f, navMeshSampleRadius);
         maxActiveBarricades = Mathf.Max(1, maxActiveBarricades);
 
-        hologramCooldown = Mathf.Max(0f, hologramCooldown);
         hologramForwardDistance = Mathf.Max(0f, hologramForwardDistance);
+        hologramCooldown = Mathf.Max(0f, hologramCooldown);
 
-        smokeCooldown = Mathf.Max(0f, smokeCooldown);
         smokeForwardDistance = Mathf.Max(0f, smokeForwardDistance);
+        smokeCooldown = Mathf.Max(0f, smokeCooldown);
 
         communicationJamCooldown = Mathf.Max(0f, communicationJamCooldown);
-        communicationJamDuration = Mathf.Max(0.1f, communicationJamDuration);
+        communicationJamDuration = Mathf.Max(0f, communicationJamDuration);
 
-        normalEmergencyEscapeCharges = Mathf.Max(0, normalEmergencyEscapeCharges);
-        hardEmergencyEscapeCharges = Mathf.Max(0, hardEmergencyEscapeCharges);
+        emergencyEscapeCharges = Mathf.Max(0, emergencyEscapeCharges);
+
+        autoDefensiveSharedCooldown = Mathf.Max(0f, autoDefensiveSharedCooldown);
+        threatResetDelay = Mathf.Max(0f, threatResetDelay);
     }
 }

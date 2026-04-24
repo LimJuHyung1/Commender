@@ -8,6 +8,8 @@ public class CatchZone : MonoBehaviour
 
     public static event Action<GameObject> OnTargetCaught;
 
+    public static AgentController LastCatchingAgent { get; private set; }
+
     private void OnTriggerEnter(Collider other)
     {
         if (other.isTrigger)
@@ -41,6 +43,8 @@ public class CatchZone : MonoBehaviour
         }
 
         GameObject caughtObject = targetController != null ? targetController.gameObject : other.gameObject;
+
+        LastCatchingAgent = GetComponentInParent<AgentController>();
 
         Debug.Log($"<color=yellow>[CatchZone]</color> {caughtObject.name} 포획 성공!");
         OnTargetCaught?.Invoke(caughtObject);
