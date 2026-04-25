@@ -11,7 +11,8 @@ public sealed class CommandValidator
     private const string SkillDash = "dash";
     private const string SkillSmoke = "smoke";
     private const string SkillFlare = "flare";
-    private const string SkillWallSight = "wallsight";
+    private const string SkillPositionShareOn = "positionshare_on";
+    private const string SkillPositionShareOff = "positionshare_off";
     private const string SkillBarricade = "barricade";
     private const string SkillSlowTrap = "slowtrap";
     private const string SkillNoiseMaker = "noisemaker";
@@ -40,9 +41,33 @@ public sealed class CommandValidator
         "플레어"
     };
 
-    private static readonly string[] WallSightInstructionKeywords =
+    private static readonly string[] PositionShareInstructionKeywords =
     {
-        "wallsight", "truesight", "투시", "벽 너머", "벽너머", "시야"
+        "positionshare",
+        "position share",
+        "target position share",
+        "share target position",
+        "위치 공유",
+        "위치공유",
+        "타겟 위치 공유",
+        "타겟위치공유",
+        "타겟 위치 알려",
+        "타겟 위치를 알려",
+        "발견하면 알려",
+        "보이면 알려"
+    };
+
+    private static readonly string[] PositionShareOffKeywords =
+    {
+        "_off",
+        "off",
+        "disable",
+        "꺼",
+        "끄",
+        "중지",
+        "비활성",
+        "하지마",
+        "하지 마"
     };
 
     private static readonly string[] BarricadeInstructionKeywords =
@@ -107,6 +132,9 @@ public sealed class CommandValidator
         string normalizedSkill = Normalize(aiSkill);
         string normalizedInstruction = Normalize(originalInstruction);
 
+        if (TryResolvePositionShareSkill(normalizedInstruction, out string positionShareSkill))
+            return positionShareSkill;
+
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
 
@@ -122,8 +150,13 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedSkill, SkillFlare, "signalflare"))
             return MatchOrHold(normalizedInstruction, FlareInstructionKeywords, SkillFlare, aiSkill, originalInstruction);
 
-        if (ContainsAny(normalizedSkill, SkillWallSight, "truesight"))
-            return MatchOrHold(normalizedInstruction, WallSightInstructionKeywords, SkillWallSight, aiSkill, originalInstruction);
+        if (ContainsAny(normalizedSkill, SkillPositionShareOn, SkillPositionShareOff, "positionshare"))
+        {
+            if (ContainsAny(normalizedSkill, SkillPositionShareOff, "_off", "off"))
+                return SkillPositionShareOff;
+
+            return SkillPositionShareOn;
+        }
 
         if (ContainsAny(normalizedSkill, SkillBarricade))
             return MatchOrHold(normalizedInstruction, BarricadeInstructionKeywords, SkillBarricade, aiSkill, originalInstruction);
@@ -154,7 +187,7 @@ public sealed class CommandValidator
             return SkillHold;
         }
 
-        Debug.LogWarning($"[Commender] 알 수 없는 skill='{aiSkill}' 를 이동으로 처리하지 않고 대기 상태로 전환합니다. 원문: {originalInstruction}");
+        Debug.LogWarning($"[Commander] 알 수 없는 skill='{aiSkill}' 를 이동으로 처리하지 않고 대기 상태로 전환합니다. 원문: {originalInstruction}");
         return SkillHold;
     }
 
@@ -215,6 +248,23 @@ public sealed class CommandValidator
         return parsedX && parsedZ;
     }
 
+    private bool TryResolvePositionShareSkill(string normalizedInstruction, out string skill)
+    {
+        skill = "";
+
+        if (!ContainsAny(normalizedInstruction, PositionShareInstructionKeywords))
+            return false;
+
+        if (ContainsAny(normalizedInstruction, PositionShareOffKeywords))
+        {
+            skill = SkillPositionShareOff;
+            return true;
+        }
+
+        skill = SkillPositionShareOn;
+        return true;
+    }
+
     private bool ShouldForceLookAroundFromInstruction(string source)
     {
         if (string.IsNullOrWhiteSpace(source))
@@ -239,7 +289,7 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedInstruction, requiredKeywords))
             return successSkill;
 
-        Debug.LogWarning($"[Commender] 원문에 {successSkill} 요청이 없어 skill='{aiSkill}' 를 무시합니다. 원문: {originalInstruction}");
+        Debug.LogWarning($"[Commander] 원문에 {successSkill} 요청이 없어 skill='{aiSkill}' 를 무시합니다. 원문: {originalInstruction}");
         return SkillHold;
     }
 

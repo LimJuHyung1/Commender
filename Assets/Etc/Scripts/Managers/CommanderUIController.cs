@@ -899,7 +899,7 @@ public class CommanderUIController : MonoBehaviour
             return "EX) 대쉬, 연막";
 
         if (typeName.Contains("Scout"))
-            return "EX) 조명탄, 투시";
+            return "EX) 조명탄, 위치 공유 꺼";
 
         if (typeName.Contains("Engineer"))
             return "EX) 바리케이드, 함정";
@@ -912,7 +912,7 @@ public class CommanderUIController : MonoBehaviour
             case 0:
                 return "EX) 대쉬, 연막";
             case 1:
-                return "EX) 조명탄, 투시";
+                return "EX) 조명탄, 위치 공유 꺼";
             case 2:
                 return "EX) 바리케이드, 함정";
             case 3:

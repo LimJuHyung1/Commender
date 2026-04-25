@@ -342,16 +342,20 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent is ScoutAgent)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"flare\" and \"wallsight\".\n" +
+                   "13. Allowed skills for this agent are only \"flare\", \"positionshare_on\", and \"positionshare_off\".\n" +
                    "14. Use \"flare\" ONLY when the instruction explicitly asks for flare, signal flare, 조명탄, 신호탄, or 플레어.\n" +
-                   "15. Use \"wallsight\" ONLY when the instruction explicitly asks for wallsight, 투시, 벽 너머 시야, 벽너머 시야, or 벽너머 보기.\n\n" +
+                   "15. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing, 위치 공유 켜, 위치 공유 시작, 위치 공유해, 타겟 위치 공유, or 타겟 위치 알려줘.\n" +
+                   "16. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing, 위치 공유 꺼, 위치 공유 중지, 위치 공유하지 마, or 타겟 위치 공유하지 마.\n" +
+                   "17. Do not use wallsight or truesight. Those skills are not supported anymore.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 8,3에 신호탄 발사\n" +
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 8.0, \"z\": 3.0}}, \"skill\": \"flare\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 투시 사용\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"wallsight\" }} ] }}";
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 꺼\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_off\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 켜\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_on\" }} ] }}";
         }
 
         if (targetAgent is EngineerAgent)

@@ -194,7 +194,32 @@ public class StageMapManager : MonoBehaviour
         }
 
         currentTarget = Instantiate(targetPrefab, spawnPoint.position, spawnPoint.rotation);
+
+        ApplyTargetLevelToCurrentTarget();
+
         Debug.Log($"[StageMapManager] 타겟 생성 위치: {spawnPoint.name}");
+    }
+
+    private void ApplyTargetLevelToCurrentTarget()
+    {
+        if (currentTarget == null)
+            return;
+
+        TargetLevelStatApplier statApplier = currentTarget.GetComponent<TargetLevelStatApplier>();
+
+        if (statApplier == null)
+            statApplier = currentTarget.GetComponentInChildren<TargetLevelStatApplier>(true);
+
+        if (statApplier == null)
+        {
+            Debug.LogWarning("[StageMapManager] TargetLevelStatApplier를 찾지 못했습니다.");
+            return;
+        }
+
+        int stageNumber = currentStageIndex + 1;
+        statApplier.ApplyFromStageNumber(stageNumber);
+
+        Debug.Log($"[StageMapManager] Target Level 적용 완료: Stage={stageNumber}, TargetLevel={statApplier.targetLevel}");
     }
 
     private Transform GetRandomTargetSpawnPoint()

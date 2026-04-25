@@ -35,6 +35,10 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] private float chaseRepathInterval = 0.15f;
     [SerializeField] private float chaseDestinationThreshold = 0.25f;
 
+    private const float SharedTargetPositionMemoryDuration = 3f;
+    private const float SharedTargetRepathInterval = 0.15f;
+    private const float SharedTargetDestinationThreshold = 0.25f;
+
     protected NavMeshAgent navAgent;
     protected Transform currentTarget;
     protected bool isManualMoving = false;
@@ -42,6 +46,15 @@ public abstract class AgentController : MonoBehaviour
     private float chaseRepathTimer = 0f;
     private Vector3 lastChaseDestination;
     private bool hasLastChaseDestination = false;
+
+    private bool hasSharedTargetPosition = false;
+    private bool isFollowingSharedTargetPosition = false;
+    private Vector3 sharedTargetPosition;
+    private Vector3 lastSharedTargetDestination;
+    private bool hasLastSharedTargetDestination = false;
+    private float sharedTargetPositionExpireTime = -1f;
+    private float sharedTargetRepathTimer = 0f;
+    private AgentController sharedTargetReporter;
 
     private int isMovingParameterHash;
     private int moveSpeedParameterHash;
@@ -61,6 +74,11 @@ public abstract class AgentController : MonoBehaviour
     public LayerMask TargetLayer => targetLayer;
     public AgentStatsSO Stats => stats;
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
+
+    public bool HasSharedTargetPosition => hasSharedTargetPosition;
+    public Vector3 SharedTargetPosition => sharedTargetPosition;
+    public AgentController SharedTargetReporter => sharedTargetReporter;
+    public bool IsFollowingSharedTargetPosition => isFollowingSharedTargetPosition;
 
     public abstract void ExecuteSkill(string skillName, Vector3 targetPos);
 
@@ -102,6 +120,7 @@ public abstract class AgentController : MonoBehaviour
     protected virtual void OnDisable()
     {
         StopLookAroundInternal(false);
+        ClearSharedTargetPosition();
         UpdateStateIcon();
     }
 
@@ -192,6 +211,10 @@ public abstract class AgentController : MonoBehaviour
                 chaseRepathTimer = chaseRepathInterval;
             }
         }
+        else
+        {
+            UpdateSharedTargetPositionMovement();
+        }
 
         UpdateAnimationState();
         UpdateStateIcon();
@@ -257,7 +280,9 @@ public abstract class AgentController : MonoBehaviour
 
         currentTarget = null;
         isManualMoving = false;
+        isFollowingSharedTargetPosition = false;
         hasLastChaseDestination = false;
+        hasLastSharedTargetDestination = false;
 
         NavMeshHit hit;
         if (!NavMesh.SamplePosition(destination, out hit, 2.0f, navAgent.areaMask))
@@ -314,6 +339,7 @@ public abstract class AgentController : MonoBehaviour
     private IEnumerator LookAroundCoroutine()
     {
         isLookingAround = true;
+        isFollowingSharedTargetPosition = false;
 
         if (navAgent != null)
         {
@@ -423,9 +449,11 @@ public abstract class AgentController : MonoBehaviour
 
         currentTarget = target;
         isManualMoving = false;
+        isFollowingSharedTargetPosition = false;
         navAgent.isStopped = false;
 
         hasLastChaseDestination = false;
+        hasLastSharedTargetDestination = false;
         chaseRepathTimer = 0f;
 
         navAgent.SetDestination(currentTarget.position);
@@ -444,6 +472,7 @@ public abstract class AgentController : MonoBehaviour
             return;
 
         currentTarget = null;
+        hasLastChaseDestination = false;
 
         if (!isManualMoving && navAgent != null)
             navAgent.ResetPath();
@@ -456,6 +485,7 @@ public abstract class AgentController : MonoBehaviour
     public virtual void StopChase()
     {
         currentTarget = null;
+        hasLastChaseDestination = false;
 
         if (!isManualMoving && navAgent != null)
             navAgent.ResetPath();
@@ -463,6 +493,88 @@ public abstract class AgentController : MonoBehaviour
         UpdateAnimationState(true);
         UpdateStateIcon();
         Debug.Log($"[Agent {AgentID}] Chase stopped.");
+    }
+
+    public virtual void ReceiveSharedTargetPosition(Vector3 position, AgentController reporter)
+    {
+        if (!isActiveAndEnabled)
+            return;
+
+        if (reporter == null)
+            return;
+
+        if (currentTarget != null)
+            return;
+
+        hasSharedTargetPosition = true;
+        sharedTargetPosition = position;
+        sharedTargetReporter = reporter;
+        sharedTargetPositionExpireTime = Time.time + SharedTargetPositionMemoryDuration;
+    }
+
+    public virtual void ClearSharedTargetPosition(AgentController reporter = null)
+    {
+        if (reporter != null && sharedTargetReporter != null && sharedTargetReporter != reporter)
+            return;
+
+        hasSharedTargetPosition = false;
+        isFollowingSharedTargetPosition = false;
+        sharedTargetReporter = null;
+        sharedTargetPositionExpireTime = -1f;
+        sharedTargetRepathTimer = 0f;
+        hasLastSharedTargetDestination = false;
+
+        if (currentTarget == null && !isManualMoving && !isLookingAround && navAgent != null)
+            navAgent.ResetPath();
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+    }
+
+    private void UpdateSharedTargetPositionMovement()
+    {
+        if (!hasSharedTargetPosition)
+        {
+            isFollowingSharedTargetPosition = false;
+            return;
+        }
+
+        if (Time.time > sharedTargetPositionExpireTime)
+        {
+            ClearSharedTargetPosition(sharedTargetReporter);
+            return;
+        }
+
+        if (navAgent == null)
+            return;
+
+        if (currentTarget != null || isManualMoving || isLookingAround)
+            return;
+
+        sharedTargetRepathTimer -= Time.deltaTime;
+
+        bool shouldRepath = !hasLastSharedTargetDestination ||
+                            Vector3.Distance(lastSharedTargetDestination, sharedTargetPosition) >= SharedTargetDestinationThreshold;
+
+        if (sharedTargetRepathTimer > 0f && !shouldRepath)
+            return;
+
+        if (!NavMesh.SamplePosition(sharedTargetPosition, out NavMeshHit hit, 2.0f, navAgent.areaMask))
+            return;
+
+        NavMeshPath path = new NavMeshPath();
+        bool pathFound = navAgent.CalculatePath(hit.position, path);
+
+        if (!pathFound || path.status != NavMeshPathStatus.PathComplete)
+            return;
+
+        navAgent.isStopped = false;
+        navAgent.SetDestination(hit.position);
+
+        lastSharedTargetDestination = sharedTargetPosition;
+        hasLastSharedTargetDestination = true;
+        isFollowingSharedTargetPosition = true;
+        sharedTargetRepathTimer = SharedTargetRepathInterval;
     }
 
     public virtual void ReapplyStats()
@@ -478,7 +590,13 @@ public abstract class AgentController : MonoBehaviour
 
         float speed = navAgent.velocity.magnitude;
         bool isMovingNow = !navAgent.isStopped &&
-                           (navAgent.pathPending || navAgent.hasPath || isManualMoving || currentTarget != null) &&
+                           (
+                               navAgent.pathPending ||
+                               navAgent.hasPath ||
+                               isManualMoving ||
+                               currentTarget != null ||
+                               isFollowingSharedTargetPosition
+                           ) &&
                            speed > movingThreshold;
 
         animator.SetBool(isMovingParameterHash, isMovingNow);

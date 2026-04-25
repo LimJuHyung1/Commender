@@ -35,6 +35,12 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     private float recoveryStartHealth = 0f;
 
     private bool hadThreatLastFrame = false;
+    private bool isCaught = false;
+
+    private bool escapeMotorEnabledOnAwake = true;
+    private bool wanderMotorEnabledOnAwake = true;
+
+    public bool IsCaught => isCaught;
 
     public bool IsRevealedToPlayer => threatTracker != null && threatTracker.IsRevealedToPlayer;
     public bool HasActiveThreat => threatTracker != null && threatTracker.HasAnyThreat();
@@ -42,7 +48,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     public bool IsSlowed => escapeMotor != null && escapeMotor.IsSlowed;
     public bool HasUsedEmergencyEscape => escapeMotor != null && escapeMotor.HasUsedEmergencyEscape;
     public bool IsEmergencyEscaping => escapeMotor != null && escapeMotor.IsEmergencyEscaping;
-    public bool CanBeCaught => escapeMotor == null || escapeMotor.CanBeCaught;
+    public bool CanBeCaught => !isCaught && (escapeMotor == null || escapeMotor.CanBeCaught);
     public int RemainingEmergencyEscapeCount => escapeMotor != null ? escapeMotor.RemainingEmergencyEscapeCount : 0;
 
     public float CurrentHealth => healthSystem != null ? healthSystem.GetHealth() : 0f;
@@ -62,6 +68,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             skillController = GetComponent<TargetSkillController>();
 
         wanderMotor = GetComponent<TargetWanderMotor>();
+
+        escapeMotorEnabledOnAwake = escapeMotor == null || escapeMotor.enabled;
+        wanderMotorEnabledOnAwake = wanderMotor == null || wanderMotor.enabled;
 
         if (escapeMotor != null && threatTracker != null)
             escapeMotor.SetThreatTracker(threatTracker);
@@ -89,6 +98,12 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private void Update()
     {
+        if (isCaught)
+        {
+            ForceStopMovement();
+            return;
+        }
+
         if (escapeMotor == null || threatTracker == null)
             return;
 
@@ -125,6 +140,68 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         }
 
         hadThreatLastFrame = hasThreat;
+    }
+
+    public void MarkAsCaught()
+    {
+        if (isCaught)
+        {
+            ForceStopMovement();
+            return;
+        }
+
+        isCaught = true;
+
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
+        recoveryStartHealth = 0f;
+        hadThreatLastFrame = false;
+
+        if (wanderMotor != null)
+        {
+            wanderMotor.StopWandering(true);
+            wanderMotor.enabled = false;
+        }
+
+        if (escapeMotor != null)
+            escapeMotor.enabled = false;
+
+        ForceStopMovement();
+
+        Debug.Log($"[Target] {name} 이(가) 체포되어 이동을 중지했습니다.");
+    }
+
+    public void ApplyBaseStats(
+        float newMaxHealth,
+        float newStartHealth,
+        float newFleeHealthDrainPerSecond,
+        float newRecoveryDelayAfterSafe,
+        float newRecoveryAmountTotal,
+        float newRecoveryDuration,
+        bool refillHealth)
+    {
+        float nextHealth = newStartHealth;
+
+        if (!refillHealth && healthSystem != null)
+            nextHealth = healthSystem.GetHealth();
+
+        maxHealth = Mathf.Max(1f, newMaxHealth);
+        startHealth = Mathf.Clamp(nextHealth, 0f, maxHealth);
+
+        fleeHealthDrainPerSecond = Mathf.Max(0f, newFleeHealthDrainPerSecond);
+
+        recoveryDelayAfterSafe = Mathf.Max(0f, newRecoveryDelayAfterSafe);
+        recoveryAmountTotal = Mathf.Max(0f, newRecoveryAmountTotal);
+        recoveryDuration = Mathf.Max(0.01f, newRecoveryDuration);
+
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
+        recoveryStartHealth = 0f;
+
+        ClampValues();
+
+        if (healthSystem != null)
+            RecreateHealthSystem();
     }
 
     private void HandleThreatState()
@@ -183,17 +260,16 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         if (wanderMotor != null)
             wanderMotor.StopWandering(true);
 
-        if (navAgent != null)
-        {
-            navAgent.isStopped = true;
-            navAgent.ResetPath();
-        }
+        ForceStopMovement();
 
         Debug.Log("[Target] 체력이 0이 되어 더 이상 도망칠 수 없습니다.");
     }
 
     private void HandleSafeRecovery()
     {
+        if (isCaught)
+            return;
+
         if (healthSystem == null || healthSystem.IsDead())
             return;
 
@@ -249,6 +325,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void Damage(float amount)
     {
+        if (isCaught)
+            return;
+
         if (healthSystem == null || healthSystem.IsDead())
             return;
 
@@ -257,6 +336,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void Heal(float amount)
     {
+        if (isCaught)
+            return;
+
         if (healthSystem == null || healthSystem.IsDead())
             return;
 
@@ -265,6 +347,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void HealComplete()
     {
+        if (isCaught)
+            return;
+
         if (healthSystem == null)
             return;
 
@@ -276,6 +361,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void ApplySmokeDebuff(float targetRadius, float duration)
     {
+        if (isCaught)
+            return;
+
         if (threatTracker == null)
             return;
 
@@ -284,6 +372,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void ApplyRoot(float duration)
     {
+        if (isCaught)
+            return;
+
         if (escapeMotor == null)
             return;
 
@@ -298,6 +389,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void ApplySlow(float multiplier, float duration)
     {
+        if (isCaught)
+            return;
+
         if (escapeMotor == null)
             return;
 
@@ -325,6 +419,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public bool TryActivateEmergencyEscape()
     {
+        if (isCaught)
+            return false;
+
         if (wanderMotor != null)
             wanderMotor.StopWandering(true);
 
@@ -339,6 +436,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private bool TryAutoEmergencyEscape()
     {
+        if (isCaught)
+            return false;
+
         float healthRatio = GetHealthRatio();
 
         if (skillController != null)
@@ -358,13 +458,21 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     public void ResetRuntimeState(bool resetEmergencyEscapeUsage = true)
     {
+        isCaught = false;
+
         safeRecoveryTimer = 0f;
         isRecoveringAfterSafe = false;
         recoveryStartHealth = 0f;
         hadThreatLastFrame = false;
 
+        if (escapeMotor != null)
+            escapeMotor.enabled = escapeMotorEnabledOnAwake;
+
         if (wanderMotor != null)
+        {
+            wanderMotor.enabled = wanderMotorEnabledOnAwake;
             wanderMotor.StopWandering(true);
+        }
 
         if (escapeMotor != null)
             escapeMotor.ResetRuntimeState(resetEmergencyEscapeUsage);
@@ -377,6 +485,25 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             navAgent.isStopped = false;
             navAgent.ResetPath();
         }
+    }
+
+    private void ForceStopMovement()
+    {
+        if (navAgent == null)
+            return;
+
+        if (!navAgent.enabled)
+            return;
+
+        if (!navAgent.isActiveAndEnabled)
+            return;
+
+        if (!navAgent.isOnNavMesh)
+            return;
+
+        navAgent.isStopped = true;
+        navAgent.ResetPath();
+        navAgent.velocity = Vector3.zero;
     }
 
     private void ClampValues()

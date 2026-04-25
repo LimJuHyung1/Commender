@@ -4,7 +4,7 @@ using System;
 public class CatchZone : MonoBehaviour
 {
     [Header("설정")]
-    [SerializeField] private LayerMask targetLayer;
+    public LayerMask targetLayer;
 
     public static event Action<GameObject> OnTargetCaught;
 
@@ -29,6 +29,9 @@ public class CatchZone : MonoBehaviour
 
         if (targetController != null)
         {
+            if (targetController.IsCaught)
+                return;
+
             if (targetController.TryActivateEmergencyEscape())
             {
                 Debug.Log($"<color=orange>[CatchZone]</color> {targetController.name} 이(가) 긴급 회피를 사용해 포획을 회피했습니다.");
@@ -46,11 +49,22 @@ public class CatchZone : MonoBehaviour
 
         LastCatchingAgent = GetComponentInParent<AgentController>();
 
+        if (targetController != null)
+        {
+            targetController.MarkAsCaught();
+        }
+        else
+        {
+            var targetAgent = caughtObject.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (targetAgent != null && targetAgent.enabled && targetAgent.isOnNavMesh)
+            {
+                targetAgent.isStopped = true;
+                targetAgent.ResetPath();
+                targetAgent.velocity = Vector3.zero;
+            }
+        }
+
         Debug.Log($"<color=yellow>[CatchZone]</color> {caughtObject.name} 포획 성공!");
         OnTargetCaught?.Invoke(caughtObject);
-
-        var targetAgent = caughtObject.GetComponent<UnityEngine.AI.NavMeshAgent>();
-        if (targetAgent != null)
-            targetAgent.isStopped = true;
     }
 }
