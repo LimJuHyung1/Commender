@@ -235,6 +235,7 @@ public class TargetEscapeMotor : MonoBehaviour
         public float threatGain;
         public float pathStartAlignment;
         public float pathLength;
+        public float alarmSensorPenalty;
     }
 
     public bool IsRooted => isRooted;
@@ -561,6 +562,21 @@ public class TargetEscapeMotor : MonoBehaviour
         if (threatTracker == null)
             return false;
 
+        if (navAgent == null)
+            return false;
+
+        if (threatTracker.IsInsideActiveAlarmSensor(currentDestination))
+            return true;
+
+        if (DoesPathTouchActiveAlarmSensor(navAgent.path))
+            return true;
+
+        float currentAlarmPenalty = threatTracker.GetAlarmSensorPenalty(transform.position);
+        float destinationAlarmPenalty = threatTracker.GetAlarmSensorPenalty(currentDestination);
+
+        if (destinationAlarmPenalty > currentAlarmPenalty + 5f)
+            return true;
+
         float searchRadius = GetEffectiveSearchRadius(true);
         float currentThreatDistance = threatTracker.GetNearestThreatDistance(transform.position, searchRadius * 2f);
         float destinationThreatDistance = threatTracker.GetNearestThreatDistance(currentDestination, searchRadius * 2f);
@@ -611,6 +627,9 @@ public class TargetEscapeMotor : MonoBehaviour
                 if (!TryProjectToNavMesh(rawCandidate, out Vector3 candidate))
                     continue;
 
+                if (threatTracker.IsInsideActiveAlarmSensor(candidate))
+                    continue;
+
                 if (!TryCalculateCompletePath(candidate))
                     continue;
 
@@ -624,6 +643,8 @@ public class TargetEscapeMotor : MonoBehaviour
                 bool strictValid =
                     evaluated.threatGain >= -0.1f &&
                     evaluated.pathStartAlignment >= settings.minPathStartAlignment &&
+                    evaluated.alarmSensorPenalty <= 8f &&
+                    !DoesPathTouchActiveAlarmSensor(reusablePath) &&
                     IsCandidateOpenEnough(candidate, fleeDirection, true);
 
                 if (strictValid)
@@ -684,6 +705,8 @@ public class TargetEscapeMotor : MonoBehaviour
 
         float edgeScore = GetEdgeDistanceScore(candidate);
         float opennessScore = GetOpennessScore(candidate, fleeDirection);
+        float alarmSensorPenalty = GetAlarmSensorPathPenalty(reusablePath);
+        alarmSensorPenalty += threatTracker.GetAlarmSensorPenalty(candidate);
 
         float score = 0f;
         score += threatGain * 12f;
@@ -692,6 +715,7 @@ public class TargetEscapeMotor : MonoBehaviour
         score += edgeScore * settings.edgeDistanceWeight;
         score += opennessScore * settings.opennessWeight;
         score -= pathLength * 0.05f;
+        score -= alarmSensorPenalty;
 
         return new EscapeCandidate
         {
@@ -699,7 +723,8 @@ public class TargetEscapeMotor : MonoBehaviour
             score = score,
             threatGain = threatGain,
             pathStartAlignment = pathStartAlignment,
-            pathLength = pathLength
+            pathLength = pathLength,
+            alarmSensorPenalty = alarmSensorPenalty
         };
     }
 
@@ -736,6 +761,9 @@ public class TargetEscapeMotor : MonoBehaviour
             if (!TryProjectToNavMesh(rawCandidate, out Vector3 candidate))
                 continue;
 
+            if (threatTracker.IsInsideActiveAlarmSensor(candidate))
+                continue;
+
             if (!TryCalculateCompletePath(candidate))
                 continue;
 
@@ -749,6 +777,8 @@ public class TargetEscapeMotor : MonoBehaviour
             float distance = Vector3.Distance(transform.position, candidate);
             float edgeScore = GetEdgeDistanceScore(candidate);
             float opennessScore = GetOpennessScore(candidate, direction);
+            float alarmSensorPenalty = threatTracker.GetAlarmSensorPenalty(candidate);
+            alarmSensorPenalty += GetAlarmSensorPathPenalty(reusablePath) * 0.5f;
 
             float score = 0f;
             score += threatGain * 8f;
@@ -756,6 +786,7 @@ public class TargetEscapeMotor : MonoBehaviour
             score += distance * 0.25f;
             score += edgeScore * 2f;
             score += opennessScore * 2f;
+            score -= alarmSensorPenalty;
 
             if (score > bestScore)
             {
@@ -909,6 +940,64 @@ public class TargetEscapeMotor : MonoBehaviour
         }
 
         return (float)clearCount / settings.opennessProbeCount;
+    }
+
+    private bool DoesPathTouchActiveAlarmSensor(NavMeshPath path)
+    {
+        if (path == null || path.corners == null || path.corners.Length < 2)
+            return false;
+
+        if (threatTracker == null)
+            return false;
+
+        for (int i = 1; i < path.corners.Length; i++)
+        {
+            Vector3 start = path.corners[i - 1];
+            Vector3 end = path.corners[i];
+
+            if (IsSegmentTouchingActiveAlarmSensor(start, end))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsSegmentTouchingActiveAlarmSensor(Vector3 start, Vector3 end)
+    {
+        float distance = Vector3.Distance(start, end);
+        int sampleCount = Mathf.Max(1, Mathf.CeilToInt(distance));
+
+        for (int i = 0; i <= sampleCount; i++)
+        {
+            float t = sampleCount == 0 ? 0f : (float)i / sampleCount;
+            Vector3 point = Vector3.Lerp(start, end, t);
+
+            if (threatTracker.IsInsideActiveAlarmSensor(point))
+                return true;
+        }
+
+        return false;
+    }
+
+    private float GetAlarmSensorPathPenalty(NavMeshPath path)
+    {
+        if (path == null || path.corners == null || path.corners.Length == 0)
+            return 0f;
+
+        if (threatTracker == null)
+            return 0f;
+
+        float penalty = 0f;
+
+        for (int i = 0; i < path.corners.Length; i++)
+        {
+            penalty += threatTracker.GetAlarmSensorPenalty(path.corners[i]);
+        }
+
+        if (DoesPathTouchActiveAlarmSensor(path))
+            penalty += 50f;
+
+        return penalty;
     }
 
     private float GetEffectiveSearchRadius(bool hasThreat)

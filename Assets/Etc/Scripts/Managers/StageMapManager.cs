@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Unity.AI.Navigation;
 
 public class StageMapManager : MonoBehaviour
@@ -40,16 +41,73 @@ public class StageMapManager : MonoBehaviour
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string UnlockedStageCountKey = "UnlockedStageCount";
 
+    private const string DebugStageEnabledKey = "DebugStageEnabled";
+    private const string DebugStageIndexKey = "DebugStageIndex";
+
     private void Start()
     {
         GenerateStageFromSelection();
+    }
+
+    public static void LoadNormalGameScene(string gameSceneName)
+    {
+        ClearDebugStageSelection();
+
+        PlayerPrefs.SetInt(SelectedStageKey, 0);
+        PlayerPrefs.Save();
+
+        SceneManager.LoadScene(gameSceneName);
+    }
+
+    public static void LoadDebugStageScene(string gameSceneName, int stageNumber)
+    {
+        SetDebugStageSelection(stageNumber);
+        SceneManager.LoadScene(gameSceneName);
+    }
+
+    public static void SetDebugStageSelection(int stageNumber)
+    {
+        if (!CanUseDebugStage())
+        {
+            Debug.LogWarning("[StageMapManager] 현재 빌드에서는 디버그 스테이지 시작을 사용할 수 없습니다.");
+            return;
+        }
+
+        int stageIndex = Mathf.Max(0, stageNumber - 1);
+
+        PlayerPrefs.SetInt(DebugStageEnabledKey, 1);
+        PlayerPrefs.SetInt(DebugStageIndexKey, stageIndex);
+        PlayerPrefs.SetInt(SelectedStageKey, stageIndex);
+        PlayerPrefs.Save();
+
+        Debug.Log($"[StageMapManager] 디버그 스테이지 예약 완료: StageNumber={stageNumber}, StageIndex={stageIndex}");
+    }
+
+    public static void ClearDebugStageSelection()
+    {
+        PlayerPrefs.SetInt(DebugStageEnabledKey, 0);
+        PlayerPrefs.DeleteKey(DebugStageIndexKey);
+        PlayerPrefs.Save();
+
+        Debug.Log("[StageMapManager] 디버그 스테이지 예약 해제");
+    }
+
+    private static bool CanUseDebugStage()
+    {
+#if UNITY_EDITOR
+        return true;
+#elif DEVELOPMENT_BUILD
+        return true;
+#else
+        return false;
+#endif
     }
 
     public void GenerateStageFromSelection()
     {
         ClearStage();
 
-        currentStageIndex = PlayerPrefs.GetInt(SelectedStageKey, 0);
+        currentStageIndex = GetStartStageIndex();
 
         if (stages == null || stages.Length == 0)
         {
@@ -89,8 +147,28 @@ public class StageMapManager : MonoBehaviour
         Debug.Log(
             $"[StageMapManager] 맵 생성 완료: " +
             $"Stage={CurrentStageDisplayName}, " +
+            $"StageIndex={currentStageIndex}, " +
+            $"DebugMode={IsDebugStageMode()}, " +
             $"UseFloorView={selectedStageEntry.useFloorViewController}"
         );
+    }
+
+    private int GetStartStageIndex()
+    {
+        int selectedStageIndex = PlayerPrefs.GetInt(SelectedStageKey, 0);
+
+        if (IsDebugStageMode())
+            return PlayerPrefs.GetInt(DebugStageIndexKey, selectedStageIndex);
+
+        return selectedStageIndex;
+    }
+
+    private bool IsDebugStageMode()
+    {
+        if (!CanUseDebugStage())
+            return false;
+
+        return PlayerPrefs.GetInt(DebugStageEnabledKey, 0) == 1;
     }
 
     private StageEntry GetStageEntry(int stageIndex)
@@ -328,6 +406,12 @@ public class StageMapManager : MonoBehaviour
 
     public void CompleteStage()
     {
+        if (IsDebugStageMode())
+        {
+            Debug.Log("[StageMapManager] 디버그 스테이지 모드이므로 실제 스테이지 진행도는 저장하지 않습니다.");
+            return;
+        }
+
         int nextStageIndex = currentStageIndex + 1;
         int nextUnlockedStageCount = Mathf.Max(PlayerPrefs.GetInt(UnlockedStageCountKey, 1), nextStageIndex + 1);
 
@@ -345,12 +429,17 @@ public class StageMapManager : MonoBehaviour
         int nextStageIndex = Mathf.Clamp(currentStageIndex + 1, 0, Mathf.Max(0, StageCount - 1));
 
         PlayerPrefs.SetInt(SelectedStageKey, nextStageIndex);
+
+        if (IsDebugStageMode())
+            PlayerPrefs.SetInt(DebugStageIndexKey, nextStageIndex);
+
         PlayerPrefs.Save();
     }
 
     public void ResetToFirstStageSelection()
     {
         PlayerPrefs.SetInt(SelectedStageKey, 0);
+        ClearDebugStageSelection();
         PlayerPrefs.Save();
     }
 

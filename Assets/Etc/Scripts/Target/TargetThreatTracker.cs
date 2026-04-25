@@ -10,6 +10,8 @@ public class ThreatSettings
     public float reconDroneWeight = 0.8f;
     public float reconDroneInfluenceRadius = 12f;
     public float hologramInfluenceRadius = 15f;
+    public float alarmSensorWeight = 1f;
+    public float alarmSensorInfluenceRadius = 12f;
 }
 
 [RequireComponent(typeof(SphereCollider))]
@@ -32,6 +34,8 @@ public class TargetThreatTracker : MonoBehaviour
     private float reconDroneWeight = 0.8f;
     private float reconDroneInfluenceRadius = 12f;
     private float hologramInfluenceRadius = 15f;
+    private float alarmSensorWeight = 1f;
+    private float alarmSensorInfluenceRadius = 12f;
 
     private int reconRevealCount = 0;
 
@@ -50,6 +54,8 @@ public class TargetThreatTracker : MonoBehaviour
     public float ReconDroneWeight => reconDroneWeight;
     public float ReconDroneInfluenceRadius => reconDroneInfluenceRadius;
     public float HologramInfluenceRadius => hologramInfluenceRadius;
+    public float AlarmSensorWeight => alarmSensorWeight;
+    public float AlarmSensorInfluenceRadius => alarmSensorInfluenceRadius;
 
     private void Awake()
     {
@@ -156,6 +162,9 @@ public class TargetThreatTracker : MonoBehaviour
         if (HasAnyPhantomThreatInRange())
             return true;
 
+        if (HasAnyAlarmSensorInRange())
+            return true;
+
         return false;
     }
 
@@ -210,6 +219,20 @@ public class TargetThreatTracker : MonoBehaviour
                     continue;
 
                 float distance = Vector3.Distance(position, hologram.Position);
+                if (distance < nearest)
+                    nearest = distance;
+            }
+        }
+
+        if (AlarmSensor.ActiveSensors != null)
+        {
+            for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+            {
+                AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+                if (sensor == null || !sensor.IsActive)
+                    continue;
+
+                float distance = sensor.GetDistanceFromZone(position);
                 if (distance < nearest)
                     nearest = distance;
             }
@@ -340,6 +363,39 @@ public class TargetThreatTracker : MonoBehaviour
             }
         }
 
+        if (AlarmSensor.ActiveSensors != null)
+        {
+            for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+            {
+                AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+                if (sensor == null || !sensor.IsActive)
+                    continue;
+
+                bool isInAvoidanceRange = sensor.IsPositionInAvoidanceRange(transform.position);
+                bool isInInfluenceRange = Vector3.Distance(transform.position, sensor.Position) <= alarmSensorInfluenceRadius;
+
+                if (!isInAvoidanceRange && !isInInfluenceRange)
+                    continue;
+
+                Vector3 awayFromSensor = transform.position - sensor.Position;
+                awayFromSensor.y = 0f;
+
+                if (awayFromSensor.sqrMagnitude <= 0.001f)
+                    awayFromSensor = -transform.forward;
+
+                awayFromSensor.y = 0f;
+
+                if (awayFromSensor.sqrMagnitude <= 0.001f)
+                    continue;
+
+                float zoneDistance = Mathf.Max(0.1f, sensor.GetDistanceFromZone(transform.position));
+                float penaltyRatio = Mathf.Clamp01(sensor.GetAvoidancePenalty(transform.position) / Mathf.Max(0.01f, sensor.DangerPenalty));
+                float weight = Mathf.Max(0f, alarmSensorWeight) * Mathf.Lerp(0.5f, 1.5f, penaltyRatio);
+
+                combinedFleeDirection += awayFromSensor.normalized * weight / (zoneDistance + 0.1f);
+            }
+        }
+
         return combinedFleeDirection;
     }
 
@@ -408,6 +464,25 @@ public class TargetThreatTracker : MonoBehaviour
         return score;
     }
 
+    public float GetDistanceScoreFromAlarmSensors(Vector3 candidate)
+    {
+        float score = 0f;
+
+        if (AlarmSensor.ActiveSensors == null)
+            return score;
+
+        for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+        {
+            AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+            if (sensor == null || !sensor.IsActive)
+                continue;
+
+            score += sensor.GetDistanceFromZone(candidate) * alarmSensorWeight;
+        }
+
+        return score;
+    }
+
     public bool HasAnyDecoySignalInRange()
     {
         if (Noisemaker.ActiveNoisemakers == null)
@@ -448,6 +523,76 @@ public class TargetThreatTracker : MonoBehaviour
         return false;
     }
 
+    public bool HasAnyAlarmSensorInRange()
+    {
+        if (AlarmSensor.ActiveSensors == null)
+            return false;
+
+        for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+        {
+            AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+            if (sensor == null || !sensor.IsActive)
+                continue;
+
+            if (sensor.IsPositionInAvoidanceRange(transform.position))
+                return true;
+
+            if (Vector3.Distance(transform.position, sensor.Position) <= alarmSensorInfluenceRadius)
+                return true;
+        }
+
+        return false;
+    }
+
+    public bool IsInsideActiveAlarmSensor(Vector3 position)
+    {
+        if (AlarmSensor.ActiveSensors == null)
+            return false;
+
+        for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+        {
+            AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+            if (sensor == null || !sensor.IsActive)
+                continue;
+
+            if (sensor.IsPositionInside(position))
+                return true;
+        }
+
+        return false;
+    }
+
+    public float GetAlarmSensorPenalty(Vector3 position)
+    {
+        float penalty = 0f;
+
+        if (AlarmSensor.ActiveSensors == null)
+            return penalty;
+
+        for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
+        {
+            AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+            if (sensor == null || !sensor.IsActive)
+                continue;
+
+            float sensorPenalty = sensor.GetAvoidancePenalty(position);
+
+            if (sensorPenalty <= 0f)
+            {
+                float centerDistance = Vector3.Distance(position, sensor.Position);
+                if (centerDistance > alarmSensorInfluenceRadius)
+                    continue;
+
+                float ratio = 1f - Mathf.Clamp01(centerDistance / Mathf.Max(0.01f, alarmSensorInfluenceRadius));
+                sensorPenalty = ratio * sensor.DangerPenalty * 0.35f;
+            }
+
+            penalty += sensorPenalty * alarmSensorWeight;
+        }
+
+        return penalty;
+    }
+
     public void ApplySettings(ThreatSettings settings)
     {
         if (settings == null)
@@ -458,6 +603,8 @@ public class TargetThreatTracker : MonoBehaviour
         reconDroneWeight = Mathf.Max(0f, settings.reconDroneWeight);
         reconDroneInfluenceRadius = Mathf.Max(0f, settings.reconDroneInfluenceRadius);
         hologramInfluenceRadius = Mathf.Max(0f, settings.hologramInfluenceRadius);
+        alarmSensorWeight = Mathf.Max(0f, settings.alarmSensorWeight);
+        alarmSensorInfluenceRadius = Mathf.Max(0f, settings.alarmSensorInfluenceRadius);
 
         if (smokeRoutine == null)
             RestoreDetectionRadius();

@@ -1,17 +1,17 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class LobbyStageSelect : MonoBehaviour
 {
     [Header("Scene")]
-    [SerializeField] private string gameSceneName = "Stage1";
+    public string gameSceneName = "Stage1";
 
     [Header("Progress")]
-    [SerializeField] private int firstStageIndex = 0;
-    [SerializeField] private int firstDifficultyIndex = 0;
+    public int firstStageIndex = 0;
+    public int firstDifficultyIndex = 0;
 
     [Header("Debug")]
-    [SerializeField] private bool resetProgressOnStart = false;
+    public bool resetProgressOnStart = false;
+    public int debugStageNumber = 1;
 
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string SelectedDifficultyKey = "SelectedDifficultyIndex";
@@ -27,12 +27,29 @@ public class LobbyStageSelect : MonoBehaviour
 
     public void PlayButton()
     {
-        PlayerPrefs.SetInt(SelectedStageKey, Mathf.Max(0, firstStageIndex));
         PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
         PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
         PlayerPrefs.Save();
 
-        SceneManager.LoadScene(gameSceneName);
+        StageMapManager.LoadNormalGameScene(gameSceneName);
+    }
+
+    public void DebugStageButton()
+    {
+        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
+        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
+        PlayerPrefs.Save();
+
+        StageMapManager.LoadDebugStageScene(gameSceneName, debugStageNumber);
+    }
+
+    public void DebugStageButtonByNumber(int stageNumber)
+    {
+        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
+        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
+        PlayerPrefs.Save();
+
+        StageMapManager.LoadDebugStageScene(gameSceneName, stageNumber);
     }
 
     public void ResetProgress()
@@ -41,6 +58,8 @@ public class LobbyStageSelect : MonoBehaviour
         PlayerPrefs.SetInt(SelectedStageKey, Mathf.Max(0, firstStageIndex));
         PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
         PlayerPrefs.Save();
+
+        StageMapManager.ClearDebugStageSelection();
     }
 
     private void EnsureDefaultProgress()
