@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
+using DG.Tweening;
 using UnityEngine;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(Collider))]
 public class AlarmSensor : MonoBehaviour
@@ -11,17 +13,23 @@ public class AlarmSensor : MonoBehaviour
     public float rotationSpeed = 720f;
     public float activeDuration = 5f;
 
+    [Header("Alert Text")]
+    public Text alertText;
+    public string alertMessage = "타겟이 당신의 위치를 알아챘습니다";
+    public bool textFacesCamera = true;
+
     [Header("Target Avoidance")]
     public float outerAvoidanceDistance = 4f;
     public float dangerPenalty = 25f;
 
     private readonly List<Light> spotLights = new List<Light>();
+    private DOTweenAnimation[] alertTextTweens = new DOTweenAnimation[0];
+
     private Collider sensorCollider;
     private Coroutine alarmRoutine;
+    private Coroutine textTweenRoutine;
+    private Camera mainCamera;
     private bool isActive;
-
-    private Vector3 firstLightBaseRotation;
-    private Vector3 secondLightBaseRotation;
 
     public bool IsActive => isActive;
     public Vector3 Position => transform.position;
@@ -33,9 +41,46 @@ public class AlarmSensor : MonoBehaviour
         sensorCollider = GetComponent<Collider>();
         sensorCollider.isTrigger = true;
 
+        mainCamera = Camera.main;
+
         FindChildSpotLights();
-        CacheBaseRotations();
+        FindAlertText();
+        FindAlertTextTweens();
+
         SetSpotLightsActive(false);
+        SetAlertTextActive(false);
+    }
+
+    private void LateUpdate()
+    {
+        if (!textFacesCamera)
+            return;
+
+        if (alertText == null || !alertText.gameObject.activeInHierarchy)
+            return;
+
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+
+        if (mainCamera == null)
+            return;
+
+        Transform targetTransform = GetAlertTextRoot();
+
+        targetTransform.LookAt(
+            targetTransform.position + mainCamera.transform.rotation * Vector3.forward,
+            mainCamera.transform.rotation * Vector3.up
+        );
+    }
+
+    private Transform GetAlertTextRoot()
+    {
+        Canvas parentCanvas = alertText.GetComponentInParent<Canvas>();
+
+        if (parentCanvas != null && parentCanvas.renderMode == RenderMode.WorldSpace)
+            return parentCanvas.transform;
+
+        return alertText.transform;
     }
 
     private void OnDisable()
@@ -46,8 +91,15 @@ public class AlarmSensor : MonoBehaviour
             alarmRoutine = null;
         }
 
+        if (textTweenRoutine != null)
+        {
+            StopCoroutine(textTweenRoutine);
+            textTweenRoutine = null;
+        }
+
         UnregisterActiveSensor();
         SetSpotLightsActive(false);
+        SetAlertTextActive(false);
     }
 
     private void OnValidate()
@@ -127,23 +179,48 @@ public class AlarmSensor : MonoBehaviour
     {
         RegisterActiveSensor();
         SetSpotLightsActive(true);
+        SetAlertTextActive(true);
+
+        if (spotLights.Count < 2)
+        {
+            yield return new WaitForSeconds(activeDuration);
+
+            SetSpotLightsActive(false);
+            SetAlertTextActive(false);
+            UnregisterActiveSensor();
+
+            alarmRoutine = null;
+            yield break;
+        }
+
+        Vector3 firstLightStartRotation = spotLights[0].transform.localEulerAngles;
+        Vector3 secondLightStartRotation = spotLights[1].transform.localEulerAngles;
 
         float elapsedTime = 0f;
-        float startX = firstLightBaseRotation.x;
 
-        ApplySpotLightRotation(startX);
+        ApplySpotLightRotation(
+            firstLightStartRotation,
+            secondLightStartRotation,
+            0f
+        );
 
         while (elapsedTime < activeDuration)
         {
             elapsedTime += Time.deltaTime;
 
-            float currentX = startX + rotationSpeed * elapsedTime;
-            ApplySpotLightRotation(currentX);
+            float rotationAmount = rotationSpeed * elapsedTime;
+
+            ApplySpotLightRotation(
+                firstLightStartRotation,
+                secondLightStartRotation,
+                rotationAmount
+            );
 
             yield return null;
         }
 
         SetSpotLightsActive(false);
+        SetAlertTextActive(false);
         UnregisterActiveSensor();
 
         alarmRoutine = null;
@@ -172,13 +249,23 @@ public class AlarmSensor : MonoBehaviour
         }
     }
 
-    private void CacheBaseRotations()
+    private void FindAlertText()
     {
-        if (spotLights.Count >= 1 && spotLights[0] != null)
-            firstLightBaseRotation = spotLights[0].transform.localEulerAngles;
+        if (alertText != null)
+            return;
 
-        if (spotLights.Count >= 2 && spotLights[1] != null)
-            secondLightBaseRotation = spotLights[1].transform.localEulerAngles;
+        alertText = GetComponentInChildren<Text>(true);
+    }
+
+    private void FindAlertTextTweens()
+    {
+        if (alertText == null)
+        {
+            alertTextTweens = new DOTweenAnimation[0];
+            return;
+        }
+
+        alertTextTweens = alertText.GetComponents<DOTweenAnimation>();
     }
 
     private bool IsAgent(Collider other)
@@ -190,7 +277,10 @@ public class AlarmSensor : MonoBehaviour
         return agent != null;
     }
 
-    private void ApplySpotLightRotation(float firstLightX)
+    private void ApplySpotLightRotation(
+        Vector3 firstStartRotation,
+        Vector3 secondStartRotation,
+        float rotationAmount)
     {
         if (spotLights.Count < 2)
             return;
@@ -201,14 +291,17 @@ public class AlarmSensor : MonoBehaviour
         if (firstLight == null || secondLight == null)
             return;
 
-        float normalizedFirstX = Mathf.Repeat(firstLightX, 360f);
-        float normalizedSecondX = Mathf.Repeat(firstLightX + 180f, 360f);
+        Vector3 firstRotation = firstStartRotation;
+        Vector3 secondRotation = secondStartRotation;
 
-        firstLightBaseRotation.x = normalizedFirstX;
-        secondLightBaseRotation.x = normalizedSecondX;
+        firstRotation.x = Mathf.Repeat(firstStartRotation.x + rotationAmount, 360f);
+        firstRotation.y = Mathf.Repeat(firstStartRotation.y + rotationAmount, 360f);
 
-        firstLight.transform.localEulerAngles = firstLightBaseRotation;
-        secondLight.transform.localEulerAngles = secondLightBaseRotation;
+        secondRotation.x = Mathf.Repeat(firstRotation.x + 180f, 360f);
+        secondRotation.y = Mathf.Repeat(secondStartRotation.y + rotationAmount, 360f);
+
+        firstLight.transform.localEulerAngles = firstRotation;
+        secondLight.transform.localEulerAngles = secondRotation;
     }
 
     private void SetSpotLightsActive(bool active)
@@ -221,6 +314,62 @@ public class AlarmSensor : MonoBehaviour
                 continue;
 
             spotLight.gameObject.SetActive(active);
+        }
+    }
+
+    private void SetAlertTextActive(bool active)
+    {
+        if (alertText == null)
+            return;
+
+        alertText.text = alertMessage;
+        alertText.gameObject.SetActive(active);
+
+        if (active)
+        {
+            if (textTweenRoutine != null)
+                StopCoroutine(textTweenRoutine);
+
+            textTweenRoutine = StartCoroutine(PlayAlertTextTweensAfterActivation());
+        }
+        else
+        {
+            if (textTweenRoutine != null)
+            {
+                StopCoroutine(textTweenRoutine);
+                textTweenRoutine = null;
+            }
+        }
+    }
+
+    private IEnumerator PlayAlertTextTweensAfterActivation()
+    {
+        yield return null;
+
+        Canvas.ForceUpdateCanvases();
+        PlayAllAlertTextTweens();
+
+        textTweenRoutine = null;
+    }
+
+    private void PlayAllAlertTextTweens()
+    {
+        FindAlertTextTweens();
+
+        if (alertTextTweens == null || alertTextTweens.Length == 0)
+        {
+            Debug.LogWarning("[AlarmSensor] Text 오브젝트에서 DOTweenAnimation 컴포넌트를 찾지 못했습니다.");
+            return;
+        }
+
+        for (int i = 0; i < alertTextTweens.Length; i++)
+        {
+            DOTweenAnimation tween = alertTextTweens[i];
+
+            if (tween == null)
+                continue;
+
+            tween.CreateTween(true, true);
         }
     }
 
