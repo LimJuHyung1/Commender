@@ -223,8 +223,7 @@ public class GameManager : MonoBehaviour
 
         Time.timeScale = failTimeScale;
 
-        if (autoReturnToLobbyOnFail)
-            StartCoroutine(ReturnToLobbyAfterDelay());
+        StartCoroutine(ReturnToLobbyAfterDelay());
     }
 
     public void FailAndReturnToLobby(string message)

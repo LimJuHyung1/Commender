@@ -50,19 +50,44 @@ public class EngineerAgent : AgentController
 
         string skill = skillName.Trim().ToLower();
 
-        Debug.Log($"[Engineer {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
+        Debug.Log($"[Engineer {AgentID}] 스킬 요청: {skillName} 위치: {targetPos}");
 
-        if (skill.Contains("barricade"))
+        if (skill.Contains("barricade") || skill.Contains("바리케이드"))
         {
+            if (barricadePrefab == null)
+            {
+                Debug.LogWarning($"[Engineer {AgentID}] barricadePrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("barricade"))
+                return;
+
             ForceStopForSkill();
             DeployBarricade(targetPos);
         }
         else if (
             skill.Contains("slowtrap") ||
+            skill.Contains("slow trap") ||
             skill.Contains("trap") ||
             skill.Contains("트랩") ||
             skill.Contains("함정"))
         {
+            if (trapPrefab == null)
+            {
+                Debug.LogWarning($"[Engineer {AgentID}] trapPrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (remainingTrapUses <= 0)
+            {
+                Debug.LogWarning($"[Engineer {AgentID}] 감속 함정 사용 가능 횟수가 없습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("slowtrap"))
+                return;
+
             ForceStopForSkill();
             DeployTrap(targetPos);
         }
@@ -86,12 +111,6 @@ public class EngineerAgent : AgentController
 
     private void DeployBarricade(Vector3 targetPos)
     {
-        if (barricadePrefab == null)
-        {
-            Debug.LogWarning($"[Engineer {AgentID}] barricadePrefab이 연결되지 않았습니다.");
-            return;
-        }
-
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
         Quaternion spawnRotation = BuildPlacementRotationTowardTarget(spawnPos, barricadeYawOffset);
 
@@ -121,18 +140,6 @@ public class EngineerAgent : AgentController
 
     private void DeployTrap(Vector3 targetPos)
     {
-        if (trapPrefab == null)
-        {
-            Debug.LogWarning($"[Engineer {AgentID}] trapPrefab이 연결되지 않았습니다.");
-            return;
-        }
-
-        if (remainingTrapUses <= 0)
-        {
-            Debug.LogWarning($"[Engineer {AgentID}] 감속 함정 사용 가능 횟수가 없습니다.");
-            return;
-        }
-
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
         Quaternion spawnRotation = BuildPlacementRotationTowardTarget(spawnPos, trapYawOffset);
 
@@ -183,6 +190,7 @@ public class EngineerAgent : AgentController
 
         return baseRotation * offsetRotation;
     }
+
     private Vector3 BuildSpawnPosition(Vector3 targetPos)
     {
         Vector3 desiredPosition = targetPos;

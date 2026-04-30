@@ -35,6 +35,12 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] private float chaseRepathInterval = 0.15f;
     [SerializeField] private float chaseDestinationThreshold = 0.25f;
 
+    [Header("Skill Gauge")]
+    [SerializeField] private float skillGaugeChargePerMeter = 1f;
+
+    private const float DefaultSkillGaugeMax = 100f;
+    private const float SkillGaugeFullEpsilon = 0.001f;
+
     private const float SharedTargetPositionMemoryDuration = 3f;
     private const float SharedTargetRepathInterval = 0.15f;
     private const float SharedTargetDestinationThreshold = 0.25f;
@@ -42,6 +48,10 @@ public abstract class AgentController : MonoBehaviour
     protected NavMeshAgent navAgent;
     protected Transform currentTarget;
     protected bool isManualMoving = false;
+
+    private float skillGauge = 0f;
+    private Vector3 lastSkillGaugePosition;
+    private float skillGaugeChargeBlockedUntil = -1f;
 
     private float chaseRepathTimer = 0f;
     private Vector3 lastChaseDestination;
@@ -75,6 +85,10 @@ public abstract class AgentController : MonoBehaviour
     public AgentStatsSO Stats => stats;
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
 
+    public float SkillGauge => skillGauge;
+    public float SkillGaugeCapacity => GetCurrentSkillGaugeCapacity();
+    public float SkillGaugeNormalized => SkillGaugeCapacity <= 0f ? 1f : Mathf.Clamp01(skillGauge / SkillGaugeCapacity);
+
     public bool HasSharedTargetPosition => hasSharedTargetPosition;
     public Vector3 SharedTargetPosition => sharedTargetPosition;
     public AgentController SharedTargetReporter => sharedTargetReporter;
@@ -85,6 +99,7 @@ public abstract class AgentController : MonoBehaviour
     protected virtual void Awake()
     {
         navAgent = GetComponent<NavMeshAgent>();
+        lastSkillGaugePosition = transform.position;
 
         if (visionSensor == null)
             visionSensor = GetComponentInChildren<VisionSensor>(true);
@@ -119,6 +134,8 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual void OnDisable()
     {
+        lastSkillGaugePosition = transform.position;
+
         StopLookAroundInternal(false);
         ClearSharedTargetPosition();
         UpdateStateIcon();
@@ -179,6 +196,8 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent == null)
             return;
 
+        UpdateSkillGaugeCharge();
+
         if (isLookingAround)
         {
             UpdateAnimationState();
@@ -218,6 +237,166 @@ public abstract class AgentController : MonoBehaviour
 
         UpdateAnimationState();
         UpdateStateIcon();
+    }
+
+    private void UpdateSkillGaugeCharge()
+    {
+        Vector3 currentPosition = transform.position;
+        float capacity = GetCurrentSkillGaugeCapacity();
+
+        if (capacity <= 0f)
+        {
+            skillGauge = 0f;
+            lastSkillGaugePosition = currentPosition;
+            return;
+        }
+
+        if (IsSkillGaugeChargeBlocked())
+        {
+            lastSkillGaugePosition = currentPosition;
+            return;
+        }
+
+        if (skillGauge >= capacity - SkillGaugeFullEpsilon)
+        {
+            skillGauge = capacity;
+            lastSkillGaugePosition = currentPosition;
+            return;
+        }
+
+        float movedDistance = Vector3.Distance(lastSkillGaugePosition, currentPosition);
+        lastSkillGaugePosition = currentPosition;
+
+        if (movedDistance <= 0.001f)
+            return;
+
+        if (!ShouldChargeSkillGauge())
+            return;
+
+        skillGauge = Mathf.Min(
+            capacity,
+            skillGauge + movedDistance * skillGaugeChargePerMeter
+        );
+    }
+
+    private bool ShouldChargeSkillGauge()
+    {
+        if (navAgent == null)
+            return false;
+
+        if (navAgent.isStopped)
+            return false;
+
+        if (navAgent.velocity.sqrMagnitude <= movingThreshold * movingThreshold)
+            return false;
+
+        if (isManualMoving)
+            return true;
+
+        if (currentTarget != null)
+            return true;
+
+        if (isFollowingSharedTargetPosition)
+            return true;
+
+        return navAgent.hasPath && !navAgent.pathPending;
+    }
+
+    private bool IsSkillGaugeChargeBlocked()
+    {
+        return Time.time < skillGaugeChargeBlockedUntil;
+    }
+
+    protected void BlockSkillGaugeCharge(float seconds)
+    {
+        if (seconds <= 0f)
+            return;
+
+        skillGaugeChargeBlockedUntil = Mathf.Max(
+            skillGaugeChargeBlockedUntil,
+            Time.time + seconds
+        );
+
+        lastSkillGaugePosition = transform.position;
+    }
+
+    private float GetCurrentSkillGaugeCapacity()
+    {
+        if (stats == null)
+            return DefaultSkillGaugeMax;
+
+        return Mathf.Max(0f, stats.GetLargestSkillGaugeMax());
+    }
+
+    public float GetSkillGaugeMaxForSkill(string skillName)
+    {
+        if (stats == null)
+            return DefaultSkillGaugeMax;
+
+        return Mathf.Max(0f, stats.GetSkillGaugeMax(skillName));
+    }
+
+    public float GetSkillGaugeNormalizedForSkill(string skillName)
+    {
+        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+
+        if (requiredGauge <= 0f)
+            return 1f;
+
+        return Mathf.Clamp01(skillGauge / requiredGauge);
+    }
+
+    public bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
+    {
+        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+
+        if (requiredGauge <= 0f)
+            return true;
+
+        bool canUse = skillGauge >= requiredGauge - SkillGaugeFullEpsilon;
+
+        if (!canUse && showWarning)
+        {
+            Debug.LogWarning(
+                $"[Agent {AgentID}] '{skillName}' 스킬을 사용할 수 없습니다. " +
+                $"현재 게이지: {skillGauge:0.#} / 필요 게이지: {requiredGauge:0.#}"
+            );
+        }
+
+        return canUse;
+    }
+
+    protected bool TryConsumeSkillGaugeForSkill(string skillName, float chargeBlockSeconds = 0f)
+    {
+        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+
+        if (requiredGauge <= 0f)
+            return true;
+
+        if (!CanUseSkillGaugeForSkill(skillName, true))
+            return false;
+
+        skillGauge = 0f;
+        lastSkillGaugePosition = transform.position;
+
+        if (chargeBlockSeconds > 0f)
+            BlockSkillGaugeCharge(chargeBlockSeconds);
+
+        Debug.Log($"[Agent {AgentID}] '{skillName}' 스킬 사용. 스킬 게이지를 소모했습니다.");
+        return true;
+    }
+
+    public void ResetSkillGauge()
+    {
+        skillGauge = 0f;
+        lastSkillGaugePosition = transform.position;
+        skillGaugeChargeBlockedUntil = -1f;
+    }
+
+    public void FillSkillGauge()
+    {
+        skillGauge = GetCurrentSkillGaugeCapacity();
+        lastSkillGaugePosition = transform.position;
     }
 
     protected virtual void CheckDestinationReached()

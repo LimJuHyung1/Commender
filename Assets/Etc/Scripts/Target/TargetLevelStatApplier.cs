@@ -1,19 +1,51 @@
 using UnityEngine;
 
+public enum TargetType
+{
+    InformationBroker,
+    DisguiseExpert,
+    EscapeSpecialist
+}
+
 [DisallowMultipleComponent]
 [RequireComponent(typeof(TargetController))]
 [RequireComponent(typeof(TargetEscapeMotor))]
 public class TargetLevelStatApplier : MonoBehaviour
 {
+    [Header("Target Type")]
+    [SerializeField] private TargetType targetType = TargetType.InformationBroker;
+
     [Header("Target Level")]
-    [Range(1, 10)] public int targetLevel = 1;
-    public bool applyOnStart = true;
-    public bool refillHealthOnApply = true;
+    [SerializeField][Range(1, 10)] private int targetLevel = 1;
+    [SerializeField] private bool applyOnStart = true;
+    [SerializeField] private bool refillHealthOnApply = true;
+
+    [Header("Fixed Controller Stats")]
+    [SerializeField] private float fleeHealthDrainPerSecond = 12f;
+    [SerializeField] private float recoveryDuration = 1.5f;
 
     private TargetController targetController;
     private TargetEscapeMotor escapeMotor;
+    private TargetSkillController skillController;
 
-    private static readonly TargetLevelStats[] LevelStats =
+    public TargetType TargetType => targetType;
+    public int TargetLevel => targetLevel;
+
+    private static readonly TargetLevelStats[] InformationBrokerStats =
+    {
+        new TargetLevelStats(100f, 10.0f, 10f, 9.8f, 30f, 1080f, 24f, 5),
+        new TargetLevelStats(100f, 9.4f, 12f, 10.2f, 32f, 1080f, 25f, 5),
+        new TargetLevelStats(100f, 8.9f, 14f, 10.6f, 34f, 1080f, 25f, 5),
+        new TargetLevelStats(100f, 8.3f, 16f, 11.0f, 37f, 1080f, 26f, 5),
+        new TargetLevelStats(100f, 7.8f, 18f, 11.4f, 39f, 1080f, 27f, 5),
+        new TargetLevelStats(100f, 7.2f, 21f, 11.8f, 41f, 1080f, 27f, 5),
+        new TargetLevelStats(100f, 6.7f, 23f, 12.2f, 43f, 1080f, 28f, 5),
+        new TargetLevelStats(100f, 6.1f, 25f, 12.6f, 46f, 1080f, 29f, 5),
+        new TargetLevelStats(100f, 5.6f, 28f, 13.0f, 48f, 1080f, 29f, 5),
+        new TargetLevelStats(100f, 5.0f, 30f, 13.5f, 50f, 1080f, 30f, 5)
+    };
+
+    private static readonly TargetLevelStats[] DisguiseExpertStats =
     {
         new TargetLevelStats(100f, 10.0f, 10f, 10.0f, 30f, 1080f, 24f, 5),
         new TargetLevelStats(100f, 9.4f, 12f, 10.5f, 32f, 1080f, 25f, 5),
@@ -24,6 +56,20 @@ public class TargetLevelStatApplier : MonoBehaviour
         new TargetLevelStats(100f, 6.7f, 23f, 13.0f, 43f, 1080f, 28f, 5),
         new TargetLevelStats(100f, 6.1f, 25f, 13.5f, 46f, 1080f, 29f, 5),
         new TargetLevelStats(100f, 5.6f, 28f, 14.0f, 48f, 1080f, 29f, 5),
+        new TargetLevelStats(100f, 5.0f, 30f, 14.5f, 50f, 1080f, 30f, 5)
+    };
+
+    private static readonly TargetLevelStats[] EscapeSpecialistStats =
+    {
+        new TargetLevelStats(100f, 10.0f, 10f, 10.5f, 32f, 1080f, 24f, 5),
+        new TargetLevelStats(100f, 9.4f, 12f, 11.0f, 34f, 1080f, 25f, 5),
+        new TargetLevelStats(100f, 8.9f, 14f, 11.5f, 36f, 1080f, 25f, 5),
+        new TargetLevelStats(100f, 8.3f, 16f, 12.0f, 38f, 1080f, 26f, 5),
+        new TargetLevelStats(100f, 7.8f, 18f, 12.5f, 40f, 1080f, 27f, 5),
+        new TargetLevelStats(100f, 7.2f, 21f, 13.0f, 42f, 1080f, 27f, 5),
+        new TargetLevelStats(100f, 6.7f, 23f, 13.5f, 44f, 1080f, 28f, 5),
+        new TargetLevelStats(100f, 6.1f, 25f, 14.0f, 46f, 1080f, 29f, 5),
+        new TargetLevelStats(100f, 5.6f, 28f, 14.5f, 48f, 1080f, 29f, 5),
         new TargetLevelStats(100f, 5.0f, 30f, 15.0f, 50f, 1080f, 30f, 5)
     };
 
@@ -41,6 +87,8 @@ public class TargetLevelStatApplier : MonoBehaviour
     private void OnValidate()
     {
         targetLevel = Mathf.Clamp(targetLevel, 1, 10);
+        fleeHealthDrainPerSecond = Mathf.Max(0f, fleeHealthDrainPerSecond);
+        recoveryDuration = Mathf.Max(0.01f, recoveryDuration);
     }
 
     public void ApplyFromStageNumber(int stageNumber)
@@ -55,10 +103,24 @@ public class TargetLevelStatApplier : MonoBehaviour
 
         targetLevel = Mathf.Clamp(level, 1, 10);
 
-        TargetLevelStats stats = LevelStats[targetLevel - 1];
+        TargetLevelStats stats = GetStats(targetType, targetLevel);
 
         ApplyControllerStats(stats, refillHealth);
         ApplyEscapeStats(stats);
+        ApplySkillUnlocks(targetLevel);
+    }
+
+    public void SetTargetType(TargetType newTargetType, bool applyImmediately = true)
+    {
+        targetType = newTargetType;
+
+        if (applyImmediately)
+            ApplyLevel(targetLevel, refillHealthOnApply);
+    }
+
+    public void SetTargetLevel(int newLevel, bool refillHealth = true)
+    {
+        ApplyLevel(newLevel, refillHealth);
     }
 
     private void ResolveReferences()
@@ -68,6 +130,29 @@ public class TargetLevelStatApplier : MonoBehaviour
 
         if (escapeMotor == null)
             escapeMotor = GetComponent<TargetEscapeMotor>();
+
+        if (skillController == null)
+            skillController = GetComponent<TargetSkillController>();
+    }
+
+    private TargetLevelStats GetStats(TargetType type, int level)
+    {
+        int index = Mathf.Clamp(level, 1, 10) - 1;
+
+        switch (type)
+        {
+            case TargetType.InformationBroker:
+                return InformationBrokerStats[index];
+
+            case TargetType.DisguiseExpert:
+                return DisguiseExpertStats[index];
+
+            case TargetType.EscapeSpecialist:
+                return EscapeSpecialistStats[index];
+
+            default:
+                return InformationBrokerStats[index];
+        }
     }
 
     private void ApplyControllerStats(TargetLevelStats stats, bool refillHealth)
@@ -75,13 +160,10 @@ public class TargetLevelStatApplier : MonoBehaviour
         if (targetController == null)
             return;
 
-        float fleeHealthDrain = targetController.fleeHealthDrainPerSecond;
-        float recoveryDuration = targetController.recoveryDuration;
-
         targetController.ApplyBaseStats(
             stats.maxHealth,
             stats.maxHealth,
-            fleeHealthDrain,
+            fleeHealthDrainPerSecond,
             stats.recoveryDelayAfterSafe,
             stats.recoveryAmountTotal,
             recoveryDuration,
@@ -106,6 +188,14 @@ public class TargetLevelStatApplier : MonoBehaviour
         settings.safePointSampleCount = stats.safePointSampleCount;
 
         escapeMotor.ApplySettings(settings);
+    }
+
+    private void ApplySkillUnlocks(int level)
+    {
+        if (skillController == null)
+            return;
+
+        skillController.ApplySkillUnlocks(level);
     }
 
     private struct TargetLevelStats
@@ -134,9 +224,11 @@ public class TargetLevelStatApplier : MonoBehaviour
             this.maxHealth = maxHealth;
             this.recoveryDelayAfterSafe = recoveryDelayAfterSafe;
             this.recoveryAmountTotal = recoveryAmountTotal;
+
             this.fleeMoveSpeed = fleeMoveSpeed;
             this.fleeAcceleration = fleeAcceleration;
             this.fleeAngularSpeed = fleeAngularSpeed;
+
             this.safeSearchRadius = safeSearchRadius;
             this.safePointSampleCount = safePointSampleCount;
         }

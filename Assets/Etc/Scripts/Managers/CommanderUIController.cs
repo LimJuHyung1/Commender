@@ -11,14 +11,15 @@ public class CommanderUIController : MonoBehaviour
     [SerializeField] private List<InputField> agentInputs = new List<InputField>();
     [SerializeField] private Button submitButton;
     [SerializeField] private AgentCameraFollow agentCameraFollow;
-    [SerializeField] private TargetSkillController targetSkillController;
 
     [Header("Hotkeys")]
     [SerializeField] private bool enableFunctionKeyFocus = true;
 
     [Header("Communication Jam")]
-    [SerializeField] private string jammedPlaceholderText = "통신 방해 중...";
+    [SerializeField] private string jammedPlaceholderText = "통신 방해 중... 명령 버튼을 눌러 해제";
     [SerializeField] private bool clearTextOnJam = true;
+    [SerializeField] private bool releaseJamOnCommandButton = true;
+    [SerializeField] private bool releaseJamOnlyWhenSubmittedInstructionExists = true;
 
     private IReadOnlyList<AgentController> agents;
     private int currentFocusedInputIndex = -1;
@@ -32,15 +33,13 @@ public class CommanderUIController : MonoBehaviour
         new Dictionary<InputField, string>();
 
     private readonly HashSet<int> jammedAgentIds = new HashSet<int>();
+
     private readonly Dictionary<int, Coroutine> jamReleaseRoutineByAgentId =
         new Dictionary<int, Coroutine>();
 
     private void Awake()
     {
         CacheOriginalPlaceholderTexts();
-
-        if (targetSkillController == null)
-            targetSkillController = FindFirstObjectByType<TargetSkillController>();
 
         if (submitButton != null)
             submitButton.onClick.AddListener(HandleCommandSubmitCommunicationJam);
@@ -92,6 +91,7 @@ public class CommanderUIController : MonoBehaviour
 
             pendingRefocusAfterOrbit = false;
             currentFocusedInputIndex = -1;
+
             RestoreAllPlaceholderTexts();
             ApplyAllJammedPlaceholders();
 
@@ -140,6 +140,7 @@ public class CommanderUIController : MonoBehaviour
                 continue;
 
             InputField input = agentInputs[inputIndex];
+
             if (input != null)
                 input.text = "";
         }
@@ -157,6 +158,7 @@ public class CommanderUIController : MonoBehaviour
         for (int i = 0; i < agentInputs.Count; i++)
         {
             InputField input = agentInputs[i];
+
             if (input == null)
                 continue;
 
@@ -164,12 +166,13 @@ public class CommanderUIController : MonoBehaviour
                 continue;
 
             string instruction = input.text.Trim();
+
             if (string.IsNullOrEmpty(instruction))
                 continue;
 
             if (!TryGetAgentAtInputIndex(i, out AgentController agent))
             {
-                Debug.LogWarning($"[CommanderUI] Input index {i} 에 연결된 Agent가 없습니다.");
+                Debug.LogWarning($"[CommanderUI] Input index {i}에 연결된 Agent가 없습니다.");
                 continue;
             }
 
@@ -191,6 +194,7 @@ public class CommanderUIController : MonoBehaviour
         SetAgentInputJammedState(agentId, true);
 
         InputField input = agentInputs[inputIndex];
+
         if (input != null)
         {
             if (clearTextOnJam)
@@ -212,6 +216,114 @@ public class CommanderUIController : MonoBehaviour
 
         UpdateFocusedInputPresentation(true);
         return true;
+    }
+
+    public bool TryJamAgentInputUntilCommandButton(int agentId)
+    {
+        if (!TryGetInputIndexByAgentId(agentId, out int inputIndex))
+            return false;
+
+        if (jammedAgentIds.Contains(agentId))
+            return false;
+
+        if (jamReleaseRoutineByAgentId.TryGetValue(agentId, out Coroutine runningRoutine) &&
+            runningRoutine != null)
+        {
+            StopCoroutine(runningRoutine);
+        }
+
+        jamReleaseRoutineByAgentId.Remove(agentId);
+
+        SetAgentInputJammedState(agentId, true);
+
+        InputField input = agentInputs[inputIndex];
+
+        if (input != null)
+        {
+            if (clearTextOnJam)
+                input.text = "";
+
+            input.DeactivateInputField();
+        }
+
+        if (GetSelectedInputIndex() == inputIndex || currentFocusedInputIndex == inputIndex)
+            FocusNextAvailableInputFrom(inputIndex);
+
+        UpdateFocusedInputPresentation(true);
+
+        Debug.Log($"[CommanderUI] AgentID {agentId} 통신 방해 적용. 명령 버튼 클릭 시 해제됩니다.");
+        return true;
+    }
+
+    public bool TryJamRandomAvailableAgentInput(float duration, out int jammedAgentId)
+    {
+        jammedAgentId = -1;
+
+        if (duration <= 0f)
+            return false;
+
+        if (agents == null || agents.Count == 0)
+            return false;
+
+        List<int> candidateAgentIds = new List<int>();
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            AgentController agent = agents[i];
+
+            if (agent == null)
+                continue;
+
+            if (jammedAgentIds.Contains(agent.AgentID))
+                continue;
+
+            candidateAgentIds.Add(agent.AgentID);
+        }
+
+        if (candidateAgentIds.Count == 0)
+            return false;
+
+        int randomIndex = Random.Range(0, candidateAgentIds.Count);
+        jammedAgentId = candidateAgentIds[randomIndex];
+
+        return TryJamAgentInput(jammedAgentId, duration);
+    }
+
+    public bool TryJamRandomAvailableAgentInputUntilCommandButton(out int jammedAgentId)
+    {
+        jammedAgentId = -1;
+
+        if (agents == null || agents.Count == 0)
+        {
+            Debug.LogWarning("[CommanderUI] 통신 방해 실패: 에이전트 목록이 비어 있습니다.");
+            return false;
+        }
+
+        List<int> candidateAgentIds = new List<int>();
+
+        for (int i = 0; i < agents.Count; i++)
+        {
+            AgentController agent = agents[i];
+
+            if (agent == null)
+                continue;
+
+            if (jammedAgentIds.Contains(agent.AgentID))
+                continue;
+
+            candidateAgentIds.Add(agent.AgentID);
+        }
+
+        if (candidateAgentIds.Count == 0)
+        {
+            Debug.LogWarning("[CommanderUI] 통신 방해 실패: 방해 가능한 에이전트가 없습니다.");
+            return false;
+        }
+
+        int randomIndex = Random.Range(0, candidateAgentIds.Count);
+        jammedAgentId = candidateAgentIds[randomIndex];
+
+        return TryJamAgentInputUntilCommandButton(jammedAgentId);
     }
 
     public void ClearAgentInputJam(int agentId)
@@ -239,45 +351,29 @@ public class CommanderUIController : MonoBehaviour
         jammedAgentIds.Clear();
 
         RefreshAllInputInteractableStates();
+        RestoreAllPlaceholderTexts();
         UpdateFocusedInputPresentation(true);
+    }
+
+    public bool TryReleaseJammedInputsByCommandButton()
+    {
+        if (jammedAgentIds.Count == 0)
+            return false;
+
+        List<int> releasedAgentIds = new List<int>(jammedAgentIds);
+
+        for (int i = 0; i < releasedAgentIds.Count; i++)
+        {
+            ClearAgentInputJam(releasedAgentIds[i]);
+        }
+
+        Debug.Log($"[CommanderUI] 명령 버튼 클릭으로 통신 방해 해제. 해제 수: {releasedAgentIds.Count}");
+        return true;
     }
 
     public bool IsAgentInputJammed(int agentId)
     {
         return jammedAgentIds.Contains(agentId);
-    }
-
-    public bool TryJamRandomAvailableAgentInput(float duration, out int jammedAgentId)
-    {
-        jammedAgentId = -1;
-
-        if (duration <= 0f)
-            return false;
-
-        if (agents == null || agents.Count == 0)
-            return false;
-
-        List<int> candidateAgentIds = new List<int>();
-
-        for (int i = 0; i < agents.Count; i++)
-        {
-            AgentController agent = agents[i];
-            if (agent == null)
-                continue;
-
-            if (jammedAgentIds.Contains(agent.AgentID))
-                continue;
-
-            candidateAgentIds.Add(agent.AgentID);
-        }
-
-        if (candidateAgentIds.Count == 0)
-            return false;
-
-        int randomIndex = Random.Range(0, candidateAgentIds.Count);
-        jammedAgentId = candidateAgentIds[randomIndex];
-
-        return TryJamAgentInput(jammedAgentId, duration);
     }
 
     private IEnumerator ReleaseJamAfterDelay(int agentId, float duration)
@@ -297,6 +393,8 @@ public class CommanderUIController : MonoBehaviour
             jammedAgentIds.Remove(agentId);
 
         RefreshAllInputInteractableStates();
+        RestoreAllPlaceholderTexts();
+        ApplyAllJammedPlaceholders();
     }
 
     private void RefreshAllInputInteractableStates()
@@ -307,6 +405,7 @@ public class CommanderUIController : MonoBehaviour
         for (int i = 0; i < agentInputs.Count; i++)
         {
             InputField input = agentInputs[i];
+
             if (input == null)
                 continue;
 
@@ -324,6 +423,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         Keyboard keyboard = Keyboard.current;
+
         if (keyboard == null)
             return;
 
@@ -375,6 +475,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         Keyboard keyboard = Keyboard.current;
+
         if (keyboard == null)
             return;
 
@@ -382,6 +483,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         int currentIndex = GetSelectedInputIndex();
+
         if (currentIndex < 0)
             currentIndex = GetEffectiveFocusedInputIndex();
 
@@ -393,6 +495,7 @@ public class CommanderUIController : MonoBehaviour
             keyboard.rightShiftKey.isPressed;
 
         int nextIndex = FindNextAvailableInputIndex(currentIndex, movePrevious);
+
         if (nextIndex < 0 || nextIndex == currentIndex)
             return;
 
@@ -408,6 +511,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         Keyboard keyboard = Keyboard.current;
+
         if (keyboard == null)
             return;
 
@@ -431,7 +535,7 @@ public class CommanderUIController : MonoBehaviour
         int selectedIndex = GetSelectedInputIndex();
         int focusedIndex = GetEffectiveFocusedInputIndex();
 
-        if (selectedIndex < 0 && focusedIndex < 0)
+        if (selectedIndex < 0 && focusedIndex < 0 && jammedAgentIds.Count == 0)
             return;
 
         ClearInputFocusBeforeSubmit();
@@ -443,16 +547,19 @@ public class CommanderUIController : MonoBehaviour
         if (!uiInteractable)
             return;
 
-        if (targetSkillController == null)
+        if (!releaseJamOnCommandButton)
             return;
 
-        if (!TryBuildSubmittedInstructions(out Dictionary<int, string> submittedInstructionById))
-            return;
+        if (releaseJamOnlyWhenSubmittedInstructionExists)
+        {
+            if (!TryBuildSubmittedInstructions(out Dictionary<int, string> submittedInstructionById))
+            {
+                Debug.Log("[CommanderUI] 제출 가능한 명령이 없어 통신 방해를 해제하지 않습니다.");
+                return;
+            }
+        }
 
-        if (submittedInstructionById == null || submittedInstructionById.Count == 0)
-            return;
-
-        targetSkillController.TryUseCommunicationJamOnCommandSubmission();
+        TryReleaseJammedInputsByCommandButton();
     }
 
     private void ClearInputFocusBeforeSubmit()
@@ -483,6 +590,7 @@ public class CommanderUIController : MonoBehaviour
         }
 
         currentFocusedInputIndex = -1;
+
         RestoreAllPlaceholderTexts();
         ApplyAllJammedPlaceholders();
     }
@@ -493,6 +601,7 @@ public class CommanderUIController : MonoBehaviour
             yield return null;
 
         InputField currentInput = agentInputs[currentIndex];
+
         if (currentInput != null)
             currentInput.DeactivateInputField();
 
@@ -513,12 +622,14 @@ public class CommanderUIController : MonoBehaviour
             return -1;
 
         GameObject selectedObject = EventSystem.current.currentSelectedGameObject;
+
         if (selectedObject == null)
             return -1;
 
         for (int i = 0; i < agentInputs.Count; i++)
         {
             InputField input = agentInputs[i];
+
             if (input == null)
                 continue;
 
@@ -537,6 +648,7 @@ public class CommanderUIController : MonoBehaviour
         for (int i = 0; i < agentInputs.Count; i++)
         {
             InputField input = agentInputs[i];
+
             if (input == null || !input.interactable)
                 continue;
 
@@ -550,6 +662,7 @@ public class CommanderUIController : MonoBehaviour
     private int GetEffectiveFocusedInputIndex()
     {
         int focusedIndex = GetFocusedInputIndex();
+
         if (focusedIndex >= 0)
             return focusedIndex;
 
@@ -590,6 +703,7 @@ public class CommanderUIController : MonoBehaviour
             return false;
 
         Mouse mouse = Mouse.current;
+
         if (mouse != null && mouse.rightButton.isPressed)
             return true;
 
@@ -614,6 +728,7 @@ public class CommanderUIController : MonoBehaviour
         }
 
         int selectedIndex = GetSelectedInputIndex();
+
         if (selectedIndex >= 0)
         {
             pendingRefocusAfterOrbit = false;
@@ -663,6 +778,7 @@ public class CommanderUIController : MonoBehaviour
             agentCameraFollow.FocusAgent(targetAgent.transform);
 
         AgentOutline outline = targetAgent.GetComponent<AgentOutline>();
+
         if (outline != null)
         {
             outline.SetOutlineVisible(true);
@@ -682,6 +798,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         InputField nextInput = agentInputs[index];
+
         if (nextInput == null || !nextInput.interactable)
             return;
 
@@ -752,6 +869,7 @@ public class CommanderUIController : MonoBehaviour
             return false;
 
         InputField input = agentInputs[index];
+
         if (input == null)
             return false;
 
@@ -782,6 +900,7 @@ public class CommanderUIController : MonoBehaviour
         for (int i = 0; i < agents.Count; i++)
         {
             AgentController agent = agents[i];
+
             if (agent == null)
                 continue;
 
@@ -818,7 +937,7 @@ public class CommanderUIController : MonoBehaviour
         {
             Debug.LogWarning(
                 $"[CommanderUI] agents 수({agents.Count})와 agentInputs 수({agentInputs.Count})가 다릅니다. " +
-                $"입력칸 인덱스와 AgentID 연결을 확인해주세요."
+                "입력칸 인덱스와 AgentID 연결을 확인해주세요."
             );
         }
     }
@@ -858,6 +977,7 @@ public class CommanderUIController : MonoBehaviour
                 continue;
 
             InputField input = agentInputs[i];
+
             if (input == null)
                 continue;
 
@@ -877,6 +997,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         InputField input = agentInputs[inputIndex];
+
         if (input == null)
             return;
 
@@ -899,7 +1020,7 @@ public class CommanderUIController : MonoBehaviour
             return "EX) 대쉬, 연막";
 
         if (typeName.Contains("Scout"))
-            return "EX) 조명탄, 위치 공유 꺼";
+            return "EX) 조명탄, 위치 공유 끔";
 
         if (typeName.Contains("Engineer"))
             return "EX) 바리케이드, 함정";
@@ -911,10 +1032,13 @@ public class CommanderUIController : MonoBehaviour
         {
             case 0:
                 return "EX) 대쉬, 연막";
+
             case 1:
-                return "EX) 조명탄, 위치 공유 꺼";
+                return "EX) 조명탄, 위치 공유 끔";
+
             case 2:
                 return "EX) 바리케이드, 함정";
+
             case 3:
                 return "EX) 소란 장치, 홀로그램";
         }
@@ -928,6 +1052,7 @@ public class CommanderUIController : MonoBehaviour
             return "";
 
         Text placeholderText = input.placeholder.GetComponent<Text>();
+
         if (placeholderText == null)
             return "";
 
@@ -940,6 +1065,7 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         Text placeholderText = input.placeholder.GetComponent<Text>();
+
         if (placeholderText == null)
             return;
 
@@ -954,21 +1080,10 @@ public class CommanderUIController : MonoBehaviour
             return;
         }
 
-        int startIndex = Random.Range(0, agents.Count);
-
-        for (int offset = 0; offset < agents.Count; offset++)
+        if (TryJamRandomAvailableAgentInputUntilCommandButton(out int jammedAgentId))
         {
-            int index = (startIndex + offset) % agents.Count;
-            AgentController agent = agents[index];
-
-            if (agent == null)
-                continue;
-
-            if (TryJamAgentInput(agent.AgentID, 15f))
-            {
-                Debug.Log($"[CommanderUI] 통신 방해 테스트 성공: AgentID {agent.AgentID}, 15초");
-                return;
-            }
+            Debug.Log($"[CommanderUI] 통신 방해 테스트 성공: AgentID {jammedAgentId}, 명령 버튼 클릭 시 해제");
+            return;
         }
 
         Debug.LogWarning("[CommanderUI] 통신 방해 테스트 실패: 방해 가능한 에이전트가 없습니다.");

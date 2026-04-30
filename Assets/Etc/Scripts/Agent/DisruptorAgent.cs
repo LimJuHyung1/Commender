@@ -27,15 +27,42 @@ public class DisruptorAgent : AgentController
 
         string skill = skillName.Trim().ToLower();
 
-        Debug.Log($"[Disruptor {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
+        Debug.Log($"[Disruptor {AgentID}] 스킬 요청: {skillName} 위치: {targetPos}");
 
-        if (skill.Contains("noisemaker") || skill.Contains("noise"))
+        if (skill.Contains("noisemaker") ||
+            skill.Contains("noise") ||
+            skill.Contains("소란") ||
+            skill.Contains("소음"))
         {
+            if (noisemakerPrefab == null)
+            {
+                Debug.LogWarning($"[Disruptor {AgentID}] noisemakerPrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("noisemaker"))
+                return;
+
             ForceStopForSkill();
             DeployNoisemaker(targetPos);
         }
-        else if (skill.Contains("hologram"))
+        else if (skill.Contains("hologram") || skill.Contains("홀로그램"))
         {
+            if (hologramPrefab == null)
+            {
+                Debug.LogWarning($"[Disruptor {AgentID}] hologramPrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (currentHologram != null)
+            {
+                Debug.LogWarning($"[Disruptor {AgentID}] 홀로그램은 하나만 생성할 수 있습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("hologram"))
+                return;
+
             ForceStopForSkill();
             DeployHologram();
         }
@@ -59,12 +86,6 @@ public class DisruptorAgent : AgentController
 
     private void DeployNoisemaker(Vector3 targetPos)
     {
-        if (noisemakerPrefab == null)
-        {
-            Debug.LogWarning($"[Disruptor {AgentID}] noisemakerPrefab이 연결되지 않았습니다.");
-            return;
-        }
-
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
 
         if (replaceExistingNoisemaker && currentNoisemaker != null)
@@ -85,19 +106,7 @@ public class DisruptorAgent : AgentController
 
     private void DeployHologram()
     {
-        if (hologramPrefab == null)
-        {
-            Debug.LogWarning($"[Disruptor {AgentID}] hologramPrefab이 연결되지 않았습니다.");
-            return;
-        }
-
-        if (currentHologram != null)
-        {
-            Debug.LogWarning($"[Disruptor {AgentID}] 홀로그램은 하나만 생성할 수 있습니다.");
-            return;
-        }
-
-        Vector3 spawnPos = transform.position;  // 현재 위치에 홀로그램 생성
+        Vector3 spawnPos = transform.position;
 
         currentHologram = Instantiate(
             hologramPrefab,

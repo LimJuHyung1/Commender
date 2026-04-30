@@ -325,14 +325,15 @@ public class TargetEscapeMotor : MonoBehaviour
         navAgent.autoBraking = false;
     }
 
-    public void ConfigureEmergencyEscape(bool enabled, int charges, bool autoUse)
+    public void ConfigureEmergencyEscape(bool enabled, int charges, bool autoUse, bool resetUsage = false)
     {
         settings.enableEmergencyEscape = enabled;
         settings.emergencyEscapeCharges = enabled ? Mathf.Max(0, charges) : 0;
         settings.autoUseEmergencyEscape = enabled && autoUse;
         settings.ClampValues();
 
-        emergencyEscapeUsedCount = 0;
+        if (resetUsage || !enabled)
+            emergencyEscapeUsedCount = 0;
 
         if (!enabled && emergencyEscapeRoutine != null)
         {

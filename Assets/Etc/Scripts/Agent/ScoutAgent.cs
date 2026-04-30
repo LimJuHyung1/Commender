@@ -55,15 +55,28 @@ public class ScoutAgent : AgentController
 
         string skill = skillName.Trim().ToLower();
 
-        Debug.Log($"[Scout {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
+        Debug.Log($"[Scout {AgentID}] 스킬 요청: {skillName} 위치: {targetPos}");
 
-        if (skill.Contains("flare") || skill.Contains("signalflare"))
+        if (skill.Contains("flare") ||
+            skill.Contains("signalflare") ||
+            skill.Contains("signal flare") ||
+            skill.Contains("조명탄") ||
+            skill.Contains("신호탄"))
         {
             if (!CanUseFlare())
             {
                 Debug.LogWarning($"[Scout {AgentID}] 신호탄은 1회용이라 더 이상 사용할 수 없습니다.");
                 return;
             }
+
+            if (flarePrefab == null)
+            {
+                Debug.LogWarning($"[Scout {AgentID}] flarePrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("flare"))
+                return;
 
             ForceStopForSkill();
             DeployFlare(targetPos);
@@ -242,12 +255,6 @@ public class ScoutAgent : AgentController
 
     private void DeployFlare(Vector3 targetPos)
     {
-        if (flarePrefab == null)
-        {
-            Debug.LogWarning($"[Scout {AgentID}] ScoutFlare 프리팹이 연결되지 않았습니다.");
-            return;
-        }
-
         Vector3 shootStartPos = flareShootPoint != null
             ? flareShootPoint.position
             : transform.position + flareShootOffset;

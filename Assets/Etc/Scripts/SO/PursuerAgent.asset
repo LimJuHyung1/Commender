@@ -36,3 +36,10 @@ MonoBehaviour:
   decoyDuration: 0
   phantomDuration: 0
   phantomThreatWeight: 0
+  dashSkillGaugeMax: 50
+  smokeSkillGaugeMax: 100
+  flareSkillGaugeMax: 0
+  barricadeSkillGaugeMax: 0
+  slowTrapSkillGaugeMax: 0
+  noisemakerSkillGaugeMax: 0
+  hologramSkillGaugeMax: 0

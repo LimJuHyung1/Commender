@@ -19,15 +19,33 @@ public class PursuerAgent : AgentController
 
         string skill = skillName.Trim().ToLower();
 
-        Debug.Log($"[Pursuer {AgentID}] 스킬 요청: {skillName} (위치: {targetPos})");
+        Debug.Log($"[Pursuer {AgentID}] 스킬 요청: {skillName} 위치: {targetPos}");
 
-        if (skill.Contains("dash"))
+        if (skill.Contains("dash") || skill.Contains("대쉬") || skill.Contains("대시"))
         {
+            if (stats == null)
+            {
+                Debug.LogWarning($"[Pursuer {AgentID}] AgentStatsSO가 없어 대쉬를 사용할 수 없습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("dash", stats.dashDuration))
+                return;
+
             StopAllCoroutines();
             StartCoroutine(DashRoutine());
         }
-        else if (skill.Contains("smoke"))
+        else if (skill.Contains("smoke") || skill.Contains("연막"))
         {
+            if (smokePrefab == null)
+            {
+                Debug.LogWarning($"[Pursuer {AgentID}] smokePrefab이 연결되지 않았습니다.");
+                return;
+            }
+
+            if (!TryConsumeSkillGaugeForSkill("smoke"))
+                return;
+
             ExecuteSmokeSkill(targetPos);
         }
         else
@@ -47,15 +65,12 @@ public class PursuerAgent : AgentController
             yield break;
         }
 
-        float originalSpeed = navAgent.speed;
-        float originalAcceleration = navAgent.acceleration;
-
         navAgent.speed = stats.dashSpeed;
         navAgent.acceleration = stats.dashAcceleration;
 
         Debug.Log(
-            $"<color=cyan>[Pursuer Skill]</color> Agent {AgentID} : " +
-            $"대쉬 시작 (speed={stats.dashSpeed}, accel={stats.dashAcceleration}, duration={stats.dashDuration})"
+            $"[Pursuer Skill] Agent {AgentID} : " +
+            $"대쉬 시작 speed={stats.dashSpeed}, accel={stats.dashAcceleration}, duration={stats.dashDuration}"
         );
 
         yield return new WaitForSeconds(stats.dashDuration);
@@ -64,20 +79,14 @@ public class PursuerAgent : AgentController
         navAgent.acceleration = stats.acceleration;
 
         Debug.Log(
-            $"<color=cyan>[Pursuer Skill]</color> Agent {AgentID} : " +
-            $"대쉬 종료. 기본 이동값으로 복구 (speed={stats.moveSpeed}, accel={stats.acceleration})"
+            $"[Pursuer Skill] Agent {AgentID} : " +
+            $"대쉬 종료. 기본 이동값으로 복구 speed={stats.moveSpeed}, accel={stats.acceleration}"
         );
     }
 
     private void ExecuteSmokeSkill(Vector3 targetPos)
     {
-        if (smokePrefab == null)
-        {
-            Debug.LogWarning($"[Pursuer {AgentID}] smokePrefab이 연결되지 않았습니다.");
-            return;
-        }
-
-        Debug.Log($"<color=gray>[Skill]</color> Agent {AgentID} : {targetPos} 지점에 연막탄 투척!");
+        Debug.Log($"[Skill] Agent {AgentID} : {targetPos} 지점에 연막탄 투척");
 
         Instantiate(smokePrefab, targetPos, Quaternion.identity);
     }

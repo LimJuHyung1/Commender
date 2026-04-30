@@ -10,21 +10,21 @@ using UnityEngine.AI;
 public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver
 {
     [Header("References")]
-    public TargetThreatTracker threatTracker;
-    public TargetEscapeMotor escapeMotor;
-    public TargetSkillController skillController;
+    [SerializeField] private TargetThreatTracker threatTracker;
+    [SerializeField] private TargetEscapeMotor escapeMotor;
+    [SerializeField] private TargetSkillController skillController;
 
     [Header("Health")]
-    public float maxHealth = 100f;
-    public float startHealth = 100f;
+    [SerializeField] private float maxHealth = 100f;
+    [SerializeField] private float startHealth = 100f;
 
     [Header("Flee Health Drain")]
-    public float fleeHealthDrainPerSecond = 12f;
+    [SerializeField] private float fleeHealthDrainPerSecond = 12f;
 
     [Header("Safe Recovery")]
-    public float recoveryDelayAfterSafe = 2f;
-    public float recoveryAmountTotal = 30f;
-    public float recoveryDuration = 1.5f;
+    [SerializeField] private float recoveryDelayAfterSafe = 2f;
+    [SerializeField] private float recoveryAmountTotal = 30f;
+    [SerializeField] private float recoveryDuration = 1.5f;
 
     private NavMeshAgent navAgent;
     private TargetWanderMotor wanderMotor;
@@ -39,6 +39,10 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private bool escapeMotorEnabledOnAwake = true;
     private bool wanderMotorEnabledOnAwake = true;
+
+    public TargetThreatTracker ThreatTracker => threatTracker;
+    public TargetEscapeMotor EscapeMotor => escapeMotor;
+    public TargetSkillController SkillController => skillController;
 
     public bool IsCaught => isCaught;
 
@@ -168,7 +172,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
         ForceStopMovement();
 
-        Debug.Log($"[Target] {name} 이(가) 체포되어 이동을 중지했습니다.");
+        Debug.Log($"[TargetController] {name} 이(가) 체포되어 이동을 중지했습니다.");
     }
 
     public void ApplyBaseStats(
@@ -214,7 +218,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
         escapeMotor.RefreshDynamicMovementSettings(true, GetHealthRatio());
 
-        TryAutoEmergencyEscape();
+        if (skillController != null)
+            skillController.TryUseAutoDefensiveSkill(transform.position);
 
         float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
         healthSystem.Damage(damageAmount);
@@ -262,7 +267,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
         ForceStopMovement();
 
-        Debug.Log("[Target] 체력이 0이 되어 더 이상 도망칠 수 없습니다.");
+        Debug.Log("[TargetController] 체력이 0이 되어 더 이상 도망칠 수 없습니다.");
     }
 
     private void HandleSafeRecovery()
@@ -312,6 +317,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             return 1f;
 
         float healthMax = healthSystem.GetHealthMax();
+
         if (healthMax <= 0.01f)
             return 1f;
 

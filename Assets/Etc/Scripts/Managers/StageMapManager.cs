@@ -297,7 +297,7 @@ public class StageMapManager : MonoBehaviour
         int stageNumber = currentStageIndex + 1;
         statApplier.ApplyFromStageNumber(stageNumber);
 
-        Debug.Log($"[StageMapManager] Target Level 적용 완료: Stage={stageNumber}, TargetLevel={statApplier.targetLevel}");
+        Debug.Log($"[StageMapManager] Target Level 적용 완료: Stage={stageNumber}, TargetLevel={statApplier.TargetLevel}");
     }
 
     private Transform GetRandomTargetSpawnPoint()
