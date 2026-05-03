@@ -21,6 +21,9 @@ public abstract class AgentController : MonoBehaviour
     [SerializeField] private string moveSpeedParameter = "MoveSpeed";
     [SerializeField] private bool useMoveSpeedParameter = true;
     [SerializeField] private float movingThreshold = 0.05f;
+    [SerializeField] private float animationStopDelay = 0.18f;
+    [SerializeField] private float animationStopDistanceBuffer = 0.15f;
+    [SerializeField] private float minimumMovingNormalizedSpeed = 0.15f;
 
     [Header("Look Around")]
     [SerializeField] private float lookAroundAngle = 70f;
@@ -69,6 +72,9 @@ public abstract class AgentController : MonoBehaviour
     private int isMovingParameterHash;
     private int moveSpeedParameterHash;
 
+    private bool cachedAnimationIsMoving = false;
+    private float lastAnimationMovingTime = -999f;
+
     private Coroutine lookAroundRoutine;
     private bool isLookingAround = false;
     private bool previousNavUpdateRotation = true;
@@ -107,6 +113,7 @@ public abstract class AgentController : MonoBehaviour
         if (spotLight == null)
         {
             Light[] lights = GetComponentsInChildren<Light>(true);
+
             for (int i = 0; i < lights.Length; i++)
             {
                 if (lights[i] != null && lights[i].type == LightType.Spot)
@@ -136,6 +143,9 @@ public abstract class AgentController : MonoBehaviour
     {
         lastSkillGaugePosition = transform.position;
 
+        cachedAnimationIsMoving = false;
+        lastAnimationMovingTime = -999f;
+
         StopLookAroundInternal(false);
         ClearSharedTargetPosition();
         UpdateStateIcon();
@@ -143,6 +153,11 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual void OnValidate()
     {
+        movingThreshold = Mathf.Max(0f, movingThreshold);
+        animationStopDelay = Mathf.Max(0f, animationStopDelay);
+        animationStopDistanceBuffer = Mathf.Max(0f, animationStopDistanceBuffer);
+        minimumMovingNormalizedSpeed = Mathf.Clamp01(minimumMovingNormalizedSpeed);
+
         CacheAnimatorParameterHashes();
     }
 
@@ -161,7 +176,7 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual void ApplyNavAgentStats()
     {
-        if (navAgent == null)
+        if (navAgent == null || stats == null)
             return;
 
         navAgent.speed = stats.moveSpeed;
@@ -225,6 +240,7 @@ public abstract class AgentController : MonoBehaviour
             {
                 navAgent.isStopped = false;
                 navAgent.SetDestination(targetPos);
+
                 lastChaseDestination = targetPos;
                 hasLastChaseDestination = true;
                 chaseRepathTimer = chaseRepathInterval;
@@ -287,7 +303,11 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent.isStopped)
             return false;
 
-        if (navAgent.velocity.sqrMagnitude <= movingThreshold * movingThreshold)
+        bool hasVelocity =
+            navAgent.velocity.sqrMagnitude > movingThreshold * movingThreshold ||
+            navAgent.desiredVelocity.sqrMagnitude > movingThreshold * movingThreshold;
+
+        if (!hasVelocity)
             return false;
 
         if (isManualMoving)
@@ -412,6 +432,9 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual void CheckDestinationReached()
     {
+        if (navAgent == null)
+            return;
+
         if (navAgent.pathPending)
             return;
 
@@ -420,8 +443,10 @@ public abstract class AgentController : MonoBehaviour
         {
             isManualMoving = false;
             navAgent.ResetPath();
+
             UpdateAnimationState(true);
             UpdateStateIcon();
+
             Debug.LogWarning($"[Agent {AgentID}] Manual move failed. Path is not complete.");
             return;
         }
@@ -439,8 +464,10 @@ public abstract class AgentController : MonoBehaviour
                 {
                     isManualMoving = false;
                     navAgent.ResetPath();
+
                     UpdateAnimationState(true);
                     UpdateStateIcon();
+
                     Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
                 }
             }
@@ -475,10 +502,12 @@ public abstract class AgentController : MonoBehaviour
         hasLastSharedTargetDestination = false;
 
         NavMeshHit hit;
+
         if (!NavMesh.SamplePosition(destination, out hit, 2.0f, navAgent.areaMask))
         {
             UpdateAnimationState(true);
             UpdateStateIcon();
+
             Debug.LogWarning($"[Agent {AgentID}] Failed to find valid NavMesh position near {destination}");
             return;
         }
@@ -489,15 +518,19 @@ public abstract class AgentController : MonoBehaviour
         if (!pathFound || path.status != NavMeshPathStatus.PathComplete)
         {
             navAgent.ResetPath();
+
             UpdateAnimationState(true);
             UpdateStateIcon();
+
             Debug.LogWarning($"[Agent {AgentID}] 도달 불가 목적지입니다. destination={destination}, sampled={hit.position}, pathStatus={path.status}");
             return;
         }
 
         navAgent.isStopped = false;
         navAgent.SetDestination(hit.position);
+
         isManualMoving = true;
+
         UpdateAnimationState(true);
         UpdateStateIcon();
 
@@ -535,12 +568,14 @@ public abstract class AgentController : MonoBehaviour
         {
             navAgent.ResetPath();
             navAgent.isStopped = true;
+
             previousNavUpdateRotation = navAgent.updateRotation;
             navAgent.updateRotation = false;
         }
 
         UpdateAnimationState(true);
         UpdateStateIcon();
+
         Debug.Log($"[Agent {AgentID}] 주변 둘러보기 시작");
 
         float startY = transform.eulerAngles.y;
@@ -558,6 +593,7 @@ public abstract class AgentController : MonoBehaviour
         yield return RotateToYaw(startY);
 
         FinishLookAround();
+
         Debug.Log($"[Agent {AgentID}] 주변 둘러보기 종료");
     }
 
@@ -599,6 +635,7 @@ public abstract class AgentController : MonoBehaviour
 
         isLookingAround = false;
         lookAroundRoutine = null;
+
         UpdateAnimationState(true);
         UpdateStateIcon();
     }
@@ -622,6 +659,7 @@ public abstract class AgentController : MonoBehaviour
         }
 
         isLookingAround = false;
+
         UpdateAnimationState(true);
         UpdateStateIcon();
 
@@ -640,6 +678,7 @@ public abstract class AgentController : MonoBehaviour
         currentTarget = target;
         isManualMoving = false;
         isFollowingSharedTargetPosition = false;
+
         navAgent.isStopped = false;
 
         hasLastChaseDestination = false;
@@ -647,6 +686,7 @@ public abstract class AgentController : MonoBehaviour
         chaseRepathTimer = 0f;
 
         navAgent.SetDestination(currentTarget.position);
+
         UpdateAnimationState(true);
         UpdateStateIcon();
 
@@ -669,6 +709,7 @@ public abstract class AgentController : MonoBehaviour
 
         UpdateAnimationState(true);
         UpdateStateIcon();
+
         Debug.Log($"[Agent {AgentID}] Chase target cleared: {target.name}");
     }
 
@@ -682,6 +723,7 @@ public abstract class AgentController : MonoBehaviour
 
         UpdateAnimationState(true);
         UpdateStateIcon();
+
         Debug.Log($"[Agent {AgentID}] Chase stopped.");
     }
 
@@ -778,33 +820,114 @@ public abstract class AgentController : MonoBehaviour
         if (animator == null || navAgent == null)
             return;
 
-        float speed = navAgent.velocity.magnitude;
-        bool isMovingNow = !navAgent.isStopped &&
-                           (
-                               navAgent.pathPending ||
-                               navAgent.hasPath ||
-                               isManualMoving ||
-                               currentTarget != null ||
-                               isFollowingSharedTargetPosition
-                           ) &&
-                           speed > movingThreshold;
+        bool isMovingNow = ResolveAnimationIsMoving();
 
         animator.SetBool(isMovingParameterHash, isMovingNow);
 
-        if (useMoveSpeedParameter)
+        if (!useMoveSpeedParameter)
+            return;
+
+        float speed = Mathf.Max(
+            navAgent.velocity.magnitude,
+            navAgent.desiredVelocity.magnitude
+        );
+
+        float normalizedSpeed;
+
+        if (!isMovingNow)
         {
-            float normalizedSpeed;
-
-            if (stats != null && stats.moveSpeed > 0.01f)
-                normalizedSpeed = Mathf.Clamp01(speed / stats.moveSpeed);
-            else
-                normalizedSpeed = Mathf.Clamp01(speed);
-
-            if (immediate)
-                animator.SetFloat(moveSpeedParameterHash, normalizedSpeed);
-            else
-                animator.SetFloat(moveSpeedParameterHash, normalizedSpeed, 0.1f, Time.deltaTime);
+            normalizedSpeed = 0f;
         }
+        else if (stats != null && stats.moveSpeed > 0.01f)
+        {
+            normalizedSpeed = Mathf.Clamp01(speed / stats.moveSpeed);
+            normalizedSpeed = Mathf.Max(normalizedSpeed, minimumMovingNormalizedSpeed);
+        }
+        else
+        {
+            normalizedSpeed = Mathf.Clamp01(speed);
+            normalizedSpeed = Mathf.Max(normalizedSpeed, minimumMovingNormalizedSpeed);
+        }
+
+        if (immediate)
+            animator.SetFloat(moveSpeedParameterHash, normalizedSpeed);
+        else
+            animator.SetFloat(moveSpeedParameterHash, normalizedSpeed, 0.1f, Time.deltaTime);
+    }
+
+    private bool ResolveAnimationIsMoving()
+    {
+        if (navAgent == null)
+            return false;
+
+        if (navAgent.isStopped)
+        {
+            cachedAnimationIsMoving = false;
+            return false;
+        }
+
+        bool hasMovementIntent =
+            navAgent.pathPending ||
+            isManualMoving ||
+            currentTarget != null ||
+            isFollowingSharedTargetPosition ||
+            HasActivePathForAnimation();
+
+        bool hasActualVelocity =
+            navAgent.velocity.sqrMagnitude > movingThreshold * movingThreshold ||
+            navAgent.desiredVelocity.sqrMagnitude > movingThreshold * movingThreshold;
+
+        bool hasNotReachedDestination = !HasReachedDestinationForAnimation();
+
+        bool shouldMove = hasMovementIntent && (hasActualVelocity || hasNotReachedDestination);
+
+        if (shouldMove)
+        {
+            cachedAnimationIsMoving = true;
+            lastAnimationMovingTime = Time.time;
+            return true;
+        }
+
+        if (cachedAnimationIsMoving && Time.time - lastAnimationMovingTime <= animationStopDelay)
+            return true;
+
+        cachedAnimationIsMoving = false;
+        return false;
+    }
+
+    private bool HasActivePathForAnimation()
+    {
+        if (navAgent == null)
+            return false;
+
+        if (!navAgent.hasPath)
+            return false;
+
+        if (navAgent.pathPending)
+            return true;
+
+        if (float.IsInfinity(navAgent.remainingDistance))
+            return true;
+
+        return !HasReachedDestinationForAnimation();
+    }
+
+    private bool HasReachedDestinationForAnimation()
+    {
+        if (navAgent == null)
+            return true;
+
+        if (navAgent.pathPending)
+            return false;
+
+        if (!navAgent.hasPath)
+            return true;
+
+        if (float.IsInfinity(navAgent.remainingDistance))
+            return false;
+
+        float stopDistance = Mathf.Max(navAgent.stoppingDistance, 0.05f);
+        return navAgent.remainingDistance <= stopDistance + animationStopDistanceBuffer;
     }
 
     protected virtual void UpdateStateIcon()
