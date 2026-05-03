@@ -26,6 +26,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float winTimeScale = 0.5f;
     [SerializeField] private float failTimeScale = 0.5f;
 
+    [Header("Fail Animation")]
+    [SerializeField] private bool playTargetTimeOverAnimationOnFail = true;
+
     [Header("Debug Target Reveal")]
     [SerializeField] private bool startWithTargetDebugReveal = false;
 
@@ -61,6 +64,16 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        CatchZone.OnTargetCaught += HandleWin;
+    }
+
+    private void OnDisable()
+    {
+        CatchZone.OnTargetCaught -= HandleWin;
+    }
+
     private void OnDestroy()
     {
         if (Instance == this)
@@ -75,16 +88,6 @@ public class GameManager : MonoBehaviour
     private void Update()
     {
         UpdateStageTimer();
-    }
-
-    private void OnEnable()
-    {
-        CatchZone.OnTargetCaught += HandleWin;
-    }
-
-    private void OnDisable()
-    {
-        CatchZone.OnTargetCaught -= HandleWin;
     }
 
     private void ResolveReferences()
@@ -103,6 +106,8 @@ public class GameManager : MonoBehaviour
         stageFinished = false;
         timerRunning = true;
         remainingTime = Mathf.Max(0.1f, timeLimitSeconds);
+
+        Time.timeScale = 1.0f;
 
         if (uiController != null)
         {
@@ -146,14 +151,20 @@ public class GameManager : MonoBehaviour
             ? $"축하합니다! {target.name}을(를) 체포했습니다!"
             : "축하합니다! 타겟을 체포했습니다!";
 
-        CaptureSequenceController captureSequenceController = FindFirstObjectByType<CaptureSequenceController>();
+        CaptureSequenceController captureSequenceController =
+            FindFirstObjectByType<CaptureSequenceController>();
 
         if (captureSequenceController != null)
         {
             stageFinished = true;
             timerRunning = false;
 
-            StartCoroutine(CompleteStageAfterCaptureSequence(captureSequenceController, target, message));
+            StartCoroutine(CompleteStageAfterCaptureSequence(
+                captureSequenceController,
+                target,
+                message
+            ));
+
             return;
         }
 
@@ -172,7 +183,7 @@ public class GameManager : MonoBehaviour
         stageFinished = false;
         CompleteStage(message);
     }
-    
+
     public void CompleteStage(string message)
     {
         if (stageFinished)
@@ -216,6 +227,9 @@ public class GameManager : MonoBehaviour
 
         Debug.Log($"<color=red>[GameManager]</color> 스테이지 실패: {message}");
 
+        if (playTargetTimeOverAnimationOnFail)
+            PlayTargetTimeOverAnimations();
+
         StopAllMovingObjects();
 
         if (uiController != null)
@@ -223,7 +237,8 @@ public class GameManager : MonoBehaviour
 
         Time.timeScale = failTimeScale;
 
-        StartCoroutine(ReturnToLobbyAfterDelay());
+        if (autoReturnToLobbyOnFail)
+            StartCoroutine(ReturnToLobbyAfterDelay());
     }
 
     public void FailAndReturnToLobby(string message)
@@ -232,6 +247,22 @@ public class GameManager : MonoBehaviour
             FailStage(message);
 
         ReturnToLobby();
+    }
+
+    private void PlayTargetTimeOverAnimations()
+    {
+        TargetAnimationController[] targetAnimationControllers =
+            FindObjectsByType<TargetAnimationController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < targetAnimationControllers.Length; i++)
+        {
+            TargetAnimationController targetAnimationController = targetAnimationControllers[i];
+
+            if (targetAnimationController == null)
+                continue;
+
+            targetAnimationController.PlayTimeOverCelebration();
+        }
     }
 
     private void UnlockNextStage()
@@ -279,12 +310,20 @@ public class GameManager : MonoBehaviour
 
     private void StopAllMovingObjects()
     {
-        NavMeshAgent[] allAgents = Object.FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
+        NavMeshAgent[] allAgents =
+            Object.FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
 
         for (int i = 0; i < allAgents.Length; i++)
         {
             NavMeshAgent agent = allAgents[i];
+
             if (agent == null)
+                continue;
+
+            if (!agent.isActiveAndEnabled)
+                continue;
+
+            if (!agent.isOnNavMesh)
                 continue;
 
             agent.isStopped = true;
@@ -297,6 +336,7 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 1.0f;
 
         ResolveReferences();
+
         if (stageMapManager != null)
             stageMapManager.ResetToFirstStageSelection();
 

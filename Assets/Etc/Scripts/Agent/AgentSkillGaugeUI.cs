@@ -7,6 +7,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
 {
     private const string SkillDash = "dash";
     private const string SkillSmoke = "smoke";
+
+    private const string SkillAccessControl = "accesscontrol";
+    private const string SkillEscapeBlock = "escapeblock";
+
     private const string SkillFlare = "flare";
     private const string SkillPositionShare = "positionshare";
     private const string SkillBarricade = "barricade";
@@ -233,7 +237,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (requiredGauge <= 0f)
             return $"{GetSkillDisplayName(skillName)}: 게이지 필요 없음";
 
-        float currentGauge = Mathf.Min(targetAgent.SkillGauge, requiredGauge);
+        float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(skillName);
 
         return $"{GetSkillDisplayName(skillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
     }
@@ -395,17 +399,32 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private void TrySetupByUIName()
     {
-        string uiName = gameObject.name.ToLower();
+        skill1Name = NormalizeSkillName(skill1Name);
+        skill2Name = NormalizeSkillName(skill2Name);
 
-        if (uiName.Contains("pursuer") || uiName.Contains("추격"))
+        if (!string.IsNullOrWhiteSpace(skill1Name) ||
+            !string.IsNullOrWhiteSpace(skill2Name))
         {
-            agentId = 0;
-            skill1Name = SkillDash;
-            skill2Name = SkillSmoke;
             return;
         }
 
-        if (uiName.Contains("scout") || uiName.Contains("수색"))
+        string uiName = gameObject.name.ToLower();
+
+        if (uiName.Contains("pursuer") ||
+            uiName.Contains("chaser") ||
+            uiName.Contains("추격") ||
+            uiName.Contains("체이서"))
+        {
+            agentId = 0;
+            skill1Name = SkillAccessControl;
+            skill2Name = SkillEscapeBlock;
+            return;
+        }
+
+        if (uiName.Contains("scout") ||
+            uiName.Contains("observer") ||
+            uiName.Contains("수색") ||
+            uiName.Contains("옵저버"))
         {
             agentId = 1;
             skill1Name = SkillFlare;
@@ -413,7 +432,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return;
         }
 
-        if (uiName.Contains("engineer") || uiName.Contains("공병"))
+        if (uiName.Contains("engineer") ||
+            uiName.Contains("공병") ||
+            uiName.Contains("엔지니어"))
         {
             agentId = 2;
             skill1Name = SkillBarricade;
@@ -421,7 +442,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return;
         }
 
-        if (uiName.Contains("disruptor") || uiName.Contains("distruptor") || uiName.Contains("교란"))
+        if (uiName.Contains("disruptor") ||
+            uiName.Contains("distruptor") ||
+            uiName.Contains("trickster") ||
+            uiName.Contains("교란") ||
+            uiName.Contains("트릭스터"))
         {
             agentId = 3;
             skill1Name = SkillNoisemaker;
@@ -448,8 +473,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
         switch (role)
         {
             case AgentRole.Pursuer:
-                skill1Name = SkillDash;
-                skill2Name = SkillSmoke;
+                skill1Name = SkillAccessControl;
+                skill2Name = SkillEscapeBlock;
                 break;
 
             case AgentRole.Scout:
@@ -474,8 +499,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
         switch (id)
         {
             case 0:
-                skill1Name = SkillDash;
-                skill2Name = SkillSmoke;
+                skill1Name = SkillAccessControl;
+                skill2Name = SkillEscapeBlock;
                 break;
 
             case 1:
@@ -512,11 +537,18 @@ public class AgentSkillGaugeUI : MonoBehaviour
             if (agent == null)
                 continue;
 
-            if (agent.AgentID == agentId)
+            if (agent.AgentID != agentId)
+                continue;
+
+            targetAgent = agent;
+
+            if (string.IsNullOrWhiteSpace(skill1Name) &&
+                string.IsNullOrWhiteSpace(skill2Name))
             {
-                targetAgent = agent;
-                return;
+                SetupSkillNamesByAgent(targetAgent);
             }
+
+            return;
         }
     }
 
@@ -574,6 +606,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case SkillSmoke:
                 return "연막";
+
+            case SkillAccessControl:
+                return "출입 통제";
+
+            case SkillEscapeBlock:
+                return "도주 제지";
 
             case SkillFlare:
                 return "조명탄";

@@ -328,7 +328,7 @@ public abstract class AgentController : MonoBehaviour
         return Mathf.Max(0f, stats.GetLargestSkillGaugeMax());
     }
 
-    public float GetSkillGaugeMaxForSkill(string skillName)
+    public virtual float GetSkillGaugeMaxForSkill(string skillName)
     {
         if (stats == null)
             return DefaultSkillGaugeMax;
@@ -336,37 +336,48 @@ public abstract class AgentController : MonoBehaviour
         return Mathf.Max(0f, stats.GetSkillGaugeMax(skillName));
     }
 
-    public float GetSkillGaugeNormalizedForSkill(string skillName)
+    public virtual float GetSkillGaugeCurrentForSkill(string skillName)
+    {
+        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+
+        if (requiredGauge <= 0f)
+            return 0f;
+
+        return Mathf.Clamp(skillGauge, 0f, requiredGauge);
+    }
+
+    public virtual float GetSkillGaugeNormalizedForSkill(string skillName)
     {
         float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return 1f;
 
-        return Mathf.Clamp01(skillGauge / requiredGauge);
+        return Mathf.Clamp01(GetSkillGaugeCurrentForSkill(skillName) / requiredGauge);
     }
 
-    public bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
+    public virtual bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
     {
         float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return true;
 
-        bool canUse = skillGauge >= requiredGauge - SkillGaugeFullEpsilon;
+        float currentGauge = GetSkillGaugeCurrentForSkill(skillName);
+        bool canUse = currentGauge >= requiredGauge - SkillGaugeFullEpsilon;
 
         if (!canUse && showWarning)
         {
             Debug.LogWarning(
                 $"[Agent {AgentID}] '{skillName}' 스킬을 사용할 수 없습니다. " +
-                $"현재 게이지: {skillGauge:0.#} / 필요 게이지: {requiredGauge:0.#}"
+                $"현재 게이지: {currentGauge:0.#} / 필요 게이지: {requiredGauge:0.#}"
             );
         }
 
         return canUse;
     }
 
-    protected bool TryConsumeSkillGaugeForSkill(string skillName, float chargeBlockSeconds = 0f)
+    protected virtual bool TryConsumeSkillGaugeForSkill(string skillName, float chargeBlockSeconds = 0f)
     {
         float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
 
@@ -386,14 +397,14 @@ public abstract class AgentController : MonoBehaviour
         return true;
     }
 
-    public void ResetSkillGauge()
+    public virtual void ResetSkillGauge()
     {
         skillGauge = 0f;
         lastSkillGaugePosition = transform.position;
         skillGaugeChargeBlockedUntil = -1f;
     }
 
-    public void FillSkillGauge()
+    public virtual void FillSkillGauge()
     {
         skillGauge = GetCurrentSkillGaugeCapacity();
         lastSkillGaugePosition = transform.position;

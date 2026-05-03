@@ -1016,8 +1016,8 @@ public class CommanderUIController : MonoBehaviour
 
         string typeName = agent.GetType().Name;
 
-        if (typeName.Contains("Pursuer"))
-            return "EX) 대쉬, 연막";
+        if (typeName.Contains("Chaser"))
+            return "EX) 5,4 출입 통제, 정지 요청 켜";
 
         if (typeName.Contains("Scout"))
             return "EX) 조명탄, 위치 공유 끔";
@@ -1031,7 +1031,7 @@ public class CommanderUIController : MonoBehaviour
         switch (agent.AgentID)
         {
             case 0:
-                return "EX) 대쉬, 연막";
+                return "EX) 5,4 출입 통제, 정지 요청 켜";
 
             case 1:
                 return "EX) 조명탄, 위치 공유 끔";

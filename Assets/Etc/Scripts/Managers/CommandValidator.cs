@@ -8,13 +8,20 @@ public sealed class CommandValidator
     private const string SkillMove = "";
     private const string SkillHold = "hold";
     private const string SkillLookAround = "lookaround";
+
     private const string SkillDash = "dash";
     private const string SkillSmoke = "smoke";
+
+    private const string SkillAccessControl = "accesscontrol";
+    private const string SkillEscapeBlock = "escapeblock";
+
     private const string SkillFlare = "flare";
     private const string SkillPositionShareOn = "positionshare_on";
     private const string SkillPositionShareOff = "positionshare_off";
+
     private const string SkillBarricade = "barricade";
     private const string SkillSlowTrap = "slowtrap";
+
     private const string SkillNoiseMaker = "noisemaker";
     private const string SkillHologram = "hologram";
 
@@ -23,12 +30,52 @@ public sealed class CommandValidator
 
     private static readonly string[] DashInstructionKeywords =
     {
-        "dash", "대시", "대쉬"
+        "dash",
+        "대쉬",
+        "대시"
     };
 
     private static readonly string[] SmokeInstructionKeywords =
     {
-        "smoke", "연막", "연막탄"
+        "smoke",
+        "연막",
+        "연막탄"
+    };
+
+    private static readonly string[] AccessControlInstructionKeywords =
+    {
+        "accesscontrol",
+        "access control",
+        "control zone",
+        "security zone",
+        "restricted zone",
+        "출입 통제",
+        "출입통제",
+        "통제 구역",
+        "통제구역",
+        "접근 금지",
+        "접근금지",
+        "제한 구역",
+        "제한구역",
+        "금지 구역",
+        "금지구역"
+    };
+
+    private static readonly string[] EscapeBlockInstructionKeywords =
+    {
+        "escapeblock",
+        "escape block",
+        "escape skill block",
+        "escape blocking",
+        "block escape",
+        "도주 제지",
+        "도주제지",
+        "도주 스킬 차단",
+        "도주스킬차단",
+        "도주 차단",
+        "도주차단",
+        "탈출 차단",
+        "탈출차단"
     };
 
     private static readonly string[] FlareInstructionKeywords =
@@ -62,8 +109,8 @@ public sealed class CommandValidator
         "_off",
         "off",
         "disable",
-        "꺼",
         "끄",
+        "꺼",
         "중지",
         "비활성",
         "하지마",
@@ -72,7 +119,10 @@ public sealed class CommandValidator
 
     private static readonly string[] BarricadeInstructionKeywords =
     {
-        "barricade", "바리케이드", "바리게이트", "봉쇄", "장애물"
+        "barricade",
+        "바리케이드",
+        "봉쇄",
+        "장애물"
     };
 
     private static readonly string[] SlowTrapInstructionKeywords =
@@ -91,12 +141,22 @@ public sealed class CommandValidator
 
     private static readonly string[] NoiseMakerInstructionKeywords =
     {
-        "noisemaker", "noise", "소란 장치", "장치", "소란", "기계"
+        "noisemaker",
+        "noise",
+        "소란 장치",
+        "소란장치",
+        "장치",
+        "소란",
+        "기계"
     };
 
     private static readonly string[] HologramInstructionKeywords =
     {
-        "hologram", "홀로그램", "현재 위치", "현재위치", "위치"
+        "hologram",
+        "홀로그램",
+        "현재 위치",
+        "현재위치",
+        "위치"
     };
 
     private static readonly string[] LookAroundInstructionKeywords =
@@ -111,7 +171,9 @@ public sealed class CommandValidator
         "주위 살펴",
         "look around",
         "check around",
-        "around"
+        "around",
+        "scan",
+        "observe"
     };
 
     private static readonly string[] MovementInstructionKeywords =
@@ -134,6 +196,12 @@ public sealed class CommandValidator
 
         if (TryResolvePositionShareSkill(normalizedInstruction, out string positionShareSkill))
             return positionShareSkill;
+
+        if (TryResolveAccessControlSkill(normalizedInstruction, normalizedSkill, out string accessControlSkill))
+            return accessControlSkill;
+
+        if (TryResolveEscapeBlockSkill(normalizedInstruction, normalizedSkill, out string escapeBlockSkill))
+            return escapeBlockSkill;
 
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
@@ -187,7 +255,7 @@ public sealed class CommandValidator
             return SkillHold;
         }
 
-        Debug.LogWarning($"[Commander] 알 수 없는 skill='{aiSkill}' 를 이동으로 처리하지 않고 대기 상태로 전환합니다. 원문: {originalInstruction}");
+        Debug.LogWarning($"[Commander] 알 수 없는 skill='{aiSkill}'를 이동으로 처리하지 않고 대기 상태로 전환합니다. 원문: {originalInstruction}");
         return SkillHold;
     }
 
@@ -228,6 +296,7 @@ public sealed class CommandValidator
             return false;
 
         Match match = CoordinateRegex.Match(source);
+
         if (!match.Success)
             return false;
 
@@ -246,6 +315,42 @@ public sealed class CommandValidator
         );
 
         return parsedX && parsedZ;
+    }
+
+    private bool TryResolveAccessControlSkill(
+        string normalizedInstruction,
+        string normalizedSkill,
+        out string skill)
+    {
+        skill = "";
+
+        bool hasAccessControlKeyword =
+            ContainsAny(normalizedInstruction, AccessControlInstructionKeywords) ||
+            ContainsAny(normalizedSkill, SkillAccessControl, "access control", "controlzone", "control zone");
+
+        if (!hasAccessControlKeyword)
+            return false;
+
+        skill = SkillAccessControl;
+        return true;
+    }
+
+    private bool TryResolveEscapeBlockSkill(
+        string normalizedInstruction,
+        string normalizedSkill,
+        out string skill)
+    {
+        skill = "";
+
+        bool hasEscapeBlockKeyword =
+            ContainsAny(normalizedInstruction, EscapeBlockInstructionKeywords) ||
+            ContainsAny(normalizedSkill, SkillEscapeBlock, "escape block", "escape skill block");
+
+        if (!hasEscapeBlockKeyword)
+            return false;
+
+        skill = SkillEscapeBlock;
+        return true;
     }
 
     private bool TryResolvePositionShareSkill(string normalizedInstruction, out string skill)
@@ -289,7 +394,7 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedInstruction, requiredKeywords))
             return successSkill;
 
-        Debug.LogWarning($"[Commander] 원문에 {successSkill} 요청이 없어 skill='{aiSkill}' 를 무시합니다. 원문: {originalInstruction}");
+        Debug.LogWarning($"[Commander] 원문에 {successSkill} 요청이 없어 skill='{aiSkill}'를 무시합니다. 원문: {originalInstruction}");
         return SkillHold;
     }
 
@@ -308,6 +413,7 @@ public sealed class CommandValidator
         for (int i = 0; i < keywords.Length; i++)
         {
             string keyword = keywords[i];
+
             if (!string.IsNullOrWhiteSpace(keyword) && source.Contains(keyword))
                 return true;
         }

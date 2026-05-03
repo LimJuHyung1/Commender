@@ -321,22 +321,21 @@ public class CommanderCommandProcessor : MonoBehaviour
             "11. If a skill is used without a location, set pos as {\"x\":0.0,\"z\":0.0} unless the skill is defined to use current position.\n" +
             "12. Output JSON only.\n";
 
-        if (targetAgent is PursuerAgent)
+        if (targetAgent is Chaser)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"dash\" and \"smoke\".\n" +
-                   "14. Use \"dash\" ONLY when the instruction explicitly asks for dash, 대시, or 대쉬.\n" +
-                   "15. Use \"smoke\" ONLY when the instruction explicitly asks for smoke, 연막, or 연막탄.\n" +
-                   "16. Only dash may be combined with movement.\n\n" +
+                   "13. Allowed skills for this agent are only \"accesscontrol\" and \"escapeblock\".\n" +
+                   "14. Use \"accesscontrol\" ONLY when the instruction explicitly asks for 출입 통제, 출입통제, 통제 구역, access control, or control zone.\n" +
+                   "15. accesscontrol MUST use the requested coordinate as the center position of the control zone.\n" +
+                   "16. Use \"escapeblock\" ONLY when the instruction explicitly mentions 도주 제지, 도주제지, 도주 스킬 차단, escape block, or escape skill block.\n" +
+                   "17. escapeblock is an automatic gauge-based skill. It does not turn on or off. If no coordinate is provided, set pos as {\"x\":0.0,\"z\":0.0}.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,5\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 5.0}}, \"skill\": \"\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 3,2로 대시\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 3.0, \"z\": 2.0}}, \"skill\": \"dash\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,4에 연막 사용\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 4.0}}, \"skill\": \"smoke\" }} ] }}";
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,4에 출입 통제\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 4.0}}, \"skill\": \"accesscontrol\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 도주 제지\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"escapeblock\" }} ] }}";
         }
 
         if (targetAgent is ScoutAgent)

@@ -45,6 +45,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     public TargetSkillController SkillController => skillController;
 
     public bool IsCaught => isCaught;
+    public bool IsExhausted => healthSystem != null && healthSystem.IsDead();
 
     public bool IsRevealedToPlayer => threatTracker != null && threatTracker.IsRevealedToPlayer;
     public bool HasActiveThreat => threatTracker != null && threatTracker.HasAnyThreat();

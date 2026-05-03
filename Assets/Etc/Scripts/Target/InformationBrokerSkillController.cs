@@ -3,6 +3,9 @@ using UnityEngine.AI;
 
 public class InformationBrokerSkillController : TargetSkillController
 {
+    [Header("Target State")]
+    [SerializeField] private TargetController targetController;
+
     [Header("Communication Jam")]
     [SerializeField] private Vector2 communicationJamCooldownRange = new Vector2(30f, 60f);
     [SerializeField] private float communicationJamRetryDelay = 5f;
@@ -52,6 +55,9 @@ public class InformationBrokerSkillController : TargetSkillController
     [SerializeField] private bool autoUseDefensiveSkillOnlyOncePerThreatEncounter = true;
     [SerializeField] private float autoDefensiveSharedCooldown = 10f;
     [SerializeField] private float threatResetDelay = 1f;
+
+    [Header("Animation")]
+    [SerializeField] private TargetAnimationController animationController;
 
     [Header("Debug")]
     [SerializeField] private bool enableDebugLog = true;
@@ -162,6 +168,9 @@ public class InformationBrokerSkillController : TargetSkillController
 
     private void Update()
     {
+        if (IsTargetUnableToUseSkills())
+            return;
+
         UpdateThreatEncounterState();
         UpdateCommunicationJamState();
         UpdateCommandDistortionState();
@@ -209,6 +218,8 @@ public class InformationBrokerSkillController : TargetSkillController
         bool destroyActiveBarricades = true,
         bool destroyActiveHologram = true)
     {
+        base.ResetRuntimeState(destroyActiveBarricades, destroyActiveHologram);
+
         nextCommunicationJamReadyTime = -999f;
         nextHologramReadyTime = -999f;
         nextCommandDistortionReadyTime = -999f;
@@ -236,6 +247,12 @@ public class InformationBrokerSkillController : TargetSkillController
 
     public override bool TryUseEmergencyEscape()
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
+        if (!CanUseEscapeSkill(TargetSkillType.EmergencyEscape))
+            return false;
+
         if (!enableEmergencyEscapeSkill)
             return false;
 
@@ -246,6 +263,9 @@ public class InformationBrokerSkillController : TargetSkillController
 
         bool activated = EscapeMotor.TryActivateEmergencyEscape();
 
+        if (activated && animationController != null)
+            animationController.PlayEmergencyEscape();
+
         if (activated && enableDebugLog)
             Debug.Log("[InformationBrokerSkillController] 긴급 탈출 발동");
 
@@ -254,6 +274,12 @@ public class InformationBrokerSkillController : TargetSkillController
 
     public override bool TryAutoEmergencyEscape(float healthRatio)
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
+        if (!CanUseEscapeSkill(TargetSkillType.EmergencyEscape))
+            return false;
+
         if (!enableEmergencyEscapeSkill)
             return false;
 
@@ -273,6 +299,9 @@ public class InformationBrokerSkillController : TargetSkillController
 
     public override bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
         if (!CanUseAutoDefensiveSkill())
             return false;
 
@@ -292,6 +321,9 @@ public class InformationBrokerSkillController : TargetSkillController
 
     public override bool TryUseCommunicationJam()
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
         if (!CanUseCommunicationJam())
             return false;
 
@@ -305,6 +337,9 @@ public class InformationBrokerSkillController : TargetSkillController
 
         nextInterferenceReadyTime = Time.time + interferenceSharedCooldown;
         ScheduleNextCommunicationJam();
+
+        if (animationController != null)
+            animationController.PlayCommunicationJamSkill();
 
         if (enableDebugLog)
         {
@@ -331,6 +366,12 @@ public class InformationBrokerSkillController : TargetSkillController
 
     public override bool TryUseHologram()
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
+        if (!CanUseEscapeSkill(TargetSkillType.Hologram))
+            return false;
+
         if (!CanUseHologram())
             return false;
 
@@ -352,6 +393,9 @@ public class InformationBrokerSkillController : TargetSkillController
         remainingHologramUseCount--;
         nextHologramReadyTime = Time.time + hologramCooldown;
 
+        if (animationController != null)
+            animationController.PlayHologramSlide();
+
         if (enableDebugLog)
         {
             Debug.Log(
@@ -368,6 +412,9 @@ public class InformationBrokerSkillController : TargetSkillController
         out Vector3 distortedPosition)
     {
         distortedPosition = originalPosition;
+
+        if (IsTargetUnableToUseSkills())
+            return false;
 
         if (logCommandDistortionCheck)
         {
@@ -412,6 +459,9 @@ public class InformationBrokerSkillController : TargetSkillController
         if (nextCommunicationJamReadyTime < nextInterferenceReadyTime)
             PostponeCommunicationJamAfterSharedCooldown();
 
+        if (animationController != null)
+            animationController.PlayCommandDistortionSkill();
+
         if (enableDebugLog || logCommandDistortionCheck)
         {
             Debug.Log(
@@ -438,8 +488,14 @@ public class InformationBrokerSkillController : TargetSkillController
     {
         base.ResolveReferences();
 
+        if (targetController == null)
+            targetController = GetComponent<TargetController>();
+
         if (hologramSpawnPoint == null)
             hologramSpawnPoint = transform;
+
+        if (animationController == null)
+            animationController = GetComponent<TargetAnimationController>();
     }
 
     private void TickRandomCommunicationJam()
@@ -612,7 +668,8 @@ public class InformationBrokerSkillController : TargetSkillController
             enableEmergencyEscapeSkill,
             EmergencyEscapeCharges,
             autoUseEmergencyEscape,
-            resetUsage);
+            resetUsage
+        );
     }
 
     private bool CanUseCommunicationJam()
@@ -699,12 +756,12 @@ public class InformationBrokerSkillController : TargetSkillController
 
             if (Time.time >= nextCommandDistortionReadyTime && sharedCooldownReady)
             {
-                ArmCommandDistortion("명령 입력 시점에 쿨타임 종료 확인");
+                ArmCommandDistortion("좌표 입력 직전 타이밍 확인");
             }
             else
             {
                 failReason =
-                    $"아직 명령 변조가 준비되지 않았습니다. " +
+                    $"명령 변조 준비가 완료되지 않았습니다. " +
                     $"남은 쿨타임: {CommandDistortionRemainingCooldown:F1}초";
 
                 return false;
@@ -739,7 +796,8 @@ public class InformationBrokerSkillController : TargetSkillController
         }
 
         return CommanderUIController.TryJamRandomAvailableAgentInputUntilCommandButton(
-            out jammedAgentId);
+            out jammedAgentId
+        );
     }
 
     private Vector3 GetHologramSpawnPosition()
@@ -826,6 +884,20 @@ public class InformationBrokerSkillController : TargetSkillController
         }
 
         wasThreatActiveLastFrame = hasThreat;
+    }
+
+    private bool IsTargetUnableToUseSkills()
+    {
+        if (targetController == null)
+            return false;
+
+        if (targetController.IsCaught)
+            return true;
+
+        if (targetController.IsExhausted)
+            return true;
+
+        return false;
     }
 
     private string GetCommandDistortionArmedTimeLeftText()
