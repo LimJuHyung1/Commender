@@ -107,7 +107,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (uiController == null)
         {
-            Debug.LogError("[Commender] CommenderUIController 참조가 없습니다.");
+            Debug.LogError("[Commander] CommanderUIController 참조가 없습니다.");
             return result;
         }
 
@@ -115,7 +115,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (!uiController.TryBuildSubmittedInstructions(out Dictionary<int, string> submittedInstructionById))
         {
-            Debug.LogWarning("[Commender] 제출할 입력값이 없습니다.");
+            Debug.LogWarning("[Commander] 제출할 입력값이 없습니다.");
             return result;
         }
 
@@ -124,6 +124,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         for (int i = 0; i < agents.Count; i++)
         {
             AgentController agent = agents[i];
+
             if (agent == null)
                 continue;
 
@@ -138,7 +139,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (requestTasks.Count == 0)
         {
-            Debug.LogWarning("[Commender] 처리할 에이전트 명령이 없습니다.");
+            Debug.LogWarning("[Commander] 처리할 에이전트 명령이 없습니다.");
             return result;
         }
 
@@ -147,6 +148,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         for (int i = 0; i < plans.Length; i++)
         {
             PendingCommandPlan plan = plans[i];
+
             if (plan == null)
                 continue;
 
@@ -163,7 +165,9 @@ public class CommanderCommandProcessor : MonoBehaviour
         return result;
     }
 
-    private async Task<PendingCommandPlan> BuildPendingCommandPlanAsync(AgentController targetAgent, string instruction)
+    private async Task<PendingCommandPlan> BuildPendingCommandPlanAsync(
+        AgentController targetAgent,
+        string instruction)
     {
         PendingCommandPlan failedPlan = new PendingCommandPlan
         {
@@ -178,9 +182,10 @@ public class CommanderCommandProcessor : MonoBehaviour
             return failedPlan;
 
         ChatServiceOpenAI chatService = targetAgent.CommandChatService;
+
         if (chatService == null)
         {
-            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 의 ChatServiceOpenAI 참조가 없습니다.");
+            Debug.LogError($"[Commander] Agent {targetAgent.AgentID}의 ChatServiceOpenAI 참조가 없습니다.");
             return failedPlan;
         }
 
@@ -193,7 +198,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (string.IsNullOrWhiteSpace(rawResponse))
             {
-                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 의 AI 응답이 비어 있습니다.");
+                Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID}의 AI 응답이 비어 있습니다.");
                 return failedPlan;
             }
 
@@ -204,7 +209,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 명령 생성 중 오류: {e}");
+            Debug.LogError($"[Commander] Agent {targetAgent.AgentID} 명령 생성 중 오류: {e}");
             return failedPlan;
         }
     }
@@ -227,11 +232,11 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent == null)
             return false;
 
-        Debug.Log($"[Commender] Agent {targetAgent.AgentID} AI 응답 데이터: {raw}");
+        Debug.Log($"[Commander] Agent {targetAgent.AgentID} AI 응답 데이터: {raw}");
 
         if (string.IsNullOrWhiteSpace(raw))
         {
-            Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} AI 응답이 비어 있습니다.");
+            Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} AI 응답이 비어 있습니다.");
             return false;
         }
 
@@ -241,7 +246,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (string.IsNullOrWhiteSpace(json))
             {
-                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 응답에서 JSON 객체를 찾지 못했습니다.");
+                Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} 응답에서 JSON 객체를 찾지 못했습니다.");
                 return false;
             }
 
@@ -249,17 +254,18 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (group == null || group.commands == null || group.commands.Count == 0)
             {
-                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 명령 데이터가 비어 있습니다.");
+                Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} 명령 데이터가 비어 있습니다.");
                 return false;
             }
 
             MoveCommand cmd = group.commands[0];
+
             if (cmd == null)
                 return false;
 
             if (group.commands.Count > 1)
             {
-                Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 응답에 명령이 여러 개 들어왔습니다. 첫 번째 명령만 사용합니다.");
+                Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} 응답에 명령이 여러 개 들어왔습니다. 첫 번째 명령만 사용합니다.");
             }
 
             string validatedSkill = commandValidator.ValidateSkill(cmd.skill, originalInstruction);
@@ -291,7 +297,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"[Commender] Agent {targetAgent.AgentID} 파싱 오류: {e}");
+            Debug.LogError($"[Commander] Agent {targetAgent.AgentID} 파싱 오류: {e}");
             return false;
         }
     }
@@ -304,7 +310,7 @@ public class CommanderCommandProcessor : MonoBehaviour
     private string GetSystemPromptForAgent(AgentController targetAgent)
     {
         string commonRules =
-            "You are a tactical coordinator for the game 'Commender'.\n\n" +
+            "You are a tactical coordinator for the game 'Commander'.\n\n" +
             "You will receive exactly one instruction for exactly one agent.\n" +
             $"The fixed agent id is {targetAgent.AgentID}.\n\n" +
             "RULES:\n" +
@@ -338,19 +344,20 @@ public class CommanderCommandProcessor : MonoBehaviour
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"escapeblock\" }} ] }}";
         }
 
-        if (targetAgent is ScoutAgent)
+        if (targetAgent is Observer)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"flare\", \"positionshare_on\", and \"positionshare_off\".\n" +
-                   "14. Use \"flare\" ONLY when the instruction explicitly asks for flare, signal flare, 조명탄, 신호탄, or 플레어.\n" +
-                   "15. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing, 위치 공유 켜, 위치 공유 시작, 위치 공유해, 타겟 위치 공유, or 타겟 위치 알려줘.\n" +
-                   "16. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing, 위치 공유 꺼, 위치 공유 중지, 위치 공유하지 마, or 타겟 위치 공유하지 마.\n" +
-                   "17. Do not use wallsight or truesight. Those skills are not supported anymore.\n\n" +
+                   "13. Allowed skills for this agent are only \"drone\", \"positionshare_on\", and \"positionshare_off\".\n" +
+                   "14. Use \"drone\" ONLY when the instruction explicitly asks for drone or 드론.\n" +
+                   "15. drone MUST use the requested coordinate as the center position of the drone observation area.\n" +
+                   "16. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing, 위치 공유 켜, 위치 공유 시작, 위치 공유해, 타겟 위치 공유, 타겟 위치 알려줘, 발견하면 알려, or 보이면 알려.\n" +
+                   "17. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing, 위치 공유 꺼, 위치 공유 중지, 위치 공유하지 마, or 타겟 위치 공유하지 마.\n" +
+                   "18. Do not use flare, signalflare, wallsight, or truesight. Those skills are not supported by ObserverAgent.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 8,3에 신호탄 발사\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 8.0, \"z\": 3.0}}, \"skill\": \"flare\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,4에 드론\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 4.0}}, \"skill\": \"drone\" }} ] }}\n\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 꺼\n" +
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_off\" }} ] }}\n\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 켜\n" +
@@ -408,7 +415,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (ShouldUseCurrentPositionWhenNoCoordinate(originalInstruction, validatedSkill))
         {
             Vector3 currentPosition = targetAgent.transform.position;
-            Debug.Log($"[Commender] Agent {targetAgent.AgentID} 좌표 없는 함정 명령이므로 현재 위치 사용: {currentPosition}");
+            Debug.Log($"[Commander] Agent {targetAgent.AgentID} 좌표 없는 현재 위치 스킬이므로 현재 위치 사용: {currentPosition}");
             return currentPosition;
         }
 
@@ -416,7 +423,7 @@ public class CommanderCommandProcessor : MonoBehaviour
             commandValidator.TryExtractCoordinate(originalInstruction, out float parsedX, out float parsedZ))
         {
             Vector3 parsedDestination = ResolveWorldPointFromCoordinate(targetAgent, parsedX, parsedZ);
-            Debug.Log($"[Commender] Agent {targetAgent.AgentID} 좌표를 원문에서 직접 사용: {parsedDestination}");
+            Debug.Log($"[Commander] Agent {targetAgent.AgentID} 좌표를 원문에서 직접 사용: {parsedDestination}");
             return parsedDestination;
         }
 
@@ -469,7 +476,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[Commender] Agent {targetAgent.AgentID} 명령에 pos가 없습니다. 현재 위치 기준으로 처리합니다.");
+            Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} 명령에 pos가 없습니다. 현재 위치 기준으로 처리합니다.");
         }
 
         return ResolveWorldPointFromCoordinate(targetAgent, x, z);
@@ -479,18 +486,18 @@ public class CommanderCommandProcessor : MonoBehaviour
     {
         if (TryGetMatchedClickedGroundPoint(x, z, out Vector3 clickedPoint))
         {
-            Debug.Log($"[Commender] 클릭 좌표 기반 월드 위치 사용: {clickedPoint}");
+            Debug.Log($"[Commander] 클릭 좌표 기반 월드 위치 사용: {clickedPoint}");
             return clickedPoint;
         }
 
         if (TryRaycastGroundPoint(targetAgent, x, z, out Vector3 raycastPoint))
         {
-            Debug.Log($"[Commender] 레이캐스트 기반 월드 위치 사용: {raycastPoint}");
+            Debug.Log($"[Commander] 레이캐스트 기반 월드 위치 사용: {raycastPoint}");
             return raycastPoint;
         }
 
         Vector3 fallback = new Vector3(x, targetAgent.transform.position.y, z);
-        Debug.LogWarning($"[Commender] 좌표 ({x:F2}, {z:F2})의 높이를 찾지 못해 현재 Agent 높이로 대체합니다: {fallback}");
+        Debug.LogWarning($"[Commander] 좌표 ({x:F2}, {z:F2})의 높이를 찾지 못해 현재 Agent 높이로 대체합니다: {fallback}");
         return fallback;
     }
 
@@ -501,7 +508,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (CopiedCoordinateCache.TryGet(x, z, coordinateMatchTolerance, out Vector3 copiedPoint))
         {
             point = copiedPoint;
-            Debug.Log($"[Commender] 복사 좌표 캐시 기반 월드 위치 사용: {point}");
+            Debug.Log($"[Commander] 복사 좌표 캐시 기반 월드 위치 사용: {point}");
             return true;
         }
 
@@ -520,7 +527,7 @@ public class CommanderCommandProcessor : MonoBehaviour
             return false;
 
         point = clicked;
-        Debug.Log($"[Commender] 카메라 마지막 클릭 좌표 기반 월드 위치 사용: {point}");
+        Debug.Log($"[Commander] 카메라 마지막 클릭 좌표 기반 월드 위치 사용: {point}");
         return true;
     }
 
@@ -567,22 +574,22 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (validatedSkill == "lookaround")
         {
-            Debug.Log($"[Commender] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 주변 둘러보기");
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 주변 둘러보기");
         }
         else if (validatedSkill == "hold")
         {
-            Debug.Log($"[Commender] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 제자리 대기");
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 제자리 대기");
         }
         else if (!string.IsNullOrWhiteSpace(validatedSkill))
         {
             if (validatedSkill == "dash")
-                Debug.Log($"[Commender] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 로 dash 이동");
+                Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest}로 dash 이동");
             else
-                Debug.Log($"[Commender] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 위치에 '{validatedSkill}' 스킬 사용");
+                Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 위치에 '{validatedSkill}' 스킬 사용");
         }
         else
         {
-            Debug.Log($"[Commender] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 로 이동");
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest}로 이동");
         }
     }
 
@@ -603,7 +610,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent == null)
         {
             scheduledCommandByAgentId.Remove(agentId);
-            Debug.LogWarning($"[Commender] Agent {agentId} 예약 명령 실행 시점에 대상이 사라졌습니다.");
+            Debug.LogWarning($"[Commander] Agent {agentId} 예약 명령 실행 시점에 대상이 사라졌습니다.");
             yield break;
         }
 
@@ -622,7 +629,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         scheduledCommandByAgentId.Remove(agentId);
 
         if (logMessage)
-            Debug.Log($"[Commender] Agent {agentId} 기존 예약 명령을 취소했습니다.");
+            Debug.Log($"[Commander] Agent {agentId} 기존 예약 명령을 취소했습니다.");
     }
 
     private void CancelAllScheduledCommandsInternal(bool logMessage)
@@ -640,7 +647,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         scheduledCommandByAgentId.Clear();
 
         if (logMessage)
-            Debug.Log("[Commender] 모든 예약 명령을 취소했습니다.");
+            Debug.Log("[Commander] 모든 예약 명령을 취소했습니다.");
     }
 
     private void EnsureHelpers()
@@ -723,6 +730,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         for (int i = 0; i < agents.Count; i++)
         {
             AgentController agent = agents[i];
+
             if (agent == null)
                 continue;
 
@@ -730,7 +738,7 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (agentById.ContainsKey(id))
             {
-                Debug.LogError($"[Commender] 중복된 AgentID가 있습니다. ID: {id}");
+                Debug.LogError($"[Commander] 중복된 AgentID가 있습니다. ID: {id}");
                 continue;
             }
 
@@ -744,6 +752,7 @@ public class CommanderCommandProcessor : MonoBehaviour
             return "";
 
         int start = text.IndexOf('{');
+
         if (start < 0)
             return "";
 
@@ -754,7 +763,9 @@ public class CommanderCommandProcessor : MonoBehaviour
             char c = text[i];
 
             if (c == '{')
+            {
                 depth++;
+            }
             else if (c == '}')
             {
                 depth--;

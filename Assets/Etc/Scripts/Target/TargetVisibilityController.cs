@@ -14,6 +14,7 @@ public class TargetVisibilityController : MonoBehaviour
 
     [Header("Options")]
     public bool hideWhenNotVisible = true;
+    public bool useReconRevealVisibility = true;
     public bool autoFindSceneSensors = true;
     public bool debugVisibility = false;
 
@@ -128,8 +129,15 @@ public class TargetVisibilityController : MonoBehaviour
             return false;
 
         if (GameManager.Instance != null &&
-            targetController != null &&
             GameManager.Instance.IsTargetDebugRevealEnabled)
+        {
+            visibleReason = "DebugReveal";
+            return true;
+        }
+
+        if (useReconRevealVisibility &&
+            targetController != null &&
+            targetController.IsRevealedToPlayer)
         {
             visibleReason = "ReconReveal";
             return true;

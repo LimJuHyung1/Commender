@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class Chaser : AgentController
 {
@@ -22,6 +23,9 @@ public class Chaser : AgentController
     private const string DefeatTriggerName = "Defeat";
 
     private const float EscapeBlockGaugeEmptyEpsilon = 0.001f;
+    private const float ChaserStableMovingThreshold = 0.08f;
+    private const float ChaserManualArrivalExtraBuffer = 0.25f;
+    private const float ChaserArrivalVelocityStopThreshold = 0.2f;
 
     [Header("Access Control")]
     [SerializeField] private AccessControlZone accessControlZonePrefab;
@@ -110,6 +114,9 @@ public class Chaser : AgentController
 
         base.Awake();
 
+        if (animator != null)
+            animator.applyRootMotion = false;
+
         CacheChaserAnimatorParameters();
         InitializeEscapeBlockGauge();
         UpdateAnimationState(true);
@@ -197,6 +204,70 @@ public class Chaser : AgentController
         Debug.LogWarning($"[Chaser {AgentID}] 알 수 없는 스킬입니다: {skillName}");
     }
 
+    protected override void CheckDestinationReached()
+    {
+        if (navAgent == null)
+            return;
+
+        if (!isManualMoving)
+            return;
+
+        if (navAgent.pathPending)
+            return;
+
+        if (navAgent.pathStatus == NavMeshPathStatus.PathInvalid ||
+            navAgent.pathStatus == NavMeshPathStatus.PathPartial)
+        {
+            CompleteChaserManualMove("Manual move failed. Path is not complete.");
+            return;
+        }
+
+        if (!navAgent.hasPath)
+        {
+            CompleteChaserManualMove("Manual move finished. Path no longer exists.");
+            return;
+        }
+
+        if (float.IsInfinity(navAgent.remainingDistance))
+            return;
+
+        float stopDistance = Mathf.Max(navAgent.stoppingDistance, 0.05f);
+        float arrivalDistance = stopDistance + chaserDestinationBuffer + ChaserManualArrivalExtraBuffer;
+
+        float realDistance = Vector3.Distance(transform.position, navAgent.destination);
+
+        bool closeByRemainingDistance = navAgent.remainingDistance <= arrivalDistance;
+        bool closeByRealDistance = realDistance <= arrivalDistance;
+
+        float velocityThresholdSqr = ChaserArrivalVelocityStopThreshold * ChaserArrivalVelocityStopThreshold;
+        bool almostStopped = navAgent.velocity.sqrMagnitude <= velocityThresholdSqr;
+
+        if ((closeByRemainingDistance && closeByRealDistance) ||
+            ((closeByRemainingDistance || closeByRealDistance) && almostStopped))
+        {
+            CompleteChaserManualMove("Reached manual destination. Chaser forced to idle.");
+        }
+    }
+
+    private void CompleteChaserManualMove(string logMessage)
+    {
+        isManualMoving = false;
+        cachedChaserAnimationIsMoving = false;
+        lastChaserAnimationMovingTime = -999f;
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+        {
+            navAgent.isStopped = false;
+            navAgent.velocity = Vector3.zero;
+            navAgent.ResetPath();
+        }
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+
+        Debug.Log($"[Chaser {AgentID}] {logMessage}");
+    }
+
     protected override void UpdateAnimationState(bool immediate = false)
     {
         if (animator == null || navAgent == null)
@@ -215,8 +286,9 @@ public class Chaser : AgentController
             return;
 
         float actualSpeed = navAgent.velocity.magnitude;
+        float effectiveMovingThreshold = Mathf.Max(chaserMovingThreshold, ChaserStableMovingThreshold);
 
-        if (!isMoving || actualSpeed <= chaserMovingThreshold)
+        if (!isMoving || actualSpeed <= effectiveMovingThreshold)
         {
             animator.SetFloat(moveSpeedHash, 0f);
             return;
@@ -597,6 +669,20 @@ public class Chaser : AgentController
             return false;
         }
 
+        float effectiveMovingThreshold = Mathf.Max(chaserMovingThreshold, ChaserStableMovingThreshold);
+        float movingThresholdSqr = effectiveMovingThreshold * effectiveMovingThreshold;
+
+        bool reachedDestination = HasReachedDestinationForChaserAnimation();
+
+        bool hasActualVelocity =
+            navAgent.velocity.sqrMagnitude > movingThresholdSqr;
+
+        if (reachedDestination && !hasActualVelocity)
+        {
+            cachedChaserAnimationIsMoving = false;
+            return false;
+        }
+
         bool hasMovementIntent =
             navAgent.pathPending ||
             isManualMoving ||
@@ -604,11 +690,7 @@ public class Chaser : AgentController
             IsFollowingSharedTargetPosition ||
             HasActivePathForChaserAnimation();
 
-        bool hasActualVelocity =
-            navAgent.velocity.sqrMagnitude > chaserMovingThreshold * chaserMovingThreshold;
-
-        bool hasNotReachedDestination = !HasReachedDestinationForChaserAnimation();
-
+        bool hasNotReachedDestination = !reachedDestination;
         bool shouldMove = hasMovementIntent && (hasActualVelocity || hasNotReachedDestination);
 
         if (shouldMove)

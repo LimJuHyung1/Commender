@@ -11,8 +11,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillAccessControl = "accesscontrol";
     private const string SkillEscapeBlock = "escapeblock";
 
-    private const string SkillFlare = "flare";
+    private const string SkillDrone = "drone";
     private const string SkillPositionShare = "positionshare";
+
     private const string SkillBarricade = "barricade";
     private const string SkillSlowTrap = "slowtrap";
     private const string SkillNoisemaker = "noisemaker";
@@ -427,7 +428,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             uiName.Contains("옵저버"))
         {
             agentId = 1;
-            skill1Name = SkillFlare;
+            skill1Name = SkillDrone;
             skill2Name = SkillPositionShare;
             return;
         }
@@ -459,6 +460,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (agent == null)
             return;
 
+        if (agent is Observer)
+        {
+            skill1Name = SkillDrone;
+            skill2Name = SkillPositionShare;
+            return;
+        }
+
         if (agent.Stats != null)
         {
             SetupSkillNamesByRole(agent.Stats.role);
@@ -472,13 +480,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
     {
         switch (role)
         {
-            case AgentRole.Pursuer:
+            case AgentRole.Chaser:
                 skill1Name = SkillAccessControl;
                 skill2Name = SkillEscapeBlock;
                 break;
 
-            case AgentRole.Scout:
-                skill1Name = SkillFlare;
+            case AgentRole.Observer:
+                skill1Name = SkillDrone;
                 skill2Name = SkillPositionShare;
                 break;
 
@@ -487,7 +495,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
                 skill2Name = SkillSlowTrap;
                 break;
 
-            case AgentRole.Disruptor:
+            case AgentRole.Trickster:
                 skill1Name = SkillNoisemaker;
                 skill2Name = SkillHologram;
                 break;
@@ -504,7 +512,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
                 break;
 
             case 1:
-                skill1Name = SkillFlare;
+                skill1Name = SkillDrone;
                 skill2Name = SkillPositionShare;
                 break;
 
@@ -613,8 +621,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case SkillEscapeBlock:
                 return "도주 제지";
 
-            case SkillFlare:
-                return "조명탄";
+            case SkillDrone:
+                return "드론";
 
             case SkillPositionShare:
                 return "위치 공유";

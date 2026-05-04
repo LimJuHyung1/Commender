@@ -4,18 +4,20 @@ using UnityEngine;
 [RequireComponent(typeof(MeshRenderer))]
 public class VisionConeVisualizer : MonoBehaviour
 {
-    public VisionSensor visionSensor;
-    public Transform visionOrigin;
+    [Header("References")]
+    [SerializeField] private VisionSensor visionSensor;
+    [SerializeField] private Transform visionOrigin;
 
-    public int rayCount = 40;
-    public float meshHeightOffset = 0.03f;
-    public float updateInterval = 0.03f;
+    [Header("Mesh")]
+    [SerializeField] private int rayCount = 40;
+    [SerializeField] private float meshHeightOffset = 0.03f;
+    [SerializeField] private float updateInterval = 0.03f;
 
     [Header("»ö»ó")]
-    public Color normalColor = DefaultNormalColor;
-    public Color positionShareEnabledColor = DefaultPositionShareEnabledColor;
-    public Color positionSharingColor = DefaultPositionSharingColor;
-    public bool useSharingColorWhileTargetVisible = true;
+    [SerializeField] private Color normalColor = DefaultNormalColor;
+    [SerializeField] private Color positionShareEnabledColor = DefaultPositionShareEnabledColor;
+    [SerializeField] private Color positionSharingColor = DefaultPositionSharingColor;
+    [SerializeField] private bool useSharingColorWhileTargetVisible = true;
 
     private static readonly Color DefaultNormalColor = new Color(1f, 1f, 1f, 0.25f);
     private static readonly Color DefaultPositionShareEnabledColor = new Color(0.1f, 0.65f, 1f, 0.35f);
@@ -29,11 +31,11 @@ public class VisionConeVisualizer : MonoBehaviour
     private Mesh mesh;
     private MeshRenderer meshRenderer;
     private MaterialPropertyBlock propertyBlock;
-    private ScoutAgent scoutAgent;
+    private Observer observer;
 
     private float updateTimer;
     private Color lastAppliedColor;
-    private bool hasAppliedColor = false;
+    private bool hasAppliedColor;
 
     private void Reset()
     {
@@ -45,6 +47,10 @@ public class VisionConeVisualizer : MonoBehaviour
 
     private void OnValidate()
     {
+        rayCount = Mathf.Max(1, rayCount);
+        meshHeightOffset = Mathf.Max(0f, meshHeightOffset);
+        updateInterval = Mathf.Max(0.01f, updateInterval);
+
         if (IsSameColor(normalColor, OldYellowNormalColor))
             normalColor = DefaultNormalColor;
     }
@@ -69,7 +75,7 @@ public class VisionConeVisualizer : MonoBehaviour
         if (visionOrigin == null && visionSensor != null)
             visionOrigin = visionSensor.transform;
 
-        scoutAgent = GetComponentInParent<ScoutAgent>();
+        observer = GetComponentInParent<Observer>();
 
         ApplyVisionColor(true);
     }
@@ -160,13 +166,13 @@ public class VisionConeVisualizer : MonoBehaviour
 
     private Color ResolveVisionColor()
     {
-        if (scoutAgent == null)
+        if (observer == null)
             return normalColor;
 
-        if (!scoutAgent.IsTargetPositionShareEnabled)
+        if (!observer.IsTargetPositionShareEnabled)
             return normalColor;
 
-        if (useSharingColorWhileTargetVisible && scoutAgent.IsTargetPositionSharing)
+        if (useSharingColorWhileTargetVisible && observer.IsTargetPositionSharing)
             return positionSharingColor;
 
         return positionShareEnabledColor;

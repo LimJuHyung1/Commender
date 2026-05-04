@@ -16,6 +16,7 @@ public sealed class CommandValidator
     private const string SkillEscapeBlock = "escapeblock";
 
     private const string SkillFlare = "flare";
+    private const string SkillDrone = "drone";
     private const string SkillPositionShareOn = "positionshare_on";
     private const string SkillPositionShareOff = "positionshare_off";
 
@@ -86,6 +87,12 @@ public sealed class CommandValidator
         "조명탄",
         "신호탄",
         "플레어"
+    };
+
+    private static readonly string[] DroneInstructionKeywords =
+    {
+        "drone",
+        "드론"
     };
 
     private static readonly string[] PositionShareInstructionKeywords =
@@ -197,6 +204,9 @@ public sealed class CommandValidator
         if (TryResolvePositionShareSkill(normalizedInstruction, out string positionShareSkill))
             return positionShareSkill;
 
+        if (TryResolveDroneSkill(normalizedInstruction, normalizedSkill, out string droneSkill))
+            return droneSkill;
+
         if (TryResolveAccessControlSkill(normalizedInstruction, normalizedSkill, out string accessControlSkill))
             return accessControlSkill;
 
@@ -217,6 +227,9 @@ public sealed class CommandValidator
 
         if (ContainsAny(normalizedSkill, SkillFlare, "signalflare"))
             return MatchOrHold(normalizedInstruction, FlareInstructionKeywords, SkillFlare, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillDrone))
+            return MatchOrHold(normalizedInstruction, DroneInstructionKeywords, SkillDrone, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillPositionShareOn, SkillPositionShareOff, "positionshare"))
         {
@@ -248,6 +261,9 @@ public sealed class CommandValidator
         {
             if (IsLookAroundInstruction(normalizedInstruction))
                 return SkillLookAround;
+
+            if (ContainsAny(normalizedInstruction, DroneInstructionKeywords))
+                return SkillDrone;
 
             if (IsMovementInstruction(normalizedInstruction))
                 return SkillMove;
@@ -350,6 +366,30 @@ public sealed class CommandValidator
             return false;
 
         skill = SkillEscapeBlock;
+        return true;
+    }
+
+    private bool TryResolveDroneSkill(
+        string normalizedInstruction,
+        string normalizedSkill,
+        out string skill)
+    {
+        skill = "";
+
+        bool instructionRequestsDrone = ContainsAny(normalizedInstruction, DroneInstructionKeywords);
+        bool aiReturnedDrone = ContainsAny(normalizedSkill, SkillDrone);
+
+        if (!instructionRequestsDrone && !aiReturnedDrone)
+            return false;
+
+        if (!instructionRequestsDrone)
+        {
+            Debug.LogWarning($"[Commander] 원문에 드론 요청이 없어 skill='{normalizedSkill}'를 무시합니다.");
+            skill = SkillHold;
+            return true;
+        }
+
+        skill = SkillDrone;
         return true;
     }
 

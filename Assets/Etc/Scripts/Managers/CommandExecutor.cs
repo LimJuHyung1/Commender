@@ -4,8 +4,13 @@ public sealed class CommandExecutor
 {
     private const string SkillHold = "hold";
     private const string SkillLookAround = "lookaround";
+
     private const string SkillDash = "dash";
     private const string SkillHologram = "hologram";
+
+    private const string SkillEscapeBlock = "escapeblock";
+    private const string SkillPositionShareOn = "positionshare_on";
+    private const string SkillPositionShareOff = "positionshare_off";
 
     private TargetSkillController targetSkillController;
 
@@ -63,6 +68,12 @@ public sealed class CommandExecutor
                 ExecuteHologram(targetAgent, agentId);
                 return;
 
+            case SkillEscapeBlock:
+            case SkillPositionShareOn:
+            case SkillPositionShareOff:
+                ExecuteNoPositionSkill(targetAgent, agentId, validatedSkill);
+                return;
+
             default:
                 ExecuteDefaultSkill(targetAgent, agentId, dest, validatedSkill);
                 return;
@@ -71,7 +82,7 @@ public sealed class CommandExecutor
 
     private void ExecuteHold(int agentId)
     {
-        Debug.Log($"<color=grey>[Action]</color> Agent {agentId} : 제자리 대기");
+        Debug.Log($"[Action] Agent {agentId} : 제자리 대기");
     }
 
     private void ExecuteLookAround(AgentController targetAgent, int agentId)
@@ -84,7 +95,7 @@ public sealed class CommandExecutor
             return;
         }
 
-        Debug.Log($"<color=yellow>[Action]</color> Agent {agentId} : 주변 둘러보기");
+        Debug.Log($"[Action] Agent {agentId} : 주변 둘러보기");
     }
 
     private void ExecuteDash(AgentController targetAgent, int agentId, Vector3 dest)
@@ -100,7 +111,7 @@ public sealed class CommandExecutor
 
         Vector3 finalDest = ResolveCommandPosition(dest, SkillDash, agentId);
 
-        Debug.Log($"<color=cyan>[Action]</color> Agent {agentId} : {finalDest} 로 dash 이동");
+        Debug.Log($"[Action] Agent {agentId} : {finalDest} 로 dash 이동");
 
         targetAgent.MoveTo(finalDest);
         targetAgent.ExecuteSkill(SkillDash, finalDest);
@@ -110,9 +121,21 @@ public sealed class CommandExecutor
     {
         Vector3 currentPosition = targetAgent.transform.position;
 
-        Debug.Log($"<color=cyan>[Action]</color> Agent {agentId} : 현재 위치 {currentPosition} 에 'hologram' 스킬 사용");
+        Debug.Log($"[Action] Agent {agentId} : 현재 위치 {currentPosition} 에 hologram 스킬 사용");
 
         targetAgent.ExecuteSkill(SkillHologram, currentPosition);
+    }
+
+    private void ExecuteNoPositionSkill(
+        AgentController targetAgent,
+        int agentId,
+        string validatedSkill)
+    {
+        Vector3 currentPosition = targetAgent.transform.position;
+
+        Debug.Log($"[Action] Agent {agentId} : {validatedSkill} 스킬 사용");
+
+        targetAgent.ExecuteSkill(validatedSkill, currentPosition);
     }
 
     private void ExecuteDefaultSkill(
@@ -123,7 +146,7 @@ public sealed class CommandExecutor
     {
         Vector3 finalDest = ResolveCommandPosition(dest, validatedSkill, agentId);
 
-        Debug.Log($"<color=cyan>[Action]</color> Agent {agentId} : {finalDest} 위치에 '{validatedSkill}' 스킬 사용");
+        Debug.Log($"[Action] Agent {agentId} : {finalDest} 위치에 {validatedSkill} 스킬 사용");
 
         targetAgent.ExecuteSkill(validatedSkill, finalDest);
     }
@@ -138,7 +161,7 @@ public sealed class CommandExecutor
 
         Vector3 finalDest = ResolveCommandPosition(dest, "move", agentId);
 
-        Debug.Log($"<color=green>[Action]</color> Agent {agentId} : {finalDest} 로 이동 명령");
+        Debug.Log($"[Action] Agent {agentId} : {finalDest} 로 이동 명령");
 
         targetAgent.MoveTo(finalDest);
     }
@@ -151,14 +174,16 @@ public sealed class CommandExecutor
         {
             Debug.Log(
                 $"[CommandExecutor] 명령 변조 체크 불가 - TargetSkillController를 찾지 못했습니다. " +
-                $"AgentID: {agentId}, Command: {commandName}, Position: {originalPosition}");
+                $"AgentID: {agentId}, Command: {commandName}, Position: {originalPosition}"
+            );
 
             return originalPosition;
         }
 
         Debug.Log(
             $"[CommandExecutor] 명령 변조 체크 요청 - " +
-            $"AgentID: {agentId}, Command: {commandName}, InputPosition: {originalPosition}");
+            $"AgentID: {agentId}, Command: {commandName}, InputPosition: {originalPosition}"
+        );
 
         if (skillController.TryDistortCommandPosition(originalPosition, out Vector3 distortedPosition))
         {
@@ -166,14 +191,16 @@ public sealed class CommandExecutor
                 $"[CommandExecutor] 명령 변조 적용 - " +
                 $"AgentID: {agentId}, Command: {commandName}, " +
                 $"Original: {originalPosition}, Final: {distortedPosition}, " +
-                $"Distance: {Vector3.Distance(originalPosition, distortedPosition):F2}");
+                $"Distance: {Vector3.Distance(originalPosition, distortedPosition):F2}"
+            );
 
             return distortedPosition;
         }
 
         Debug.Log(
             $"[CommandExecutor] 명령 변조 미적용 - " +
-            $"AgentID: {agentId}, Command: {commandName}, Final: {originalPosition}");
+            $"AgentID: {agentId}, Command: {commandName}, Final: {originalPosition}"
+        );
 
         return originalPosition;
     }

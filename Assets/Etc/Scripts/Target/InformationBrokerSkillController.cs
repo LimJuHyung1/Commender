@@ -28,16 +28,10 @@ public class InformationBrokerSkillController : TargetSkillController
     [SerializeField] private bool commandDistortionReadyOnStart = false;
     [SerializeField] private bool keepCommandDistortionArmedUntilCommand = true;
     [SerializeField] private float commandDistortionArmedDuration = 20f;
-    [SerializeField] private bool postponeCommunicationJamWhileCommandDistortionArmed = true;
-    [SerializeField] private bool commandDistortionIgnoresSharedCooldown = true;
     [SerializeField] private float commandDistortionRadius = 4f;
     [SerializeField] private float minCommandDistortionDistance = 1.5f;
     [SerializeField] private float commandDistortionNavMeshSampleRadius = 3f;
     [SerializeField] private int commandDistortionSampleCount = 12;
-
-    [Header("Interference Control")]
-    [SerializeField] private float interferenceSharedCooldown = 12f;
-    [SerializeField] private Vector2 communicationJamPostponeRange = new Vector2(5f, 10f);
 
     [Header("Command Distortion Debug")]
     [SerializeField] private bool logCommandDistortionCheck = true;
@@ -81,7 +75,6 @@ public class InformationBrokerSkillController : TargetSkillController
     private float nextCommunicationJamReadyTime = -999f;
     private float nextHologramReadyTime = -999f;
     private float nextCommandDistortionReadyTime = -999f;
-    private float nextInterferenceReadyTime = -999f;
     private float nextAutoDefensiveReadyTime = -999f;
 
     private bool wasThreatActiveLastFrame;
@@ -124,11 +117,7 @@ public class InformationBrokerSkillController : TargetSkillController
             if (commandDistortionArmed)
                 return 0f;
 
-            float readyTime = commandDistortionIgnoresSharedCooldown
-                ? nextCommandDistortionReadyTime
-                : Mathf.Max(nextCommandDistortionReadyTime, nextInterferenceReadyTime);
-
-            return Mathf.Max(0f, readyTime - Time.time);
+            return Mathf.Max(0f, nextCommandDistortionReadyTime - Time.time);
         }
     }
 
@@ -154,6 +143,7 @@ public class InformationBrokerSkillController : TargetSkillController
 
     protected override void OnValidate()
     {
+        base.OnValidate();
         ClampValues();
 
         if (Application.isPlaying)
@@ -223,7 +213,6 @@ public class InformationBrokerSkillController : TargetSkillController
         nextCommunicationJamReadyTime = -999f;
         nextHologramReadyTime = -999f;
         nextCommandDistortionReadyTime = -999f;
-        nextInterferenceReadyTime = -999f;
         nextAutoDefensiveReadyTime = -999f;
 
         currentJammedAgentId = -1;
@@ -335,7 +324,6 @@ public class InformationBrokerSkillController : TargetSkillController
 
         currentJammedAgentId = jammedAgentId;
 
-        nextInterferenceReadyTime = Time.time + interferenceSharedCooldown;
         ScheduleNextCommunicationJam();
 
         if (animationController != null)
@@ -411,6 +399,14 @@ public class InformationBrokerSkillController : TargetSkillController
         Vector3 originalPosition,
         out Vector3 distortedPosition)
     {
+        return TryDistortCommandPosition(null, originalPosition, out distortedPosition);
+    }
+
+    public bool TryDistortCommandPosition(
+        AgentController commandAgent,
+        Vector3 originalPosition,
+        out Vector3 distortedPosition)
+    {
         distortedPosition = originalPosition;
 
         if (IsTargetUnableToUseSkills())
@@ -420,13 +416,12 @@ public class InformationBrokerSkillController : TargetSkillController
         {
             Debug.Log(
                 $"[InformationBrokerSkillController] 명령 변조 적용 체크 - " +
+                $"AgentID: {(commandAgent != null ? commandAgent.AgentID.ToString() : "None")}, " +
                 $"Original: {originalPosition}, " +
                 $"Unlocked: {enableCommandDistortionSkill}, " +
                 $"Armed: {commandDistortionArmed}, " +
                 $"ArmedTimeLeft: {GetCommandDistortionArmedTimeLeftText()}, " +
-                $"CooldownRemaining: {CommandDistortionRemainingCooldown:F1}, " +
-                $"SharedCooldownRemaining: {Mathf.Max(0f, nextInterferenceReadyTime - Time.time):F1}, " +
-                $"IgnoreSharedCooldown: {commandDistortionIgnoresSharedCooldown}");
+                $"CooldownRemaining: {CommandDistortionRemainingCooldown:F1}");
         }
 
         if (!CanUseCommandDistortion(out string failReason))
@@ -454,11 +449,6 @@ public class InformationBrokerSkillController : TargetSkillController
 
         ScheduleNextCommandDistortionCooldown(false);
 
-        nextInterferenceReadyTime = Time.time + interferenceSharedCooldown;
-
-        if (nextCommunicationJamReadyTime < nextInterferenceReadyTime)
-            PostponeCommunicationJamAfterSharedCooldown();
-
         if (animationController != null)
             animationController.PlayCommandDistortionSkill();
 
@@ -466,6 +456,7 @@ public class InformationBrokerSkillController : TargetSkillController
         {
             Debug.Log(
                 $"[InformationBrokerSkillController] 명령 변조 적용 성공 - " +
+                $"AgentID: {(commandAgent != null ? commandAgent.AgentID.ToString() : "None")}, " +
                 $"Original: {originalPosition}, " +
                 $"Distorted: {distortedPosition}, " +
                 $"Distance: {Vector3.Distance(originalPosition, distortedPosition):F2}, " +
@@ -509,26 +500,6 @@ public class InformationBrokerSkillController : TargetSkillController
         if (Time.time < nextCommunicationJamReadyTime)
             return;
 
-        if (Time.time < nextInterferenceReadyTime)
-        {
-            PostponeCommunicationJamAfterSharedCooldown();
-            return;
-        }
-
-        if (postponeCommunicationJamWhileCommandDistortionArmed && commandDistortionArmed)
-        {
-            PostponeCommunicationJamAfterSharedCooldown();
-
-            if (enableDebugLog)
-            {
-                Debug.Log(
-                    "[InformationBrokerSkillController] 통신 방해 연기 - " +
-                    "명령 변조가 준비 중이므로 통신 방해를 뒤로 미룹니다.");
-            }
-
-            return;
-        }
-
         bool used = TryUseCommunicationJam();
 
         if (!used && Time.time >= nextCommunicationJamReadyTime)
@@ -560,9 +531,6 @@ public class InformationBrokerSkillController : TargetSkillController
         if (Time.time < nextCommandDistortionReadyTime)
             return;
 
-        if (!commandDistortionIgnoresSharedCooldown && Time.time < nextInterferenceReadyTime)
-            return;
-
         ArmCommandDistortion("쿨타임 종료");
     }
 
@@ -577,11 +545,6 @@ public class InformationBrokerSkillController : TargetSkillController
             commandDistortionArmedEndTime = float.PositiveInfinity;
         else
             commandDistortionArmedEndTime = Time.time + commandDistortionArmedDuration;
-
-        nextInterferenceReadyTime = Time.time + interferenceSharedCooldown;
-
-        if (nextCommunicationJamReadyTime < nextInterferenceReadyTime)
-            PostponeCommunicationJamAfterSharedCooldown();
 
         if (enableDebugLog)
         {
@@ -627,23 +590,6 @@ public class InformationBrokerSkillController : TargetSkillController
         nextCommandDistortionReadyTime = Time.time + cooldown;
     }
 
-    private void PostponeCommunicationJamAfterSharedCooldown()
-    {
-        float delay = Random.Range(
-            communicationJamPostponeRange.x,
-            communicationJamPostponeRange.y
-        );
-
-        nextCommunicationJamReadyTime = nextInterferenceReadyTime + delay;
-
-        if (enableDebugLog)
-        {
-            Debug.Log(
-                $"[InformationBrokerSkillController] 통신 방해 연기 - " +
-                $"다른 교란 스킬과 겹치지 않도록 {nextCommunicationJamReadyTime - Time.time:F1}초 뒤로 조정");
-        }
-    }
-
     private void UpdateCommunicationJamState()
     {
         if (currentJammedAgentId < 0)
@@ -686,12 +632,6 @@ public class InformationBrokerSkillController : TargetSkillController
         }
 
         if (Time.time < nextCommunicationJamReadyTime)
-            return false;
-
-        if (Time.time < nextInterferenceReadyTime)
-            return false;
-
-        if (postponeCommunicationJamWhileCommandDistortionArmed && commandDistortionArmed)
             return false;
 
         if (allowOnlyOneCommunicationJamAtOnce &&
@@ -744,17 +684,13 @@ public class InformationBrokerSkillController : TargetSkillController
 
         if (!enableCommandDistortionSkill)
         {
-            failReason = "CommandDistortion이 아직 해금되지 않았습니다.";
+            failReason = "명령 변조가 아직 해금되지 않았습니다.";
             return false;
         }
 
         if (!commandDistortionArmed)
         {
-            bool sharedCooldownReady =
-                commandDistortionIgnoresSharedCooldown ||
-                Time.time >= nextInterferenceReadyTime;
-
-            if (Time.time >= nextCommandDistortionReadyTime && sharedCooldownReady)
+            if (Time.time >= nextCommandDistortionReadyTime)
             {
                 ArmCommandDistortion("좌표 입력 직전 타이밍 확인");
             }
@@ -937,13 +873,6 @@ public class InformationBrokerSkillController : TargetSkillController
         );
         commandDistortionNavMeshSampleRadius = Mathf.Max(0.1f, commandDistortionNavMeshSampleRadius);
         commandDistortionSampleCount = Mathf.Clamp(commandDistortionSampleCount, 1, 32);
-
-        interferenceSharedCooldown = Mathf.Max(0f, interferenceSharedCooldown);
-        communicationJamPostponeRange.x = Mathf.Max(0f, communicationJamPostponeRange.x);
-        communicationJamPostponeRange.y = Mathf.Max(
-            communicationJamPostponeRange.x,
-            communicationJamPostponeRange.y
-        );
 
         communicationJamUnlockLevel = Mathf.Max(1, communicationJamUnlockLevel);
         hologramUnlockLevel = Mathf.Max(1, hologramUnlockLevel);

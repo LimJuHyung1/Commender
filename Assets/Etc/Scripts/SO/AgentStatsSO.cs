@@ -2,10 +2,10 @@ using UnityEngine;
 
 public enum AgentRole
 {
-    Pursuer,    // 체이서
-    Scout,      // 옵저버
-    Engineer,   // 엔지니어
-    Disruptor   // 트릭스터
+    Chaser,
+    Observer,
+    Engineer,
+    Trickster
 }
 
 [CreateAssetMenu(fileName = "AgentStats", menuName = "Commander/Agent Stats")]
@@ -22,26 +22,33 @@ public class AgentStatsSO : ScriptableObject
 
     [Header("시야")]
     public float viewRadius = 7.5f;
-    [Range(1f, 360f)] public float viewAngle = 60f;
+
+    [Range(1f, 360f)]
+    public float viewAngle = 60f;
 
     [Header("Spot Light")]
     public bool useSpotLight = true;
     public Color spotLightColor = Color.white;
     public float spotLightIntensity = 100f;
     public float spotLightRange = 10f;
-    [Range(1f, 179f)] public float spotLightInnerAngle = 16.6f;
-    [Range(1f, 179f)] public float spotLightOuterAngle = 67.2f;
+
+    [Range(1f, 179f)]
+    public float spotLightInnerAngle = 16.6f;
+
+    [Range(1f, 179f)]
+    public float spotLightOuterAngle = 67.2f;
 
     [Header("체이서 스킬 게이지")]
     public float accessControlSkillGaugeMax = 100f;
 
-    [Header("옵저버 스킬 설정")]
-    public float reconDuration = 5f;
-    public float reconRadius = 5f;
-    public float wallSightDuration = 5f;
+    [Header("옵저버 드론 스킬 설정")]
+    public float droneDuration = 20f;
+    public float droneRadius = 7f;
+    public float droneSpawnHeight = 6f;
+    public float droneObservationAreaYOffset = 0.05f;
 
     [Header("옵저버 스킬 게이지")]
-    public float flareSkillGaugeMax = 100f;
+    public float droneSkillGaugeMax = 50f;
 
     [Header("엔지니어 스킬 설정")]
     public float slowTrapDuration = 3f;
@@ -60,12 +67,63 @@ public class AgentStatsSO : ScriptableObject
     public float noisemakerSkillGaugeMax = 70f;
     public float hologramSkillGaugeMax = 100f;
 
-    [Header("Legacy 체이서 설정")]
+    [Header("Legacy Chaser Settings")]
     [HideInInspector] public float dashSpeed = 15f;
     [HideInInspector] public float dashAcceleration = 15f;
     [HideInInspector] public float dashDuration = 1.5f;
     [HideInInspector] public float dashSkillGaugeMax = 80f;
     [HideInInspector] public float smokeSkillGaugeMax = 100f;
+
+    [Header("Legacy Observer Settings")]
+    [HideInInspector] public float reconDuration = 5f;
+    [HideInInspector] public float reconRadius = 5f;
+    [HideInInspector] public float wallSightDuration = 5f;
+    [HideInInspector] public float flareSkillGaugeMax = 100f;
+
+    private void OnValidate()
+    {
+        moveSpeed = Mathf.Max(0f, moveSpeed);
+        acceleration = Mathf.Max(0f, acceleration);
+        stoppingDistance = Mathf.Max(0f, stoppingDistance);
+        angularSpeed = Mathf.Max(0f, angularSpeed);
+
+        viewRadius = Mathf.Max(0f, viewRadius);
+
+        spotLightIntensity = Mathf.Max(0f, spotLightIntensity);
+        spotLightRange = Mathf.Max(0f, spotLightRange);
+
+        accessControlSkillGaugeMax = Mathf.Max(0f, accessControlSkillGaugeMax);
+
+        droneDuration = Mathf.Max(0f, droneDuration);
+        droneRadius = Mathf.Max(0f, droneRadius);
+        droneSpawnHeight = Mathf.Max(0f, droneSpawnHeight);
+        droneObservationAreaYOffset = Mathf.Max(0f, droneObservationAreaYOffset);
+        droneSkillGaugeMax = Mathf.Max(0f, droneSkillGaugeMax);
+
+        slowTrapDuration = Mathf.Max(0f, slowTrapDuration);
+        slowTrapStrength = Mathf.Max(0f, slowTrapStrength);
+
+        barricadeSkillGaugeMax = Mathf.Max(0f, barricadeSkillGaugeMax);
+        slowTrapSkillGaugeMax = Mathf.Max(0f, slowTrapSkillGaugeMax);
+
+        decoyDuration = Mathf.Max(0f, decoyDuration);
+        phantomDuration = Mathf.Max(0f, phantomDuration);
+        phantomThreatWeight = Mathf.Max(0f, phantomThreatWeight);
+
+        noisemakerSkillGaugeMax = Mathf.Max(0f, noisemakerSkillGaugeMax);
+        hologramSkillGaugeMax = Mathf.Max(0f, hologramSkillGaugeMax);
+
+        dashSpeed = Mathf.Max(0f, dashSpeed);
+        dashAcceleration = Mathf.Max(0f, dashAcceleration);
+        dashDuration = Mathf.Max(0f, dashDuration);
+        dashSkillGaugeMax = Mathf.Max(0f, dashSkillGaugeMax);
+        smokeSkillGaugeMax = Mathf.Max(0f, smokeSkillGaugeMax);
+
+        reconDuration = Mathf.Max(0f, reconDuration);
+        reconRadius = Mathf.Max(0f, reconRadius);
+        wallSightDuration = Mathf.Max(0f, wallSightDuration);
+        flareSkillGaugeMax = Mathf.Max(0f, flareSkillGaugeMax);
+    }
 
     public float GetSkillGaugeMax(string skillName)
     {
@@ -80,14 +138,8 @@ public class AgentStatsSO : ScriptableObject
         if (IsAccessControlSkill(skill))
             return Mathf.Max(0f, accessControlSkillGaugeMax);
 
-        if (IsLegacyDashSkill(skill))
-            return Mathf.Max(0f, dashSkillGaugeMax);
-
-        if (IsLegacySmokeSkill(skill))
-            return Mathf.Max(0f, smokeSkillGaugeMax);
-
-        if (IsFlareSkill(skill))
-            return Mathf.Max(0f, flareSkillGaugeMax);
+        if (IsDroneSkill(skill))
+            return Mathf.Max(0f, droneSkillGaugeMax);
 
         if (IsBarricadeSkill(skill))
             return Mathf.Max(0f, barricadeSkillGaugeMax);
@@ -101,6 +153,12 @@ public class AgentStatsSO : ScriptableObject
         if (IsHologramSkill(skill))
             return Mathf.Max(0f, hologramSkillGaugeMax);
 
+        if (IsLegacyDashSkill(skill))
+            return Mathf.Max(0f, dashSkillGaugeMax);
+
+        if (IsLegacySmokeSkill(skill))
+            return Mathf.Max(0f, smokeSkillGaugeMax);
+
         return 100f;
     }
 
@@ -108,16 +166,16 @@ public class AgentStatsSO : ScriptableObject
     {
         switch (role)
         {
-            case AgentRole.Pursuer:
+            case AgentRole.Chaser:
                 return Mathf.Max(
                     0f,
                     accessControlSkillGaugeMax
                 );
 
-            case AgentRole.Scout:
+            case AgentRole.Observer:
                 return Mathf.Max(
                     0f,
-                    flareSkillGaugeMax
+                    droneSkillGaugeMax
                 );
 
             case AgentRole.Engineer:
@@ -127,7 +185,7 @@ public class AgentStatsSO : ScriptableObject
                     slowTrapSkillGaugeMax
                 );
 
-            case AgentRole.Disruptor:
+            case AgentRole.Trickster:
                 return Mathf.Max(
                     0f,
                     noisemakerSkillGaugeMax,
@@ -138,7 +196,7 @@ public class AgentStatsSO : ScriptableObject
                 return Mathf.Max(
                     0f,
                     accessControlSkillGaugeMax,
-                    flareSkillGaugeMax,
+                    droneSkillGaugeMax,
                     barricadeSkillGaugeMax,
                     slowTrapSkillGaugeMax,
                     noisemakerSkillGaugeMax,
@@ -214,40 +272,19 @@ public class AgentStatsSO : ScriptableObject
                skill.Contains("위치공유") ||
                skill.Contains("위치 공유") ||
                skill.Contains("타겟위치공유") ||
-               skill.Contains("타겟 위치 공유");
+               skill.Contains("타겟 위치 공유") ||
+               skill.Contains("대상위치공유") ||
+               skill.Contains("대상 위치 공유");
     }
 
-    private bool IsLegacyDashSkill(string skill)
+    private bool IsDroneSkill(string skill)
     {
         if (string.IsNullOrWhiteSpace(skill))
             return false;
 
-        return skill.Contains("dash") ||
-               skill.Contains("대쉬") ||
-               skill.Contains("대시");
-    }
-
-    private bool IsLegacySmokeSkill(string skill)
-    {
-        if (string.IsNullOrWhiteSpace(skill))
-            return false;
-
-        return skill.Contains("smoke") ||
-               skill.Contains("연막") ||
-               skill.Contains("연막탄");
-    }
-
-    private bool IsFlareSkill(string skill)
-    {
-        if (string.IsNullOrWhiteSpace(skill))
-            return false;
-
-        return skill.Contains("flare") ||
-               skill.Contains("signalflare") ||
-               skill.Contains("signal flare") ||
-               skill.Contains("조명탄") ||
-               skill.Contains("신호탄") ||
-               skill.Contains("플레어");
+        return skill.Contains("drone") ||
+               skill.Contains("uav") ||
+               skill.Contains("드론");
     }
 
     private bool IsBarricadeSkill(string skill)
@@ -298,5 +335,25 @@ public class AgentStatsSO : ScriptableObject
 
         return skill.Contains("hologram") ||
                skill.Contains("홀로그램");
+    }
+
+    private bool IsLegacyDashSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("dash") ||
+               skill.Contains("대쉬") ||
+               skill.Contains("대시");
+    }
+
+    private bool IsLegacySmokeSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("smoke") ||
+               skill.Contains("연막") ||
+               skill.Contains("연막탄");
     }
 }
