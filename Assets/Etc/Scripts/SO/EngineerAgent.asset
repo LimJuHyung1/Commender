@@ -25,21 +25,27 @@ MonoBehaviour:
   spotLightRange: 10
   spotLightInnerAngle: 16.6
   spotLightOuterAngle: 67.2
-  dashSpeed: 0
-  dashAcceleration: 0
-  dashDuration: 0
-  reconDuration: 0
-  reconRadius: 0
-  wallSightDuration: 0
-  slowTrapDuration: 4
-  slowTrapStrength: 0.6
+  accessControlSkillGaugeMax: 100
+  droneDuration: 20
+  droneRadius: 7
+  droneSpawnHeight: 6
+  droneObservationAreaYOffset: 0.05
+  droneSkillGaugeMax: 50
+  barricadeSkillGaugeMax: 50
+  stopSignalSkillGaugeMax: 80
   decoyDuration: 0
   phantomDuration: 0
   phantomThreatWeight: 0
-  dashSkillGaugeMax: 0
-  smokeSkillGaugeMax: 0
-  flareSkillGaugeMax: 0
-  barricadeSkillGaugeMax: 70
-  slowTrapSkillGaugeMax: 90
   noisemakerSkillGaugeMax: 0
   hologramSkillGaugeMax: 0
+  slowTrapDuration: 4
+  slowTrapStrength: 0.6
+  dashSpeed: 0
+  dashAcceleration: 0
+  dashDuration: 0
+  dashSkillGaugeMax: 0
+  smokeSkillGaugeMax: 0
+  reconDuration: 0
+  reconRadius: 0
+  wallSightDuration: 0
+  flareSkillGaugeMax: 0

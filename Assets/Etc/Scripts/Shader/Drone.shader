@@ -1,4 +1,4 @@
-Shader "Commander/DroneObservationArea"
+Shader "Commander/Drone"
 {
     Properties
     {

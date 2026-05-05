@@ -15,16 +15,18 @@ public sealed class CommandValidator
     private const string SkillAccessControl = "accesscontrol";
     private const string SkillEscapeBlock = "escapeblock";
 
-    private const string SkillFlare = "flare";
     private const string SkillDrone = "drone";
     private const string SkillPositionShareOn = "positionshare_on";
     private const string SkillPositionShareOff = "positionshare_off";
 
     private const string SkillBarricade = "barricade";
-    private const string SkillSlowTrap = "slowtrap";
+    private const string SkillStopSignal = "stopsignal";
 
     private const string SkillNoiseMaker = "noisemaker";
     private const string SkillHologram = "hologram";
+
+    private const string SkillFakeBox = "fakebox";
+    private const string SkillJokerCard = "jokercard";
 
     private static readonly Regex CoordinateRegex =
         new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
@@ -32,7 +34,6 @@ public sealed class CommandValidator
     private static readonly string[] DashInstructionKeywords =
     {
         "dash",
-        "대쉬",
         "대시"
     };
 
@@ -79,19 +80,10 @@ public sealed class CommandValidator
         "탈출차단"
     };
 
-    private static readonly string[] FlareInstructionKeywords =
-    {
-        "flare",
-        "signal flare",
-        "signalflare",
-        "조명탄",
-        "신호탄",
-        "플레어"
-    };
-
     private static readonly string[] DroneInstructionKeywords =
     {
         "drone",
+        "uav",
         "드론"
     };
 
@@ -116,8 +108,8 @@ public sealed class CommandValidator
         "_off",
         "off",
         "disable",
-        "끄",
         "꺼",
+        "끄",
         "중지",
         "비활성",
         "하지마",
@@ -128,22 +120,43 @@ public sealed class CommandValidator
     {
         "barricade",
         "바리케이드",
+        "바리케이트",
         "봉쇄",
-        "장애물"
+        "장애물",
+        "장애물 설치",
+        "길막",
+        "길 막",
+        "막아",
+        "막기"
     };
 
-    private static readonly string[] SlowTrapInstructionKeywords =
+    private static readonly string[] StopSignalInstructionKeywords =
     {
+        "stopsignal",
+        "stop signal",
+        "stop sign",
+        "stop signal device",
         "slowtrap",
+        "slow trap",
         "snaretrap",
-        "trap",
-        "트랩",
-        "함정",
-        "정지 함정",
+        "정지 신호",
+        "정지신호",
+        "정지 표지",
+        "정지표지",
+        "정지 장치",
+        "정지장치",
+        "신호 설치",
+        "신호설치",
+        "신호를 설치",
+        "통제 신호",
+        "통제신호",
+        "멈춤 신호",
+        "멈춤신호",
+        "감속 함정",
+        "감속함정",
         "구속 함정",
-        "속박 함정",
-        "트랩 설치",
-        "함정 설치"
+        "구속함정",
+        "함정"
     };
 
     private static readonly string[] NoiseMakerInstructionKeywords =
@@ -152,7 +165,9 @@ public sealed class CommandValidator
         "noise",
         "소란 장치",
         "소란장치",
-        "장치",
+        "소음 장치",
+        "소음장치",
+        "소음 발생기",
         "소란",
         "기계"
     };
@@ -162,8 +177,29 @@ public sealed class CommandValidator
         "hologram",
         "홀로그램",
         "현재 위치",
-        "현재위치",
-        "위치"
+        "현재위치"
+    };
+
+    private static readonly string[] FakeBoxInstructionKeywords =
+    {
+        "fakebox",
+        "fake box",
+        "magicbox",
+        "magic box",
+        "페이크 박스",
+        "페이크박스",
+        "마술 상자",
+        "마술상자",
+        "가짜 상자",
+        "가짜상자"
+    };
+
+    private static readonly string[] JokerCardInstructionKeywords =
+    {
+        "jokercard",
+        "joker card",
+        "조커 카드",
+        "조커카드"
     };
 
     private static readonly string[] LookAroundInstructionKeywords =
@@ -216,17 +252,27 @@ public sealed class CommandValidator
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
 
-        if (IsTrapInstruction(normalizedInstruction))
-            return SkillSlowTrap;
+        if (IsBarricadeInstruction(normalizedInstruction))
+            return SkillBarricade;
+
+        if (IsStopSignalInstruction(normalizedInstruction))
+            return SkillStopSignal;
+
+        if (IsFakeBoxInstruction(normalizedInstruction))
+            return SkillFakeBox;
+
+        if (IsJokerCardInstruction(normalizedInstruction) ||
+            ContainsAny(normalizedSkill, SkillJokerCard, "joker card"))
+        {
+            Debug.LogWarning("[Commander] 조커 카드는 자동 발동 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
 
         if (ContainsAny(normalizedSkill, SkillDash))
             return MatchOrHold(normalizedInstruction, DashInstructionKeywords, SkillDash, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillSmoke))
             return MatchOrHold(normalizedInstruction, SmokeInstructionKeywords, SkillSmoke, aiSkill, originalInstruction);
-
-        if (ContainsAny(normalizedSkill, SkillFlare, "signalflare"))
-            return MatchOrHold(normalizedInstruction, FlareInstructionKeywords, SkillFlare, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillDrone))
             return MatchOrHold(normalizedInstruction, DroneInstructionKeywords, SkillDrone, aiSkill, originalInstruction);
@@ -242,8 +288,11 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedSkill, SkillBarricade))
             return MatchOrHold(normalizedInstruction, BarricadeInstructionKeywords, SkillBarricade, aiSkill, originalInstruction);
 
-        if (ContainsAny(normalizedSkill, SkillSlowTrap, "snaretrap", "trap"))
-            return MatchOrHold(normalizedInstruction, SlowTrapInstructionKeywords, SkillSlowTrap, aiSkill, originalInstruction);
+        if (ContainsAny(normalizedSkill, SkillStopSignal, "stop signal", "stop sign", "slowtrap", "slow trap"))
+            return SkillStopSignal;
+
+        if (ContainsAny(normalizedSkill, SkillFakeBox, "fake box", "magic box"))
+            return MatchOrHold(normalizedInstruction, FakeBoxInstructionKeywords, SkillFakeBox, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillNoiseMaker, "noise"))
             return MatchOrHold(normalizedInstruction, NoiseMakerInstructionKeywords, SkillNoiseMaker, aiSkill, originalInstruction);
@@ -264,6 +313,21 @@ public sealed class CommandValidator
 
             if (ContainsAny(normalizedInstruction, DroneInstructionKeywords))
                 return SkillDrone;
+
+            if (IsBarricadeInstruction(normalizedInstruction))
+                return SkillBarricade;
+
+            if (IsStopSignalInstruction(normalizedInstruction))
+                return SkillStopSignal;
+
+            if (IsFakeBoxInstruction(normalizedInstruction))
+                return SkillFakeBox;
+
+            if (IsJokerCardInstruction(normalizedInstruction))
+            {
+                Debug.LogWarning("[Commander] 조커 카드는 자동 발동 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+                return SkillHold;
+            }
 
             if (IsMovementInstruction(normalizedInstruction))
                 return SkillMove;
@@ -290,9 +354,24 @@ public sealed class CommandValidator
         return ContainsAny(normalized, MovementInstructionKeywords);
     }
 
-    public bool IsTrapInstruction(string source)
+    public bool IsBarricadeInstruction(string source)
     {
-        return ContainsAny(Normalize(source), SlowTrapInstructionKeywords);
+        return ContainsAny(Normalize(source), BarricadeInstructionKeywords);
+    }
+
+    public bool IsStopSignalInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), StopSignalInstructionKeywords);
+    }
+
+    public bool IsFakeBoxInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), FakeBoxInstructionKeywords);
+    }
+
+    public bool IsJokerCardInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), JokerCardInstructionKeywords);
     }
 
     public bool ContainsCoordinate(string source)

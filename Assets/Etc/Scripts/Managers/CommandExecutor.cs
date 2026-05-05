@@ -111,7 +111,7 @@ public sealed class CommandExecutor
 
         Vector3 finalDest = ResolveCommandPosition(dest, SkillDash, agentId);
 
-        Debug.Log($"[Action] Agent {agentId} : {finalDest} 로 dash 이동");
+        Debug.Log($"[Action] Agent {agentId} : {finalDest}로 dash 이동");
 
         targetAgent.MoveTo(finalDest);
         targetAgent.ExecuteSkill(SkillDash, finalDest);
@@ -119,9 +119,12 @@ public sealed class CommandExecutor
 
     private void ExecuteHologram(AgentController targetAgent, int agentId)
     {
+        if (!targetAgent.CanUseSkillGaugeForSkill(SkillHologram, true))
+            return;
+
         Vector3 currentPosition = targetAgent.transform.position;
 
-        Debug.Log($"[Action] Agent {agentId} : 현재 위치 {currentPosition} 에 hologram 스킬 사용");
+        Debug.Log($"[Action] Agent {agentId} : 현재 위치 {currentPosition}에 hologram 스킬 사용");
 
         targetAgent.ExecuteSkill(SkillHologram, currentPosition);
     }
@@ -131,6 +134,9 @@ public sealed class CommandExecutor
         int agentId,
         string validatedSkill)
     {
+        if (!targetAgent.CanUseSkillGaugeForSkill(validatedSkill, true))
+            return;
+
         Vector3 currentPosition = targetAgent.transform.position;
 
         Debug.Log($"[Action] Agent {agentId} : {validatedSkill} 스킬 사용");
@@ -144,6 +150,9 @@ public sealed class CommandExecutor
         Vector3 dest,
         string validatedSkill)
     {
+        if (!targetAgent.CanUseSkillGaugeForSkill(validatedSkill, true))
+            return;
+
         Vector3 finalDest = ResolveCommandPosition(dest, validatedSkill, agentId);
 
         Debug.Log($"[Action] Agent {agentId} : {finalDest} 위치에 {validatedSkill} 스킬 사용");
@@ -161,7 +170,7 @@ public sealed class CommandExecutor
 
         Vector3 finalDest = ResolveCommandPosition(dest, "move", agentId);
 
-        Debug.Log($"[Action] Agent {agentId} : {finalDest} 로 이동 명령");
+        Debug.Log($"[Action] Agent {agentId} : {finalDest}로 이동 명령");
 
         targetAgent.MoveTo(finalDest);
     }

@@ -1017,27 +1017,30 @@ public class CommanderUIController : MonoBehaviour
         string typeName = agent.GetType().Name;
 
         if (typeName.Contains("Chaser"))
-            return "EX) (좌표) 출입 통제, 정지 요청 꺼";
+            return "EX) (좌표) 출입 통제, 도주 제지";
+
+        if (typeName.Contains("Observer"))
+            return "EX) (좌표) 드론, 위치 공유 꺼";
 
         if (typeName.Contains("Scout"))
             return "EX) (좌표) 드론, 위치 공유 꺼";
 
         if (typeName.Contains("Engineer"))
-            return "EX) 바리케이드, 함정";
+            return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
 
-        if (typeName.Contains("Disruptor"))
+        if (typeName.Contains("Disruptor") || typeName.Contains("Trickster"))
             return "EX) 소란 장치, 홀로그램";
 
         switch (agent.AgentID)
         {
             case 0:
-                return "EX) (좌표) 출입 통제, 정지 요청 꺼";
+                return "EX) (좌표) 출입 통제, 도주 제지";
 
             case 1:
                 return "EX) (좌표) 드론, 위치 공유 꺼";
 
             case 2:
-                return "EX) 바리케이드, 함정";
+                return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
 
             case 3:
                 return "EX) 소란 장치, 홀로그램";

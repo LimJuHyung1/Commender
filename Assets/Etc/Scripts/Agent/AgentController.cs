@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -48,35 +49,48 @@ public abstract class AgentController : MonoBehaviour
     private const float SharedTargetRepathInterval = 0.15f;
     private const float SharedTargetDestinationThreshold = 0.25f;
 
+    private const string SkillGaugeDefaultKey = "default";
+    private const string SkillAccessControlKey = "accesscontrol";
+    private const string SkillDroneKey = "drone";
+    private const string SkillBarricadeKey = "barricade";
+    private const string SkillStopSignalKey = "stopsignal";
+    private const string SkillFakeBoxKey = "fakebox";
+    private const string SkillJokerCardKey = "jokercard";
+    private const string SkillNoisemakerKey = "noisemaker";
+    private const string SkillHologramKey = "hologram";
+    private const string SkillDashKey = "dash";
+    private const string SkillSmokeKey = "smoke";
+
     protected NavMeshAgent navAgent;
     protected Transform currentTarget;
     protected bool isManualMoving = false;
 
-    private float skillGauge = 0f;
+    private readonly Dictionary<string, float> skillGaugeByKey = new Dictionary<string, float>();
+
     private Vector3 lastSkillGaugePosition;
     private float skillGaugeChargeBlockedUntil = -1f;
 
     private float chaseRepathTimer = 0f;
     private Vector3 lastChaseDestination;
-    private bool hasLastChaseDestination = false;
+    private bool hasLastChaseDestination;
 
-    private bool hasSharedTargetPosition = false;
-    private bool isFollowingSharedTargetPosition = false;
+    private bool hasSharedTargetPosition;
+    private bool isFollowingSharedTargetPosition;
     private Vector3 sharedTargetPosition;
     private Vector3 lastSharedTargetDestination;
-    private bool hasLastSharedTargetDestination = false;
+    private bool hasLastSharedTargetDestination;
     private float sharedTargetPositionExpireTime = -1f;
-    private float sharedTargetRepathTimer = 0f;
+    private float sharedTargetRepathTimer;
     private AgentController sharedTargetReporter;
 
     private int isMovingParameterHash;
     private int moveSpeedParameterHash;
 
-    private bool cachedAnimationIsMoving = false;
+    private bool cachedAnimationIsMoving;
     private float lastAnimationMovingTime = -999f;
 
     private Coroutine lookAroundRoutine;
-    private bool isLookingAround = false;
+    private bool isLookingAround;
     private bool previousNavUpdateRotation = true;
 
     public ChatServiceOpenAI CommandChatService => commandChatService;
@@ -91,9 +105,9 @@ public abstract class AgentController : MonoBehaviour
     public AgentStatsSO Stats => stats;
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
 
-    public float SkillGauge => skillGauge;
+    public float SkillGauge => GetLargestCurrentSkillGauge();
     public float SkillGaugeCapacity => GetCurrentSkillGaugeCapacity();
-    public float SkillGaugeNormalized => SkillGaugeCapacity <= 0f ? 1f : Mathf.Clamp01(skillGauge / SkillGaugeCapacity);
+    public float SkillGaugeNormalized => SkillGaugeCapacity <= 0f ? 1f : Mathf.Clamp01(SkillGauge / SkillGaugeCapacity);
 
     public bool HasSharedTargetPosition => hasSharedTargetPosition;
     public Vector3 SharedTargetPosition => sharedTargetPosition;
@@ -111,18 +125,7 @@ public abstract class AgentController : MonoBehaviour
             visionSensor = GetComponentInChildren<VisionSensor>(true);
 
         if (spotLight == null)
-        {
-            Light[] lights = GetComponentsInChildren<Light>(true);
-
-            for (int i = 0; i < lights.Length; i++)
-            {
-                if (lights[i] != null && lights[i].type == LightType.Spot)
-                {
-                    spotLight = lights[i];
-                    break;
-                }
-            }
-        }
+            spotLight = FindSpotLightInChildren();
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
@@ -142,7 +145,6 @@ public abstract class AgentController : MonoBehaviour
     protected virtual void OnDisable()
     {
         lastSkillGaugePosition = transform.position;
-
         cachedAnimationIsMoving = false;
         lastAnimationMovingTime = -999f;
 
@@ -157,6 +159,14 @@ public abstract class AgentController : MonoBehaviour
         animationStopDelay = Mathf.Max(0f, animationStopDelay);
         animationStopDistanceBuffer = Mathf.Max(0f, animationStopDistanceBuffer);
         minimumMovingNormalizedSpeed = Mathf.Clamp01(minimumMovingNormalizedSpeed);
+        skillGaugeChargePerMeter = Mathf.Max(0f, skillGaugeChargePerMeter);
+
+        lookAroundAngle = Mathf.Max(0f, lookAroundAngle);
+        lookAroundTurnSpeed = Mathf.Max(0f, lookAroundTurnSpeed);
+        lookAroundPauseSeconds = Mathf.Max(0f, lookAroundPauseSeconds);
+
+        chaseRepathInterval = Mathf.Max(0.01f, chaseRepathInterval);
+        chaseDestinationThreshold = Mathf.Max(0f, chaseDestinationThreshold);
 
         CacheAnimatorParameterHashes();
     }
@@ -230,21 +240,7 @@ public abstract class AgentController : MonoBehaviour
 
         if (currentTarget != null)
         {
-            chaseRepathTimer -= Time.deltaTime;
-
-            Vector3 targetPos = currentTarget.position;
-            bool shouldRepath = !hasLastChaseDestination ||
-                                Vector3.Distance(lastChaseDestination, targetPos) >= chaseDestinationThreshold;
-
-            if (chaseRepathTimer <= 0f && shouldRepath)
-            {
-                navAgent.isStopped = false;
-                navAgent.SetDestination(targetPos);
-
-                lastChaseDestination = targetPos;
-                hasLastChaseDestination = true;
-                chaseRepathTimer = chaseRepathInterval;
-            }
+            UpdateChaseMovement();
         }
         else
         {
@@ -255,27 +251,47 @@ public abstract class AgentController : MonoBehaviour
         UpdateStateIcon();
     }
 
+    private Light FindSpotLightInChildren()
+    {
+        Light[] lights = GetComponentsInChildren<Light>(true);
+
+        for (int i = 0; i < lights.Length; i++)
+        {
+            if (lights[i] != null && lights[i].type == LightType.Spot)
+                return lights[i];
+        }
+
+        return null;
+    }
+
+    private void UpdateChaseMovement()
+    {
+        if (currentTarget == null || navAgent == null)
+            return;
+
+        chaseRepathTimer -= Time.deltaTime;
+
+        Vector3 targetPos = currentTarget.position;
+        bool shouldRepath = !hasLastChaseDestination ||
+                            Vector3.Distance(lastChaseDestination, targetPos) >= chaseDestinationThreshold;
+
+        if (chaseRepathTimer > 0f && !shouldRepath)
+            return;
+
+        navAgent.isStopped = false;
+        navAgent.SetDestination(targetPos);
+
+        lastChaseDestination = targetPos;
+        hasLastChaseDestination = true;
+        chaseRepathTimer = chaseRepathInterval;
+    }
+
     private void UpdateSkillGaugeCharge()
     {
         Vector3 currentPosition = transform.position;
-        float capacity = GetCurrentSkillGaugeCapacity();
-
-        if (capacity <= 0f)
-        {
-            skillGauge = 0f;
-            lastSkillGaugePosition = currentPosition;
-            return;
-        }
 
         if (IsSkillGaugeChargeBlocked())
         {
-            lastSkillGaugePosition = currentPosition;
-            return;
-        }
-
-        if (skillGauge >= capacity - SkillGaugeFullEpsilon)
-        {
-            skillGauge = capacity;
             lastSkillGaugePosition = currentPosition;
             return;
         }
@@ -289,10 +305,27 @@ public abstract class AgentController : MonoBehaviour
         if (!ShouldChargeSkillGauge())
             return;
 
-        skillGauge = Mathf.Min(
-            capacity,
-            skillGauge + movedDistance * skillGaugeChargePerMeter
-        );
+        float chargeAmount = movedDistance * skillGaugeChargePerMeter;
+        string[] gaugeKeys = GetCurrentAgentGaugeKeys();
+
+        for (int i = 0; i < gaugeKeys.Length; i++)
+        {
+            string key = gaugeKeys[i];
+            float capacity = GetSkillGaugeMaxForSkill(key);
+
+            if (capacity <= 0f)
+                continue;
+
+            float currentGauge = GetSkillGaugeValue(key);
+
+            if (currentGauge >= capacity - SkillGaugeFullEpsilon)
+            {
+                SetSkillGaugeValue(key, capacity);
+                continue;
+            }
+
+            SetSkillGaugeValue(key, Mathf.Min(capacity, currentGauge + chargeAmount));
+        }
     }
 
     private bool ShouldChargeSkillGauge()
@@ -332,11 +365,7 @@ public abstract class AgentController : MonoBehaviour
         if (seconds <= 0f)
             return;
 
-        skillGaugeChargeBlockedUntil = Mathf.Max(
-            skillGaugeChargeBlockedUntil,
-            Time.time + seconds
-        );
-
+        skillGaugeChargeBlockedUntil = Mathf.Max(skillGaugeChargeBlockedUntil, Time.time + seconds);
         lastSkillGaugePosition = transform.position;
     }
 
@@ -353,7 +382,8 @@ public abstract class AgentController : MonoBehaviour
         if (stats == null)
             return DefaultSkillGaugeMax;
 
-        return Mathf.Max(0f, stats.GetSkillGaugeMax(skillName));
+        string key = GetSkillGaugeKey(skillName);
+        return Mathf.Max(0f, stats.GetSkillGaugeMax(key));
     }
 
     public virtual float GetSkillGaugeCurrentForSkill(string skillName)
@@ -363,7 +393,8 @@ public abstract class AgentController : MonoBehaviour
         if (requiredGauge <= 0f)
             return 0f;
 
-        return Mathf.Clamp(skillGauge, 0f, requiredGauge);
+        string key = GetSkillGaugeKey(skillName);
+        return Mathf.Clamp(GetSkillGaugeValue(key), 0f, requiredGauge);
     }
 
     public virtual float GetSkillGaugeNormalizedForSkill(string skillName)
@@ -407,27 +438,270 @@ public abstract class AgentController : MonoBehaviour
         if (!CanUseSkillGaugeForSkill(skillName, true))
             return false;
 
-        skillGauge = 0f;
+        string key = GetSkillGaugeKey(skillName);
+
+        SetSkillGaugeValue(key, 0f);
         lastSkillGaugePosition = transform.position;
 
         if (chargeBlockSeconds > 0f)
             BlockSkillGaugeCharge(chargeBlockSeconds);
 
-        Debug.Log($"[Agent {AgentID}] '{skillName}' 스킬 사용. 스킬 게이지를 소모했습니다.");
+        Debug.Log($"[Agent {AgentID}] '{skillName}' 스킬 사용. 해당 스킬 게이지만 소모했습니다.");
         return true;
     }
 
     public virtual void ResetSkillGauge()
     {
-        skillGauge = 0f;
+        skillGaugeByKey.Clear();
         lastSkillGaugePosition = transform.position;
         skillGaugeChargeBlockedUntil = -1f;
     }
 
     public virtual void FillSkillGauge()
     {
-        skillGauge = GetCurrentSkillGaugeCapacity();
+        string[] gaugeKeys = GetCurrentAgentGaugeKeys();
+
+        for (int i = 0; i < gaugeKeys.Length; i++)
+        {
+            string key = gaugeKeys[i];
+            float capacity = GetSkillGaugeMaxForSkill(key);
+
+            if (capacity <= 0f)
+                continue;
+
+            SetSkillGaugeValue(key, capacity);
+        }
+
         lastSkillGaugePosition = transform.position;
+    }
+
+    private float GetSkillGaugeValue(string key)
+    {
+        key = GetSkillGaugeKey(key);
+
+        if (!skillGaugeByKey.TryGetValue(key, out float value))
+            return 0f;
+
+        return Mathf.Max(0f, value);
+    }
+
+    private void SetSkillGaugeValue(string key, float value)
+    {
+        key = GetSkillGaugeKey(key);
+        skillGaugeByKey[key] = Mathf.Max(0f, value);
+    }
+
+    private float GetLargestCurrentSkillGauge()
+    {
+        string[] gaugeKeys = GetCurrentAgentGaugeKeys();
+        float largestGauge = 0f;
+
+        for (int i = 0; i < gaugeKeys.Length; i++)
+        {
+            float currentGauge = GetSkillGaugeCurrentForSkill(gaugeKeys[i]);
+
+            if (currentGauge > largestGauge)
+                largestGauge = currentGauge;
+        }
+
+        return largestGauge;
+    }
+
+    private string GetSkillGaugeKey(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return SkillGaugeDefaultKey;
+
+        string skill = skillName.Trim().ToLower();
+
+        if (IsAccessControlSkill(skill))
+            return SkillAccessControlKey;
+
+        if (IsDroneSkill(skill))
+            return SkillDroneKey;
+
+        if (IsBarricadeSkill(skill))
+            return SkillBarricadeKey;
+
+        if (IsStopSignalSkill(skill))
+            return SkillStopSignalKey;
+
+        if (IsFakeBoxSkill(skill))
+            return SkillFakeBoxKey;
+
+        if (IsJokerCardSkill(skill))
+            return SkillJokerCardKey;
+
+        if (IsNoisemakerSkill(skill))
+            return SkillNoisemakerKey;
+
+        if (IsHologramSkill(skill))
+            return SkillHologramKey;
+
+        if (IsDashSkill(skill))
+            return SkillDashKey;
+
+        if (IsSmokeSkill(skill))
+            return SkillSmokeKey;
+
+        return skill;
+    }
+
+    private string[] GetCurrentAgentGaugeKeys()
+    {
+        if (stats == null)
+        {
+            return new[]
+            {
+                SkillGaugeDefaultKey
+            };
+        }
+
+        switch (stats.role)
+        {
+            case AgentRole.Chaser:
+                return new[]
+                {
+                    SkillAccessControlKey
+                };
+
+            case AgentRole.Observer:
+                return new[]
+                {
+                    SkillDroneKey
+                };
+
+            case AgentRole.Engineer:
+                return new[]
+                {
+                    SkillBarricadeKey,
+                    SkillStopSignalKey
+                };
+
+            case AgentRole.Trickster:
+                return new[]
+                {
+                    SkillFakeBoxKey,
+                    SkillJokerCardKey
+                };
+
+            default:
+                return new[]
+                {
+                    SkillAccessControlKey,
+                    SkillDroneKey,
+                    SkillBarricadeKey,
+                    SkillStopSignalKey,
+                    SkillFakeBoxKey,
+                    SkillJokerCardKey,
+                    SkillNoisemakerKey,
+                    SkillHologramKey
+                };
+        }
+    }
+
+    private bool IsAccessControlSkill(string skill)
+    {
+        return skill.Contains("accesscontrol") ||
+               skill.Contains("access control") ||
+               skill.Contains("controlzone") ||
+               skill.Contains("control zone") ||
+               skill.Contains("restricted zone") ||
+               skill.Contains("출입통제") ||
+               skill.Contains("출입 통제") ||
+               skill.Contains("통제구역") ||
+               skill.Contains("통제 구역") ||
+               skill.Contains("금지구역") ||
+               skill.Contains("금지 구역");
+    }
+
+    private bool IsDroneSkill(string skill)
+    {
+        return skill.Contains("drone") ||
+               skill.Contains("uav") ||
+               skill.Contains("드론");
+    }
+
+    private bool IsBarricadeSkill(string skill)
+    {
+        return skill.Contains("barricade") ||
+               skill.Contains("바리케이드") ||
+               skill.Contains("봉쇄") ||
+               skill.Contains("장애물");
+    }
+
+    private bool IsStopSignalSkill(string skill)
+    {
+        return skill.Contains("stopsignal") ||
+               skill.Contains("stop signal") ||
+               skill.Contains("stop sign") ||
+               skill.Contains("slowtrap") ||
+               skill.Contains("slow trap") ||
+               skill.Contains("snaretrap") ||
+               skill.Contains("정지신호") ||
+               skill.Contains("정지 신호") ||
+               skill.Contains("정지표지") ||
+               skill.Contains("정지 표지") ||
+               skill.Contains("정지장치") ||
+               skill.Contains("정지 장치") ||
+               skill.Contains("신호설치") ||
+               skill.Contains("신호 설치") ||
+               skill.Contains("통제신호") ||
+               skill.Contains("통제 신호") ||
+               skill.Contains("감속함정") ||
+               skill.Contains("감속 함정") ||
+               skill.Contains("구속함정") ||
+               skill.Contains("구속 함정");
+    }
+
+    private bool IsFakeBoxSkill(string skill)
+    {
+        return skill.Contains("fakebox") ||
+               skill.Contains("fake box") ||
+               skill.Contains("magicbox") ||
+               skill.Contains("magic box") ||
+               skill.Contains("페이크박스") ||
+               skill.Contains("페이크 박스") ||
+               skill.Contains("마술상자") ||
+               skill.Contains("마술 상자") ||
+               skill.Contains("가짜상자") ||
+               skill.Contains("가짜 상자");
+    }
+
+    private bool IsJokerCardSkill(string skill)
+    {
+        return skill.Contains("jokercard") ||
+               skill.Contains("joker card") ||
+               skill.Contains("조커카드") ||
+               skill.Contains("조커 카드");
+    }
+
+    private bool IsNoisemakerSkill(string skill)
+    {
+        return skill.Contains("noisemaker") ||
+               skill.Contains("noise") ||
+               skill.Contains("소란장치") ||
+               skill.Contains("소란 장치") ||
+               skill.Contains("소음") ||
+               skill.Contains("소란");
+    }
+
+    private bool IsHologramSkill(string skill)
+    {
+        return skill.Contains("hologram") ||
+               skill.Contains("홀로그램");
+    }
+
+    private bool IsDashSkill(string skill)
+    {
+        return skill.Contains("dash") ||
+               skill.Contains("대시");
+    }
+
+    private bool IsSmokeSkill(string skill)
+    {
+        return skill.Contains("smoke") ||
+               skill.Contains("연막");
     }
 
     protected virtual void CheckDestinationReached()
@@ -501,9 +775,7 @@ public abstract class AgentController : MonoBehaviour
         hasLastChaseDestination = false;
         hasLastSharedTargetDestination = false;
 
-        NavMeshHit hit;
-
-        if (!NavMesh.SamplePosition(destination, out hit, 2.0f, navAgent.areaMask))
+        if (!NavMesh.SamplePosition(destination, out NavMeshHit hit, 2.0f, navAgent.areaMask))
         {
             UpdateAnimationState(true);
             UpdateStateIcon();

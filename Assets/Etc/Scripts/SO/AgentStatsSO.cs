@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum AgentRole
 {
@@ -50,22 +51,32 @@ public class AgentStatsSO : ScriptableObject
     [Header("옵저버 스킬 게이지")]
     public float droneSkillGaugeMax = 50f;
 
-    [Header("엔지니어 스킬 설정")]
-    public float slowTrapDuration = 3f;
-    public float slowTrapStrength = 0.5f;
-
-    [Header("엔지니어 스킬 게이지")]
+    [Header("안전 관리자 스킬 게이지")]
     public float barricadeSkillGaugeMax = 80f;
-    public float slowTrapSkillGaugeMax = 90f;
 
-    [Header("트릭스터 스킬 설정")]
-    public float decoyDuration = 5f;
-    public float phantomDuration = 5f;
-    public float phantomThreatWeight = 1f;
+    [FormerlySerializedAs("slowTrapSkillGaugeMax")]
+    public float stopSignalSkillGaugeMax = 90f;
 
     [Header("트릭스터 스킬 게이지")]
-    public float noisemakerSkillGaugeMax = 70f;
-    public float hologramSkillGaugeMax = 100f;
+    public float fakeBoxSkillGaugeMax = 70f;
+    public float jokerCardSkillGaugeMax = 50f;
+
+    [Header("트릭스터 조커 카드 설정")]
+    public float jokerCardDuration = 6f;
+    public float jokerCardMoveSpeedMultiplier = 1.25f;
+    public float jokerCardViewRadiusMultiplier = 1.2f;
+    public float jokerCardViewAngleBonus = 15f;
+
+    [Header("Legacy Trickster Settings")]
+    [HideInInspector] public float decoyDuration = 5f;
+    [HideInInspector] public float phantomDuration = 5f;
+    [HideInInspector] public float phantomThreatWeight = 1f;
+    [HideInInspector] public float noisemakerSkillGaugeMax = 70f;
+    [HideInInspector] public float hologramSkillGaugeMax = 100f;
+
+    [Header("Legacy Engineer Settings")]
+    [HideInInspector] public float slowTrapDuration = 3f;
+    [HideInInspector] public float slowTrapStrength = 0.5f;
 
     [Header("Legacy Chaser Settings")]
     [HideInInspector] public float dashSpeed = 15f;
@@ -91,6 +102,8 @@ public class AgentStatsSO : ScriptableObject
 
         spotLightIntensity = Mathf.Max(0f, spotLightIntensity);
         spotLightRange = Mathf.Max(0f, spotLightRange);
+        spotLightInnerAngle = Mathf.Clamp(spotLightInnerAngle, 1f, 179f);
+        spotLightOuterAngle = Mathf.Clamp(spotLightOuterAngle, 1f, 179f);
 
         accessControlSkillGaugeMax = Mathf.Max(0f, accessControlSkillGaugeMax);
 
@@ -100,11 +113,16 @@ public class AgentStatsSO : ScriptableObject
         droneObservationAreaYOffset = Mathf.Max(0f, droneObservationAreaYOffset);
         droneSkillGaugeMax = Mathf.Max(0f, droneSkillGaugeMax);
 
-        slowTrapDuration = Mathf.Max(0f, slowTrapDuration);
-        slowTrapStrength = Mathf.Max(0f, slowTrapStrength);
-
         barricadeSkillGaugeMax = Mathf.Max(0f, barricadeSkillGaugeMax);
-        slowTrapSkillGaugeMax = Mathf.Max(0f, slowTrapSkillGaugeMax);
+        stopSignalSkillGaugeMax = Mathf.Max(0f, stopSignalSkillGaugeMax);
+
+        fakeBoxSkillGaugeMax = Mathf.Max(0f, fakeBoxSkillGaugeMax);
+        jokerCardSkillGaugeMax = Mathf.Max(0f, jokerCardSkillGaugeMax);
+
+        jokerCardDuration = Mathf.Max(0f, jokerCardDuration);
+        jokerCardMoveSpeedMultiplier = Mathf.Max(0f, jokerCardMoveSpeedMultiplier);
+        jokerCardViewRadiusMultiplier = Mathf.Max(0f, jokerCardViewRadiusMultiplier);
+        jokerCardViewAngleBonus = Mathf.Max(0f, jokerCardViewAngleBonus);
 
         decoyDuration = Mathf.Max(0f, decoyDuration);
         phantomDuration = Mathf.Max(0f, phantomDuration);
@@ -112,6 +130,9 @@ public class AgentStatsSO : ScriptableObject
 
         noisemakerSkillGaugeMax = Mathf.Max(0f, noisemakerSkillGaugeMax);
         hologramSkillGaugeMax = Mathf.Max(0f, hologramSkillGaugeMax);
+
+        slowTrapDuration = Mathf.Max(0f, slowTrapDuration);
+        slowTrapStrength = Mathf.Max(0f, slowTrapStrength);
 
         dashSpeed = Mathf.Max(0f, dashSpeed);
         dashAcceleration = Mathf.Max(0f, dashAcceleration);
@@ -144,8 +165,14 @@ public class AgentStatsSO : ScriptableObject
         if (IsBarricadeSkill(skill))
             return Mathf.Max(0f, barricadeSkillGaugeMax);
 
-        if (IsSlowTrapSkill(skill))
-            return Mathf.Max(0f, slowTrapSkillGaugeMax);
+        if (IsStopSignalSkill(skill))
+            return Mathf.Max(0f, stopSignalSkillGaugeMax);
+
+        if (IsFakeBoxSkill(skill))
+            return Mathf.Max(0f, fakeBoxSkillGaugeMax);
+
+        if (IsJokerCardSkill(skill))
+            return Mathf.Max(0f, jokerCardSkillGaugeMax);
 
         if (IsNoisemakerSkill(skill))
             return Mathf.Max(0f, noisemakerSkillGaugeMax);
@@ -182,14 +209,14 @@ public class AgentStatsSO : ScriptableObject
                 return Mathf.Max(
                     0f,
                     barricadeSkillGaugeMax,
-                    slowTrapSkillGaugeMax
+                    stopSignalSkillGaugeMax
                 );
 
             case AgentRole.Trickster:
                 return Mathf.Max(
                     0f,
-                    noisemakerSkillGaugeMax,
-                    hologramSkillGaugeMax
+                    fakeBoxSkillGaugeMax,
+                    jokerCardSkillGaugeMax
                 );
 
             default:
@@ -198,7 +225,9 @@ public class AgentStatsSO : ScriptableObject
                     accessControlSkillGaugeMax,
                     droneSkillGaugeMax,
                     barricadeSkillGaugeMax,
-                    slowTrapSkillGaugeMax,
+                    stopSignalSkillGaugeMax,
+                    fakeBoxSkillGaugeMax,
+                    jokerCardSkillGaugeMax,
                     noisemakerSkillGaugeMax,
                     hologramSkillGaugeMax
                 );
@@ -298,7 +327,54 @@ public class AgentStatsSO : ScriptableObject
                skill.Contains("장애물");
     }
 
-    private bool IsSlowTrapSkill(string skill)
+    private bool IsStopSignalSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("stopsignal") ||
+               skill.Contains("stop signal") ||
+               skill.Contains("stop sign") ||
+               skill.Contains("정지신호") ||
+               skill.Contains("정지 신호") ||
+               skill.Contains("정지표지") ||
+               skill.Contains("정지 표지") ||
+               skill.Contains("정지장치") ||
+               skill.Contains("정지 장치") ||
+               skill.Contains("신호설치") ||
+               skill.Contains("신호 설치") ||
+               skill.Contains("통제신호") ||
+               skill.Contains("통제 신호") ||
+               IsLegacySlowTrapSkill(skill);
+    }
+
+    private bool IsFakeBoxSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("fakebox") ||
+               skill.Contains("fake box") ||
+               skill.Contains("magicbox") ||
+               skill.Contains("magic box") ||
+               skill.Contains("페이크박스") ||
+               skill.Contains("페이크 박스") ||
+               skill.Contains("마술상자") ||
+               skill.Contains("마술 상자");
+    }
+
+    private bool IsJokerCardSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("jokercard") ||
+               skill.Contains("joker card") ||
+               skill.Contains("조커카드") ||
+               skill.Contains("조커 카드");
+    }
+
+    private bool IsLegacySlowTrapSkill(string skill)
     {
         if (string.IsNullOrWhiteSpace(skill))
             return false;
@@ -306,9 +382,6 @@ public class AgentStatsSO : ScriptableObject
         return skill.Contains("slowtrap") ||
                skill.Contains("slow trap") ||
                skill.Contains("snaretrap") ||
-               skill.Contains("trap") ||
-               skill.Contains("트랩") ||
-               skill.Contains("함정") ||
                skill.Contains("감속함정") ||
                skill.Contains("감속 함정") ||
                skill.Contains("구속함정") ||

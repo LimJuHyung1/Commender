@@ -6,7 +6,7 @@ public class Drone : MonoBehaviour
 {
     [Header("Detection")]
     [SerializeField] private LayerMask targetLayer;
-    [SerializeField] private float radius = 7f;
+    [SerializeField] private float radius = 4f;
     [SerializeField] private float duration = 20f;
 
     [Header("Observation Area Visual")]

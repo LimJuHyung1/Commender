@@ -25,13 +25,13 @@ public class CommanderManager : MonoBehaviour
     {
         if (commandProcessor == null)
         {
-            Debug.LogError("[Commender] CommenderCommandProcessor 참조가 없습니다.");
+            Debug.LogError("[Commander] CommanderCommandProcessor 참조가 없습니다.");
             return;
         }
 
         if (uiController == null)
         {
-            Debug.LogError("[Commender] CommenderUIController 참조가 없습니다.");
+            Debug.LogError("[Commander] CommanderUIController 참조가 없습니다.");
             return;
         }
 
@@ -75,7 +75,7 @@ public class CommanderManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"[Commender] 명령 제출 중 오류: {e}");
+            Debug.LogError($"[Commander] 명령 제출 중 오류: {e}");
         }
         finally
         {

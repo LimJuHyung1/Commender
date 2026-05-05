@@ -274,10 +274,24 @@ public class CommanderCommandProcessor : MonoBehaviour
             {
                 if (commandValidator.IsLookAroundInstruction(originalInstruction))
                     validatedSkill = "lookaround";
-                else if (commandValidator.IsTrapInstruction(originalInstruction))
-                    validatedSkill = "slowtrap";
+                else if (commandValidator.IsStopSignalInstruction(originalInstruction))
+                    validatedSkill = "stopsignal";
+                else if (IsBarricadeInstruction(originalInstruction))
+                    validatedSkill = "barricade";
+                else if (commandValidator.IsFakeBoxInstruction(originalInstruction))
+                    validatedSkill = "fakebox";
                 else if (commandValidator.IsMovementInstruction(originalInstruction))
                     validatedSkill = "";
+            }
+
+            if (!IsSkillAllowedForAgent(targetAgent, validatedSkill))
+            {
+                Debug.LogWarning(
+                    $"[Commander] Agent {targetAgent.AgentID}는 '{validatedSkill}' 스킬을 사용할 수 없습니다. " +
+                    $"원문: {originalInstruction}"
+                );
+
+                return false;
             }
 
             Vector3 dest = ResolveDestination(targetAgent, cmd, originalInstruction, validatedSkill);
@@ -364,43 +378,92 @@ public class CommanderCommandProcessor : MonoBehaviour
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_on\" }} ] }}";
         }
 
-        if (targetAgent is EngineerAgent)
+        if (targetAgent is Engineer)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"barricade\" and \"slowtrap\".\n" +
+                   "13. Allowed skills for this agent are only \"barricade\" and \"stopsignal\".\n" +
                    "14. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
-                   "15. Use \"slowtrap\" ONLY when the instruction explicitly asks for slowtrap, snaretrap, trap, 트랩, 함정, 정지 함정, 구속 함정, 속박 함정, 트랩 설치, or 함정 설치.\n" +
-                   "16. If the instruction is just trap, 트랩, or 함정 without coordinates, interpret it as using the trap at the engineer's current position.\n\n" +
+                   "15. Use \"stopsignal\" ONLY when the instruction explicitly asks for 정지 신호, 정지신호, 신호 설치, 통제 신호, stop signal, or stopsignal.\n" +
+                   "16. barricade MUST use the requested coordinate as the center position of the barricade.\n" +
+                   "17. stopsignal MUST use the requested coordinate as the center position of the stop signal device.\n" +
+                   "18. If the instruction is just 바리케이드, barricade, 정지 신호, 정지신호, 신호 설치, or stopsignal without coordinates, interpret it as using the skill at the engineer's current position.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
                    $"Input: Agent {targetAgent.AgentID} Instruction: 4,1에 바리케이드 설치\n" +
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 4.0, \"z\": 1.0}}, \"skill\": \"barricade\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 2,6에 함정 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"slowtrap\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 트랩\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"slowtrap\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 함정\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"slowtrap\" }} ] }}";
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 2,6에 정지 신호 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"stopsignal\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 정지 신호\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"stopsignal\" }} ] }}";
         }
 
-        if (targetAgent is DisruptorAgent)
+        if (targetAgent is Trickster)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"noisemaker\" and \"hologram\".\n" +
-                   "14. Use \"noisemaker\" ONLY when the instruction explicitly asks for noisemaker, noise, 소란 장치, 소음 장치, 소음 발생기, 소란 기계, or 소란 장치 설치.\n" +
-                   "15. Use \"hologram\" ONLY when the instruction explicitly asks for hologram, 홀로그램, 홀로그램 설치, 현재 위치에 홀로그램, or 자기 위치에 홀로그램.\n" +
-                   "16. Hologram is always created at the disruptor agent's CURRENT POSITION, not at the requested coordinate.\n\n" +
+                   "13. Allowed skills for this agent are only \"fakebox\".\n" +
+                   "14. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
+                   "15. fakebox MUST use the requested coordinate as the center position of the fake box.\n" +
+                   "16. If the instruction is just 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, 가짜상자, fakebox, fake box, magic box, or magicbox without coordinates, interpret it as using the skill at the trickster's current position.\n" +
+                   "17. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command. If the user asks for Joker Card, output skill \"hold\".\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 7,7에 소란 장치 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 7.0, \"z\": 7.0}}, \"skill\": \"noisemaker\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 현재 위치에 홀로그램 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"hologram\" }} ] }}";
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 7,7에 페이크 박스 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 7.0, \"z\": 7.0}}, \"skill\": \"fakebox\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 마술 상자 설치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"fakebox\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 조커 카드 사용\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"hold\" }} ] }}";
         }
 
         return commonRules;
+    }
+
+    private bool IsSkillAllowedForAgent(AgentController agent, string skill)
+    {
+        if (agent == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skill))
+            return true;
+
+        if (skill == "hold" || skill == "lookaround")
+            return true;
+
+        if (agent is Chaser)
+        {
+            return skill == "accesscontrol" ||
+                   skill == "escapeblock";
+        }
+
+        if (agent is Observer)
+        {
+            return skill == "drone" ||
+                   skill == "positionshare_on" ||
+                   skill == "positionshare_off";
+        }
+
+        if (agent is Engineer)
+        {
+            return skill == "barricade" ||
+                   skill == "stopsignal";
+        }
+
+        if (agent is Trickster)
+        {
+            return skill == "fakebox";
+        }
+
+        return true;
+    }
+
+    private bool IsBarricadeInstruction(string source)
+    {
+        if (commandValidator == null)
+            commandValidator = new CommandValidator();
+
+        return commandValidator.IsBarricadeInstruction(source);
     }
 
     private Vector3 ResolveDestination(
@@ -435,13 +498,19 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (string.IsNullOrWhiteSpace(originalInstruction))
             return false;
 
-        if (validatedSkill != "slowtrap")
-            return false;
-
         if (commandValidator.ContainsCoordinate(originalInstruction))
             return false;
 
-        return commandValidator.IsTrapInstruction(originalInstruction);
+        if (validatedSkill == "stopsignal")
+            return commandValidator.IsStopSignalInstruction(originalInstruction);
+
+        if (validatedSkill == "barricade")
+            return commandValidator.IsBarricadeInstruction(originalInstruction);
+
+        if (validatedSkill == "fakebox")
+            return commandValidator.IsFakeBoxInstruction(originalInstruction);
+
+        return false;
     }
 
     private bool ShouldUseInstructionCoordinate(string originalInstruction, string validatedSkill)
@@ -582,10 +651,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
         else if (!string.IsNullOrWhiteSpace(validatedSkill))
         {
-            if (validatedSkill == "dash")
-                Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest}로 dash 이동");
-            else
-                Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 위치에 '{validatedSkill}' 스킬 사용");
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 {dest} 위치에 '{validatedSkill}' 스킬 사용");
         }
         else
         {

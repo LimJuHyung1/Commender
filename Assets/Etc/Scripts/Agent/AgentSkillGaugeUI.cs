@@ -15,7 +15,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillPositionShare = "positionshare";
 
     private const string SkillBarricade = "barricade";
+    private const string SkillStopSignal = "stopsignal";
     private const string SkillSlowTrap = "slowtrap";
+
     private const string SkillNoisemaker = "noisemaker";
     private const string SkillHologram = "hologram";
 
@@ -55,7 +57,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private Vector2 gaugeInfoLabelOffset = new Vector2(16f, -24f);
     [SerializeField] private Vector2 gaugeInfoLabelSize = new Vector2(180f, 32f);
 
-    private bool hasCachedGaugeImages = false;
+    private bool hasCachedGaugeImages;
 
     private string gaugeInfoLabelText = "";
     private Vector2 gaugeInfoLabelScreenPosition;
@@ -92,6 +94,18 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         Refresh();
         HandleSkillGaugeInfoClick();
+    }
+
+    private void OnValidate()
+    {
+        gaugeInfoLabelDuration = Mathf.Max(0f, gaugeInfoLabelDuration);
+        gaugeInfoLabelSize.x = Mathf.Max(1f, gaugeInfoLabelSize.x);
+        gaugeInfoLabelSize.y = Mathf.Max(1f, gaugeInfoLabelSize.y);
+
+        skill1Name = NormalizeSkillName(skill1Name);
+        skill2Name = NormalizeSkillName(skill2Name);
+
+        hasCachedGaugeImages = false;
     }
 
     public void Bind(AgentController agent)
@@ -435,11 +449,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (uiName.Contains("engineer") ||
             uiName.Contains("공병") ||
-            uiName.Contains("엔지니어"))
+            uiName.Contains("엔지니어") ||
+            uiName.Contains("안전관리자") ||
+            uiName.Contains("안전 관리자"))
         {
             agentId = 2;
             skill1Name = SkillBarricade;
-            skill2Name = SkillSlowTrap;
+            skill2Name = SkillStopSignal;
             return;
         }
 
@@ -459,13 +475,6 @@ public class AgentSkillGaugeUI : MonoBehaviour
     {
         if (agent == null)
             return;
-
-        if (agent is Observer)
-        {
-            skill1Name = SkillDrone;
-            skill2Name = SkillPositionShare;
-            return;
-        }
 
         if (agent.Stats != null)
         {
@@ -492,7 +501,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case AgentRole.Engineer:
                 skill1Name = SkillBarricade;
-                skill2Name = SkillSlowTrap;
+                skill2Name = SkillStopSignal;
                 break;
 
             case AgentRole.Trickster:
@@ -518,7 +527,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case 2:
                 skill1Name = SkillBarricade;
-                skill2Name = SkillSlowTrap;
+                skill2Name = SkillStopSignal;
                 break;
 
             case 3:
@@ -602,7 +611,28 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(skillName))
             return "";
 
-        return skillName.Trim().ToLower();
+        string skill = skillName.Trim().ToLower();
+
+        if (IsLegacySlowTrapSkill(skill))
+            return SkillStopSignal;
+
+        return skill;
+    }
+
+    private bool IsLegacySlowTrapSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillSlowTrap ||
+               skill.Contains("slow trap") ||
+               skill.Contains("snaretrap") ||
+               skill.Contains("감속함정") ||
+               skill.Contains("감속 함정") ||
+               skill.Contains("구속함정") ||
+               skill.Contains("구속 함정");
     }
 
     private string GetSkillDisplayName(string skillName)
@@ -610,7 +640,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         switch (NormalizeSkillName(skillName))
         {
             case SkillDash:
-                return "대쉬";
+                return "대시";
 
             case SkillSmoke:
                 return "연막";
@@ -630,8 +660,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case SkillBarricade:
                 return "바리케이드";
 
-            case SkillSlowTrap:
-                return "감속 함정";
+            case SkillStopSignal:
+                return "정지 신호";
 
             case SkillNoisemaker:
                 return "소란 장치";
