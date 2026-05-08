@@ -18,11 +18,11 @@ public class ThreatSettings
 public class TargetThreatTracker : MonoBehaviour
 {
     [Header("References")]
-    public LayerMask agentLayer;
-    public GameObject playerRevealMarker;
+    [SerializeField] private LayerMask agentLayer;
+    [SerializeField] private GameObject playerRevealMarker;
 
     [Header("Threat Memory")]
-    public float pursuitMemoryDuration = 4f;
+    [SerializeField] private float pursuitMemoryDuration = 4f;
 
     private SphereCollider detectionCollider;
     private readonly List<Transform> nearbyAgents = new List<Transform>();
@@ -56,6 +56,7 @@ public class TargetThreatTracker : MonoBehaviour
     public float HologramInfluenceRadius => hologramInfluenceRadius;
     public float AlarmSensorWeight => alarmSensorWeight;
     public float AlarmSensorInfluenceRadius => alarmSensorInfluenceRadius;
+    public float PursuitMemoryDuration => pursuitMemoryDuration;
 
     private void Awake()
     {
@@ -74,6 +75,11 @@ public class TargetThreatTracker : MonoBehaviour
 
     private void OnDisable()
     {
+        ResetRuntimeState();
+    }
+
+    public void ResetRuntimeState()
+    {
         if (smokeRoutine != null)
         {
             StopCoroutine(smokeRoutine);
@@ -81,8 +87,11 @@ public class TargetThreatTracker : MonoBehaviour
         }
 
         RestoreDetectionRadius();
+
         nearbyAgents.Clear();
         rememberedThreats.Clear();
+
+        reconRevealCount = 0;
         UpdatePlayerRevealVisual();
     }
 
@@ -177,10 +186,12 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = nearbyAgents.Count - 1; i >= 0; i--)
         {
             Transform agent = nearbyAgents[i];
+
             if (agent == null)
                 continue;
 
             float distance = Vector3.Distance(position, agent.position);
+
             if (distance < nearest)
                 nearest = distance;
         }
@@ -188,10 +199,12 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = rememberedThreats.Count - 1; i >= 0; i--)
         {
             RememberedThreat threat = rememberedThreats[i];
+
             if (threat == null)
                 continue;
 
             float distance = Vector3.Distance(position, threat.lastPosition);
+
             if (distance < nearest)
                 nearest = distance;
         }
@@ -201,10 +214,12 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
             {
                 Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
+
                 if (signal == null)
                     continue;
 
                 float distance = Vector3.Distance(position, signal.Position);
+
                 if (distance < nearest)
                     nearest = distance;
             }
@@ -215,10 +230,12 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
             {
                 AgentHologram hologram = AgentHologram.ActiveHolograms[i];
+
                 if (hologram == null)
                     continue;
 
                 float distance = Vector3.Distance(position, hologram.Position);
+
                 if (distance < nearest)
                     nearest = distance;
             }
@@ -229,10 +246,12 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
             {
                 AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
                 if (sensor == null || !sensor.IsActive)
                     continue;
 
                 float distance = sensor.GetDistanceFromZone(position);
+
                 if (distance < nearest)
                     nearest = distance;
             }
@@ -253,10 +272,12 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = nearbyAgents.Count - 1; i >= 0; i--)
         {
             Transform agent = nearbyAgents[i];
+
             if (agent == null)
                 continue;
 
             float distance = Vector3.Distance(transform.position, agent.position);
+
             if (distance < nearest)
                 nearest = distance;
         }
@@ -276,6 +297,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = nearbyAgents.Count - 1; i >= 0; i--)
         {
             Transform agent = nearbyAgents[i];
+
             if (agent == null)
                 continue;
 
@@ -283,6 +305,7 @@ public class TargetThreatTracker : MonoBehaviour
             awayFromAgent.y = 0f;
 
             float distance = awayFromAgent.magnitude;
+
             if (distance <= 0.001f)
                 continue;
 
@@ -292,6 +315,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = rememberedThreats.Count - 1; i >= 0; i--)
         {
             RememberedThreat threat = rememberedThreats[i];
+
             if (threat == null)
                 continue;
 
@@ -302,6 +326,7 @@ public class TargetThreatTracker : MonoBehaviour
             awayFromRememberedThreat.y = 0f;
 
             float distance = awayFromRememberedThreat.magnitude;
+
             if (distance <= 0.001f)
                 continue;
 
@@ -320,6 +345,7 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
             {
                 Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
+
                 if (signal == null)
                     continue;
 
@@ -327,10 +353,12 @@ public class TargetThreatTracker : MonoBehaviour
                 awayFromSignal.y = 0f;
 
                 float sqrDistance = awayFromSignal.sqrMagnitude;
+
                 if (sqrDistance > sqrRange)
                     continue;
 
                 float distance = Mathf.Sqrt(sqrDistance);
+
                 if (distance <= 0.001f)
                     continue;
 
@@ -345,6 +373,7 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
             {
                 AgentHologram hologram = AgentHologram.ActiveHolograms[i];
+
                 if (hologram == null)
                     continue;
 
@@ -352,10 +381,12 @@ public class TargetThreatTracker : MonoBehaviour
                 awayFromHologram.y = 0f;
 
                 float sqrDistance = awayFromHologram.sqrMagnitude;
+
                 if (sqrDistance > sqrRange)
                     continue;
 
                 float distance = Mathf.Sqrt(sqrDistance);
+
                 if (distance <= 0.001f)
                     continue;
 
@@ -368,6 +399,7 @@ public class TargetThreatTracker : MonoBehaviour
             for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
             {
                 AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
                 if (sensor == null || !sensor.IsActive)
                     continue;
 
@@ -408,6 +440,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = nearbyAgents.Count - 1; i >= 0; i--)
         {
             Transform agent = nearbyAgents[i];
+
             if (agent == null)
                 continue;
 
@@ -417,6 +450,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = rememberedThreats.Count - 1; i >= 0; i--)
         {
             RememberedThreat threat = rememberedThreats[i];
+
             if (threat == null)
                 continue;
 
@@ -436,6 +470,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
         {
             Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
+
             if (signal == null)
                 continue;
 
@@ -455,6 +490,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
         {
             AgentHologram hologram = AgentHologram.ActiveHolograms[i];
+
             if (hologram == null)
                 continue;
 
@@ -474,6 +510,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
         {
             AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
             if (sensor == null || !sensor.IsActive)
                 continue;
 
@@ -493,6 +530,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < Noisemaker.ActiveNoisemakers.Count; i++)
         {
             Noisemaker signal = Noisemaker.ActiveNoisemakers[i];
+
             if (signal == null)
                 continue;
 
@@ -513,6 +551,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AgentHologram.ActiveHolograms.Count; i++)
         {
             AgentHologram hologram = AgentHologram.ActiveHolograms[i];
+
             if (hologram == null)
                 continue;
 
@@ -531,6 +570,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
         {
             AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
             if (sensor == null || !sensor.IsActive)
                 continue;
 
@@ -552,6 +592,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
         {
             AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
             if (sensor == null || !sensor.IsActive)
                 continue;
 
@@ -572,6 +613,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = 0; i < AlarmSensor.ActiveSensors.Count; i++)
         {
             AlarmSensor sensor = AlarmSensor.ActiveSensors[i];
+
             if (sensor == null || !sensor.IsActive)
                 continue;
 
@@ -580,6 +622,7 @@ public class TargetThreatTracker : MonoBehaviour
             if (sensorPenalty <= 0f)
             {
                 float centerDistance = Vector3.Distance(position, sensor.Position);
+
                 if (centerDistance > alarmSensorInfluenceRadius)
                     continue;
 
@@ -623,6 +666,7 @@ public class TargetThreatTracker : MonoBehaviour
         CleanupThreats();
 
         escapeForward.y = 0f;
+
         if (escapeForward.sqrMagnitude <= 0.0001f)
             return false;
 
@@ -634,6 +678,7 @@ public class TargetThreatTracker : MonoBehaviour
         for (int i = nearbyAgents.Count - 1; i >= 0; i--)
         {
             Transform agent = nearbyAgents[i];
+
             if (agent == null)
                 continue;
 
@@ -641,6 +686,7 @@ public class TargetThreatTracker : MonoBehaviour
             toAgent.y = 0f;
 
             float sqrDistance = toAgent.sqrMagnitude;
+
             if (sqrDistance <= 0.0001f || sqrDistance > maxDistanceSqr)
                 continue;
 

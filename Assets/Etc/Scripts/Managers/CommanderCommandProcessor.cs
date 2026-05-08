@@ -272,16 +272,31 @@ public class CommanderCommandProcessor : MonoBehaviour
 
             if (validatedSkill == "hold")
             {
-                if (commandValidator.IsLookAroundInstruction(originalInstruction))
+                if (commandValidator.IsJokerCardInstruction(originalInstruction))
+                {
+                    Debug.Log("[Commander] 조커 카드는 마술사 게이지가 가득 차면 자동 발동되므로 직접 명령하지 않습니다.");
+                    validatedSkill = "hold";
+                }
+                else if (commandValidator.IsLookAroundInstruction(originalInstruction))
+                {
                     validatedSkill = "lookaround";
+                }
                 else if (commandValidator.IsStopSignalInstruction(originalInstruction))
+                {
                     validatedSkill = "stopsignal";
+                }
                 else if (IsBarricadeInstruction(originalInstruction))
+                {
                     validatedSkill = "barricade";
+                }
                 else if (commandValidator.IsFakeBoxInstruction(originalInstruction))
+                {
                     validatedSkill = "fakebox";
+                }
                 else if (commandValidator.IsMovementInstruction(originalInstruction))
+                {
                     validatedSkill = "";
+                }
             }
 
             if (!IsSkillAllowedForAgent(targetAgent, validatedSkill))
@@ -401,11 +416,14 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent is Trickster)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"fakebox\".\n" +
-                   "14. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
-                   "15. fakebox MUST use the requested coordinate as the center position of the fake box.\n" +
-                   "16. If the instruction is just 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, 가짜상자, fakebox, fake box, magic box, or magicbox without coordinates, interpret it as using the skill at the trickster's current position.\n" +
-                   "17. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command. If the user asks for Joker Card, output skill \"hold\".\n\n" +
+                   "13. This agent is the Magician-type Trickster agent.\n" +
+                   "14. The only manually commanded skill for this agent is \"fakebox\".\n" +
+                   "15. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
+                   "16. fakebox MUST use the requested coordinate as the center position of the fake box.\n" +
+                   "17. If the instruction is just 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, 가짜상자, fakebox, fake box, magic box, or magicbox without coordinates, interpret it as using the skill at the magician's current position.\n" +
+                   "18. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command.\n" +
+                   "19. If the user asks to use Joker Card, output skill \"hold\" because Joker Card activates automatically when its gauge is full.\n" +
+                   "20. Do not use noisemaker, noise, hologram, or 소란 장치. Those are no longer skills for this magician agent.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +

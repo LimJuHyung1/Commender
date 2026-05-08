@@ -7,12 +7,14 @@ using UnityEngine.AI;
 [RequireComponent(typeof(TargetThreatTracker))]
 [RequireComponent(typeof(TargetEscapeMotor))]
 [RequireComponent(typeof(TargetWanderMotor))]
-public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver
+public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver, ITargetRouteInterferenceReceiver
 {
     [Header("References")]
     [SerializeField] private TargetThreatTracker threatTracker;
     [SerializeField] private TargetEscapeMotor escapeMotor;
     [SerializeField] private TargetSkillController skillController;
+    [SerializeField] private TargetAnimationController animationController;
+    [SerializeField] private TargetVisibilityController visibilityController;
 
     [Header("Health")]
     [SerializeField] private float maxHealth = 100f;
@@ -43,6 +45,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     public TargetThreatTracker ThreatTracker => threatTracker;
     public TargetEscapeMotor EscapeMotor => escapeMotor;
     public TargetSkillController SkillController => skillController;
+    public TargetAnimationController AnimationController => animationController;
+    public TargetVisibilityController VisibilityController => visibilityController;
 
     public bool IsCaught => isCaught;
     public bool IsExhausted => healthSystem != null && healthSystem.IsDead();
@@ -61,33 +65,15 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
     private void Awake()
     {
-        navAgent = GetComponent<NavMeshAgent>();
-
-        if (threatTracker == null)
-            threatTracker = GetComponent<TargetThreatTracker>();
-
-        if (escapeMotor == null)
-            escapeMotor = GetComponent<TargetEscapeMotor>();
-
-        if (skillController == null)
-            skillController = GetComponent<TargetSkillController>();
-
-        wanderMotor = GetComponent<TargetWanderMotor>();
+        ResolveReferences();
 
         escapeMotorEnabledOnAwake = escapeMotor == null || escapeMotor.enabled;
         wanderMotorEnabledOnAwake = wanderMotor == null || wanderMotor.enabled;
 
-        if (escapeMotor != null && threatTracker != null)
-            escapeMotor.SetThreatTracker(threatTracker);
-
-        if (escapeMotor != null && skillController != null)
-            escapeMotor.SetSkillController(skillController);
+        ConnectReferences();
 
         ClampValues();
         RecreateHealthSystem();
-
-        if (skillController != null)
-            skillController.ResetRuntimeState(true, true);
     }
 
     private void OnDestroy()
@@ -136,13 +122,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         escapeMotor.RefreshDynamicMovementSettings(hasThreat, GetHealthRatio());
 
         if (hasThreat)
-        {
             HandleThreatState();
-        }
         else
-        {
             HandleSafeState();
-        }
 
         hadThreatLastFrame = hasThreat;
     }
@@ -218,9 +200,6 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             wanderMotor.StopWandering(true);
 
         escapeMotor.RefreshDynamicMovementSettings(true, GetHealthRatio());
-
-        if (skillController != null)
-            skillController.TryUseAutoDefensiveSkill(transform.position);
 
         float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
         healthSystem.Damage(damageAmount);
@@ -408,6 +387,29 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         escapeMotor.ApplySlow(multiplier, duration);
     }
 
+    public void ApplyFakeBoxRouteInterference(Vector3 boxPosition, int reducedRouteCandidateCount)
+    {
+        if (isCaught)
+            return;
+
+        if (healthSystem == null || healthSystem.IsDead())
+            return;
+
+        if (escapeMotor == null)
+            return;
+
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
+
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(true);
+
+        escapeMotor.ApplyFakeBoxRouteInterference(
+            boxPosition,
+            reducedRouteCandidateCount
+        );
+    }
+
     public void AddReconReveal()
     {
         if (threatTracker == null)
@@ -463,7 +465,9 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         return escapeMotor.TryActivateEmergencyEscape();
     }
 
-    public void ResetRuntimeState(bool resetEmergencyEscapeUsage = true)
+    public void ResetRuntimeState(
+        bool resetEmergencyEscapeUsage = true,
+        bool resetHealth = true)
     {
         isCaught = false;
 
@@ -472,26 +476,56 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         recoveryStartHealth = 0f;
         hadThreatLastFrame = false;
 
+        if (resetHealth)
+            RecreateHealthSystem();
+
+        if (animationController != null)
+            animationController.ResetRuntimeState();
+
+        if (threatTracker != null)
+            threatTracker.ResetRuntimeState();
+
         if (escapeMotor != null)
             escapeMotor.enabled = escapeMotorEnabledOnAwake;
 
         if (wanderMotor != null)
-        {
             wanderMotor.enabled = wanderMotorEnabledOnAwake;
-            wanderMotor.StopWandering(true);
-        }
 
         if (escapeMotor != null)
             escapeMotor.ResetRuntimeState(resetEmergencyEscapeUsage);
 
+        if (wanderMotor != null)
+            wanderMotor.ResetRuntimeState(true);
+
         if (skillController != null)
             skillController.ResetRuntimeState(true, true);
 
-        if (navAgent != null && healthSystem != null && !healthSystem.IsDead())
-        {
-            navAgent.isStopped = false;
-            navAgent.ResetPath();
-        }
+        RestoreNavAgentAfterReset();
+
+        if (visibilityController != null)
+            visibilityController.ResetRuntimeState();
+    }
+
+    private void RestoreNavAgentAfterReset()
+    {
+        if (navAgent == null)
+            return;
+
+        if (!navAgent.enabled)
+            return;
+
+        if (!navAgent.isActiveAndEnabled)
+            return;
+
+        if (!navAgent.isOnNavMesh)
+            return;
+
+        if (healthSystem != null && healthSystem.IsDead())
+            return;
+
+        navAgent.isStopped = false;
+        navAgent.ResetPath();
+        navAgent.velocity = Vector3.zero;
     }
 
     private void ForceStopMovement()
@@ -511,6 +545,44 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         navAgent.isStopped = true;
         navAgent.ResetPath();
         navAgent.velocity = Vector3.zero;
+    }
+
+    private void ResolveReferences()
+    {
+        navAgent = GetComponent<NavMeshAgent>();
+
+        if (threatTracker == null)
+            threatTracker = GetComponent<TargetThreatTracker>();
+
+        if (escapeMotor == null)
+            escapeMotor = GetComponent<TargetEscapeMotor>();
+
+        if (skillController == null)
+            skillController = GetComponent<TargetSkillController>();
+
+        if (animationController == null)
+            animationController = GetComponent<TargetAnimationController>();
+
+        if (visibilityController == null)
+            visibilityController = GetComponent<TargetVisibilityController>();
+
+        wanderMotor = GetComponent<TargetWanderMotor>();
+    }
+
+    private void ConnectReferences()
+    {
+        if (escapeMotor != null && threatTracker != null)
+            escapeMotor.SetThreatTracker(threatTracker);
+
+        if (escapeMotor != null && skillController != null)
+            escapeMotor.SetSkillController(skillController);
+
+        if (skillController != null)
+        {
+            skillController.SetTargetController(this);
+            skillController.SetThreatTracker(threatTracker);
+            skillController.SetEscapeMotor(escapeMotor);
+        }
     }
 
     private void ClampValues()

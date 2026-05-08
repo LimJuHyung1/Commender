@@ -617,4 +617,43 @@ public class TargetAnimationController : MonoBehaviour
 
         animator.SetTrigger(hash);
     }
+
+    public void ResetRuntimeState()
+    {
+        StopSkillLockRoutine();
+
+        if (storedLogicState)
+            RestoreTargetLogicAfterTimeOver();
+
+        isSkillLocked = false;
+        isTimeOver = false;
+        capturedTriggered = false;
+        exhaustedTriggered = false;
+        wasEmergencyEscaping = false;
+        lastEmergencyEscapeTriggerFrame = -1;
+
+        manualAgentLockActive = false;
+        manualAgentWasStopped = false;
+
+        ResetTriggerSafe(communicationJamTriggerHash, hasCommunicationJamTrigger);
+        ResetTriggerSafe(commandDistortionTriggerHash, hasCommandDistortionTrigger);
+        ResetTriggerSafe(hologramSlideTriggerHash, hasHologramSlideTrigger);
+        ResetTriggerSafe(emergencyEscapeTriggerHash, hasEmergencyEscapeTrigger);
+        ResetTriggerSafe(capturedTriggerHash, hasCapturedTrigger);
+        ResetTriggerSafe(timeOverTriggerHash, hasTimeOverTrigger);
+        ResetTriggerSafe(exhaustedTriggerHash, hasExhaustedTrigger);
+
+        SetBoolSafe(skillLockedHash, false, hasSkillLockedParameter);
+        SetBoolSafe(emergencyEscapingHash, false, hasEmergencyEscapingParameter);
+        SetBoolSafe(exhaustedHash, false, hasExhaustedParameter);
+        SetIntegerSafe(stateHash, (int)TargetAnimationState.LookAround, hasStateParameter);
+    }
+
+    private void ResetTriggerSafe(int hash, bool hasParameter)
+    {
+        if (animator == null || !hasParameter)
+            return;
+
+        animator.ResetTrigger(hash);
+    }
 }

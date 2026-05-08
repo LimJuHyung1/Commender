@@ -213,4 +213,10 @@ public class TargetVisibilityController : MonoBehaviour
         if (!agentVisionSensors.Contains(sensor))
             agentVisionSensors.Add(sensor);
     }
+
+    public void ResetRuntimeState()
+    {
+        CollectSceneSensorsIfNeeded();
+        RefreshVisibilityImmediate();
+    }
 }

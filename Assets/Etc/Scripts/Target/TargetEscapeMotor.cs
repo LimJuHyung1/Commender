@@ -222,6 +222,7 @@ public class TargetEscapeMotor : MonoBehaviour
     private float stuckTimer = 0f;
 
     private int emergencyEscapeUsedCount;
+    private int fakeBoxCandidateLimitForNextSearch = -1;
 
     private bool hasCurrentDestination;
     private bool isRooted;
@@ -399,6 +400,39 @@ public class TargetEscapeMotor : MonoBehaviour
         slowRoutine = StartCoroutine(SlowRoutine(duration));
     }
 
+    public void ApplyFakeBoxRouteInterference(Vector3 boxPosition, int reducedRouteCandidateCount)
+    {
+        if (!CanFlee())
+            return;
+
+        if (isEmergencyEscaping)
+            return;
+
+        int candidateLimit = Mathf.Max(1, reducedRouteCandidateCount);
+
+        hasCurrentDestination = false;
+        currentDestinationSetTime = -999f;
+        stuckTimer = 0f;
+        lastRepathTime = -999f;
+
+        ResetAgentPath(false);
+
+        if (threatTracker == null || !threatTracker.HasAnyThreat())
+        {
+            Debug.Log("[TargetEscapeMotor] FakeBox effect was triggered, but target has no active threat.");
+            return;
+        }
+
+        fakeBoxCandidateLimitForNextSearch = candidateLimit;
+
+        Debug.Log(
+            $"[TargetEscapeMotor] FakeBox route interference applied. " +
+            $"BoxPosition: {boxPosition}, CandidateLimit: {candidateLimit}"
+        );
+
+        TryFleeFromThreats(true);
+    }
+
     public void TryFleeFromThreats(bool forceRepath = false)
     {
         if (!CanFlee())
@@ -423,9 +457,11 @@ public class TargetEscapeMotor : MonoBehaviour
         if (!forceRepath && Time.time - lastRepathTime < settings.repathCooldown)
             return;
 
-        if (!TryFindEscapeDestination(out Vector3 escapeDestination))
+        int routeCandidateLimit = ConsumeFakeBoxCandidateLimit();
+
+        if (!TryFindEscapeDestination(out Vector3 escapeDestination, routeCandidateLimit))
         {
-            if (!TryFindEmergencyLocalReposition(out escapeDestination))
+            if (!TryFindEmergencyLocalReposition(out escapeDestination, routeCandidateLimit))
                 return;
         }
 
@@ -438,8 +474,15 @@ public class TargetEscapeMotor : MonoBehaviour
         lastRepathTime = Time.time;
         stuckTimer = 0f;
 
-        if (skillController != null)
-            skillController.TryUseAutoDefensiveSkill(escapeDestination);
+        TryUseAutoDefensiveSkillAfterDestinationChosen(escapeDestination);
+    }
+
+    private void TryUseAutoDefensiveSkillAfterDestinationChosen(Vector3 escapeDestination)
+    {
+        if (skillController == null)
+            return;
+
+        skillController.TryUseAutoDefensiveSkill(escapeDestination);
     }
 
     public bool IsCompletelyStopped()
@@ -468,12 +511,10 @@ public class TargetEscapeMotor : MonoBehaviour
         currentDestinationSetTime = -999f;
         stuckTimer = 0f;
         hasCurrentDestination = false;
+        fakeBoxCandidateLimitForNextSearch = -1;
 
         if (resetEmergencyEscapeUsage)
             emergencyEscapeUsedCount = 0;
-
-        if (skillController != null)
-            skillController.ResetRuntimeState(true, true);
 
         ResetAgentPath();
         ApplyNavAgentBaseSettings();
@@ -585,7 +626,14 @@ public class TargetEscapeMotor : MonoBehaviour
         return destinationThreatDistance + 0.25f < currentThreatDistance;
     }
 
-    private bool TryFindEscapeDestination(out Vector3 bestPosition)
+    private int ConsumeFakeBoxCandidateLimit()
+    {
+        int limit = fakeBoxCandidateLimitForNextSearch;
+        fakeBoxCandidateLimitForNextSearch = -1;
+        return limit;
+    }
+
+    private bool TryFindEscapeDestination(out Vector3 bestPosition, int candidateLimit = -1)
     {
         bestPosition = transform.position;
 
@@ -605,6 +653,9 @@ public class TargetEscapeMotor : MonoBehaviour
 
         bool foundStrict = false;
         bool foundRelaxed = false;
+
+        int evaluatedCandidateCount = 0;
+        bool reachedCandidateLimit = false;
 
         for (int d = 0; d < EscapeDistanceScales.Length; d++)
         {
@@ -641,6 +692,8 @@ public class TargetEscapeMotor : MonoBehaviour
                     searchRadius
                 );
 
+                evaluatedCandidateCount++;
+
                 bool strictValid =
                     evaluated.threatGain >= -0.1f &&
                     evaluated.pathStartAlignment >= settings.minPathStartAlignment &&
@@ -673,7 +726,16 @@ public class TargetEscapeMotor : MonoBehaviour
                         foundRelaxed = true;
                     }
                 }
+
+                if (HasReachedFakeBoxCandidateLimit(evaluatedCandidateCount, candidateLimit))
+                {
+                    reachedCandidateLimit = true;
+                    break;
+                }
             }
+
+            if (reachedCandidateLimit)
+                break;
         }
 
         if (foundStrict)
@@ -729,7 +791,7 @@ public class TargetEscapeMotor : MonoBehaviour
         };
     }
 
-    private bool TryFindEmergencyLocalReposition(out Vector3 bestPosition)
+    private bool TryFindEmergencyLocalReposition(out Vector3 bestPosition, int candidateLimit = -1)
     {
         bestPosition = transform.position;
 
@@ -745,6 +807,7 @@ public class TargetEscapeMotor : MonoBehaviour
 
         float bestScore = float.MinValue;
         bool found = false;
+        int evaluatedCandidateCount = 0;
 
         for (int i = 0; i < settings.emergencyLocalSampleCount; i++)
         {
@@ -789,15 +852,25 @@ public class TargetEscapeMotor : MonoBehaviour
             score += opennessScore * 2f;
             score -= alarmSensorPenalty;
 
+            evaluatedCandidateCount++;
+
             if (score > bestScore)
             {
                 bestScore = score;
                 bestPosition = candidate;
                 found = true;
             }
+
+            if (HasReachedFakeBoxCandidateLimit(evaluatedCandidateCount, candidateLimit))
+                break;
         }
 
         return found;
+    }
+
+    private bool HasReachedFakeBoxCandidateLimit(int evaluatedCandidateCount, int candidateLimit)
+    {
+        return candidateLimit > 0 && evaluatedCandidateCount >= candidateLimit;
     }
 
     private Vector3 GetStableFleeDirection()
@@ -1172,6 +1245,7 @@ public class TargetEscapeMotor : MonoBehaviour
         hasCurrentDestination = false;
         currentDestinationSetTime = -999f;
         stuckTimer = 0f;
+        fakeBoxCandidateLimitForNextSearch = -1;
 
         ResetAgentPath();
     }

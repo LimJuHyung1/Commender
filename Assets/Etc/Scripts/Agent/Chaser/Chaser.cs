@@ -26,6 +26,7 @@ public class Chaser : AgentController
     private const float ChaserStableMovingThreshold = 0.08f;
     private const float ChaserManualArrivalExtraBuffer = 0.25f;
     private const float ChaserArrivalVelocityStopThreshold = 0.2f;
+    private const float AccessControlMoveSampleDistance = 2f;
 
     [Header("Access Control")]
     [SerializeField] private AccessControlZone accessControlZonePrefab;
@@ -197,7 +198,7 @@ public class Chaser : AgentController
 
         if (IsEscapeBlockSkill(skill))
         {
-            Debug.Log($"[Chaser {AgentID}] 도주 제지는 자동 스킬입니다. 타겟을 시야에 담으면 게이지를 소모하며 자동으로 적용됩니다.");
+            Debug.Log($"[Chaser {AgentID}] 도주 제지는 자동 스킬입니다. 타겟이 시야에 들어오면 게이지를 소모하며 자동으로 적용됩니다.");
             return;
         }
 
@@ -617,10 +618,55 @@ public class Chaser : AgentController
 
         currentAccessControlZone = zone;
 
+        MoveToAccessControlPoint(centerPosition);
+
         Debug.Log(
-            $"[Chaser {AgentID}] 출입 통제 구역 생성. " +
+            $"[Chaser {AgentID}] 출입 통제 구역 생성 및 이동 시작. " +
             $"Center={centerPosition}, Radius={accessControlRadius}, Duration={accessControlDuration}"
         );
+    }
+
+    private void MoveToAccessControlPoint(Vector3 centerPosition)
+    {
+        if (navAgent == null)
+            return;
+
+        if (!navAgent.isActiveAndEnabled)
+            return;
+
+        if (!navAgent.isOnNavMesh)
+        {
+            Debug.LogWarning($"[Chaser {AgentID}] NavMeshAgent가 NavMesh 위에 없습니다. 출입 통제 지점 이동을 취소합니다.");
+            return;
+        }
+
+        Vector3 destination = centerPosition;
+
+        if (NavMesh.SamplePosition(centerPosition, out NavMeshHit hit, AccessControlMoveSampleDistance, NavMesh.AllAreas))
+            destination = hit.position;
+
+        currentTarget = null;
+        ClearSharedTargetPosition();
+
+        isManualMoving = true;
+
+        navAgent.isStopped = false;
+        navAgent.ResetPath();
+
+        bool success = navAgent.SetDestination(destination);
+
+        if (!success)
+        {
+            isManualMoving = false;
+            Debug.LogWarning($"[Chaser {AgentID}] 출입 통제 지점으로 이동할 수 없습니다.");
+            return;
+        }
+
+        cachedChaserAnimationIsMoving = true;
+        lastChaserAnimationMovingTime = Time.time;
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
     }
 
     private AccessControlZone CreateAccessControlZone(Vector3 centerPosition)

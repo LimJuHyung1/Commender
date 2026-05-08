@@ -25,21 +25,33 @@ MonoBehaviour:
   spotLightRange: 10
   spotLightInnerAngle: 16.6
   spotLightOuterAngle: 67.2
-  dashSpeed: 0
-  dashAcceleration: 0
-  dashDuration: 0
-  reconDuration: 0
-  reconRadius: 0
-  wallSightDuration: 0
-  slowTrapDuration: 0
-  slowTrapStrength: 0
+  accessControlSkillGaugeMax: 100
+  droneDuration: 20
+  droneRadius: 7
+  droneSpawnHeight: 6
+  droneObservationAreaYOffset: 0.05
+  droneSkillGaugeMax: 50
+  barricadeSkillGaugeMax: 0
+  stopSignalSkillGaugeMax: 0
+  fakeBoxSkillGaugeMax: 70
+  jokerCardSkillGaugeMax: 50
+  jokerCardDuration: 10
+  jokerCardMoveSpeedMultiplier: 1.5
+  jokerCardViewRadiusMultiplier: 1.25
+  jokerCardViewAngleBonus: 30
   decoyDuration: 7
   phantomDuration: 6
   phantomThreatWeight: 1.3
-  dashSkillGaugeMax: 0
-  smokeSkillGaugeMax: 0
-  flareSkillGaugeMax: 0
-  barricadeSkillGaugeMax: 0
-  slowTrapSkillGaugeMax: 0
   noisemakerSkillGaugeMax: 100
   hologramSkillGaugeMax: 50
+  slowTrapDuration: 0
+  slowTrapStrength: 0
+  dashSpeed: 0
+  dashAcceleration: 0
+  dashDuration: 0
+  dashSkillGaugeMax: 0
+  smokeSkillGaugeMax: 0
+  reconDuration: 0
+  reconRadius: 0
+  wallSightDuration: 0
+  flareSkillGaugeMax: 0

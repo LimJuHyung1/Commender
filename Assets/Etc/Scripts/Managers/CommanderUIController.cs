@@ -15,6 +15,9 @@ public class CommanderUIController : MonoBehaviour
     [Header("Hotkeys")]
     [SerializeField] private bool enableFunctionKeyFocus = true;
 
+    [Header("Skill Name Paste")]
+    [SerializeField] private bool addSpaceBeforePastedSkillName = true;
+
     [Header("Communication Jam")]
     [SerializeField] private string jammedPlaceholderText = "통신 방해 중... 명령 버튼을 눌러 해제";
     [SerializeField] private bool clearTextOnJam = true;
@@ -89,23 +92,7 @@ public class CommanderUIController : MonoBehaviour
                 tabMoveRoutine = null;
             }
 
-            pendingRefocusAfterOrbit = false;
-            currentFocusedInputIndex = -1;
-
-            RestoreAllPlaceholderTexts();
-            ApplyAllJammedPlaceholders();
-
-            if (agentCameraFollow != null)
-                agentCameraFollow.ClearFocusAgent();
-
-            if (currentHighlightedOutline != null)
-            {
-                currentHighlightedOutline.SetOutlineVisible(false);
-                currentHighlightedOutline = null;
-            }
-
-            if (EventSystem.current != null)
-                EventSystem.current.SetSelectedGameObject(null);
+            ClearCurrentInputFocus();
         }
 
         RefreshAllInputInteractableStates();
@@ -181,6 +168,68 @@ public class CommanderUIController : MonoBehaviour
         }
 
         return hasAnyValidInput;
+    }
+
+    public bool TryPasteSkillDisplayNameToInputIndex(
+        int inputIndex,
+        int clickedAgentId,
+        string skillDisplayName,
+        bool requireInputAgentMatched)
+    {
+        if (!uiInteractable)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillDisplayName))
+            return false;
+
+        if (!CanFocusInputIndex(inputIndex))
+            return false;
+
+        if (requireInputAgentMatched)
+        {
+            if (!TryGetAgentAtInputIndex(inputIndex, out AgentController agent))
+                return false;
+
+            if (agent.AgentID != clickedAgentId)
+                return false;
+        }
+
+        InputField input = agentInputs[inputIndex];
+
+        if (input == null)
+            return false;
+
+        PasteSkillNameToInput(input, skillDisplayName.Trim());
+        FocusInputField(inputIndex);
+
+        return true;
+    }
+
+    private void PasteSkillNameToInput(InputField input, string skillDisplayName)
+    {
+        if (input == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(skillDisplayName))
+            return;
+
+        string currentText = input.text ?? "";
+        string pasteText = skillDisplayName.Trim();
+
+        if (addSpaceBeforePastedSkillName &&
+            currentText.Length > 0 &&
+            !char.IsWhiteSpace(currentText[currentText.Length - 1]))
+        {
+            currentText += " ";
+        }
+
+        input.text = currentText + pasteText;
+
+        int caretPosition = input.text.Length;
+        input.caretPosition = caretPosition;
+        input.selectionAnchorPosition = caretPosition;
+        input.selectionFocusPosition = caretPosition;
+        input.ForceLabelUpdate();
     }
 
     public bool TryJamAgentInput(int agentId, float duration)
@@ -463,7 +512,64 @@ public class CommanderUIController : MonoBehaviour
         if (IsInputIndexJammed(inputIndex))
             return;
 
+        if (IsInputIndexCurrentlyFocused(inputIndex))
+        {
+            ClearCurrentInputFocus();
+            return;
+        }
+
         FocusInputField(inputIndex);
+    }
+
+    private bool IsInputIndexCurrentlyFocused(int inputIndex)
+    {
+        if (inputIndex < 0)
+            return false;
+
+        int focusedIndex = GetFocusedInputIndex();
+
+        if (focusedIndex >= 0)
+            return focusedIndex == inputIndex;
+
+        int selectedIndex = GetSelectedInputIndex();
+
+        if (selectedIndex >= 0)
+            return selectedIndex == inputIndex;
+
+        return currentFocusedInputIndex == inputIndex;
+    }
+
+    private void ClearCurrentInputFocus()
+    {
+        if (agentInputs != null)
+        {
+            foreach (InputField input in agentInputs)
+            {
+                if (input == null)
+                    continue;
+
+                input.DeactivateInputField();
+            }
+        }
+
+        pendingRefocusAfterOrbit = false;
+
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(null);
+
+        if (agentCameraFollow != null)
+            agentCameraFollow.ClearFocusAgent();
+
+        if (currentHighlightedOutline != null)
+        {
+            currentHighlightedOutline.SetOutlineVisible(false);
+            currentHighlightedOutline = null;
+        }
+
+        currentFocusedInputIndex = -1;
+
+        RestoreAllPlaceholderTexts();
+        ApplyAllJammedPlaceholders();
     }
 
     private void HandleTabInputNavigation()
@@ -564,35 +670,7 @@ public class CommanderUIController : MonoBehaviour
 
     private void ClearInputFocusBeforeSubmit()
     {
-        if (agentInputs != null)
-        {
-            foreach (InputField input in agentInputs)
-            {
-                if (input == null)
-                    continue;
-
-                input.DeactivateInputField();
-            }
-        }
-
-        pendingRefocusAfterOrbit = false;
-
-        if (EventSystem.current != null)
-            EventSystem.current.SetSelectedGameObject(null);
-
-        if (agentCameraFollow != null)
-            agentCameraFollow.ClearFocusAgent();
-
-        if (currentHighlightedOutline != null)
-        {
-            currentHighlightedOutline.SetOutlineVisible(false);
-            currentHighlightedOutline = null;
-        }
-
-        currentFocusedInputIndex = -1;
-
-        RestoreAllPlaceholderTexts();
-        ApplyAllJammedPlaceholders();
+        ClearCurrentInputFocus();
     }
 
     private IEnumerator MoveFocusAfterImeCommit(int currentIndex, int nextIndex)
@@ -824,21 +902,7 @@ public class CommanderUIController : MonoBehaviour
             return;
         }
 
-        pendingRefocusAfterOrbit = false;
-
-        if (EventSystem.current != null)
-            EventSystem.current.SetSelectedGameObject(null);
-
-        if (agentCameraFollow != null)
-            agentCameraFollow.ClearFocusAgent();
-
-        if (currentHighlightedOutline != null)
-        {
-            currentHighlightedOutline.SetOutlineVisible(false);
-            currentHighlightedOutline = null;
-        }
-
-        currentFocusedInputIndex = -1;
+        ClearCurrentInputFocus();
     }
 
     private int FindNextAvailableInputIndex(int startIndex, bool movePrevious)
@@ -1028,8 +1092,8 @@ public class CommanderUIController : MonoBehaviour
         if (typeName.Contains("Engineer"))
             return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
 
-        if (typeName.Contains("Disruptor") || typeName.Contains("Trickster"))
-            return "EX) 소란 장치, 홀로그램";
+        if (typeName.Contains("Trickster") || typeName.Contains("Magician"))
+            return "EX) (좌표) 페이크 박스";
 
         switch (agent.AgentID)
         {
@@ -1043,7 +1107,7 @@ public class CommanderUIController : MonoBehaviour
                 return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
 
             case 3:
-                return "EX) 소란 장치, 홀로그램";
+                return "EX) (좌표) 페이크 박스";
         }
 
         return "";

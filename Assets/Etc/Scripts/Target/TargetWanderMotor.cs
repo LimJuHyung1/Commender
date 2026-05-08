@@ -340,4 +340,22 @@ public class TargetWanderMotor : MonoBehaviour
         if (escapeMotor != null)
             escapeMotor.ApplyNavAgentBaseSettings();
     }
+
+    public void ResetRuntimeState(bool clearPath = true)
+    {
+        safeTimer = 0f;
+        lastWanderTime = -999f;
+        isWandering = false;
+
+        if (navAgent == null)
+            return;
+
+        if (!navAgent.isActiveAndEnabled || !navAgent.isOnNavMesh)
+            return;
+
+        if (clearPath)
+            navAgent.ResetPath();
+
+        navAgent.isStopped = false;
+    }
 }

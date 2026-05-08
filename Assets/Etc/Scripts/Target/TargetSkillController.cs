@@ -16,6 +16,7 @@ public enum TargetSkillType
 public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockReceiver
 {
     [Header("Common References")]
+    [SerializeField] private TargetController targetController;
     [SerializeField] private TargetThreatTracker threatTracker;
     [SerializeField] private NavMeshAgent navAgent;
     [SerializeField] private TargetEscapeMotor escapeMotor;
@@ -34,6 +35,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     private readonly HashSet<Component> escapeSkillBlockSources = new HashSet<Component>();
 
+    protected TargetController TargetController => targetController;
     protected TargetThreatTracker ThreatTracker => threatTracker;
     protected NavMeshAgent NavAgent => navAgent;
     protected TargetEscapeMotor EscapeMotor => escapeMotor;
@@ -58,7 +60,21 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
     public virtual float CommandDistortionRemainingCooldown => 0f;
 
     public virtual int EmergencyEscapeCharges => 0;
-    public virtual int RemainingEmergencyEscapeCount => 0;
+
+    public virtual int RemainingEmergencyEscapeCount
+    {
+        get
+        {
+            if (!IsEmergencyEscapeUnlocked)
+                return 0;
+
+            if (escapeMotor == null)
+                return 0;
+
+            return escapeMotor.RemainingEmergencyEscapeCount;
+        }
+    }
+
     public virtual bool AutoUseEmergencyEscape => false;
 
     protected virtual void Awake()
@@ -110,18 +126,101 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
             Debug.Log($"[TargetSkillController] 도주 스킬 차단 상태 초기화: {name}");
     }
 
+    public bool CanUseSkill(TargetSkillType skillType)
+    {
+        return CanUseTargetSkill(skillType);
+    }
+
+    protected virtual bool CanUseTargetSkill(TargetSkillType skillType)
+    {
+        if (skillType == TargetSkillType.None)
+            return false;
+
+        if (IsTargetUnableToUseSkills())
+        {
+            if (writeLog)
+            {
+                Debug.Log(
+                    $"[TargetSkillController] 타겟이 스킬을 사용할 수 없는 상태입니다. " +
+                    $"Skill={skillType}, Target={name}"
+                );
+            }
+
+            return false;
+        }
+
+        if (!IsSkillUnlocked(skillType))
+        {
+            if (writeLog)
+            {
+                Debug.Log(
+                    $"[TargetSkillController] 아직 해금되지 않은 스킬입니다. " +
+                    $"Skill={skillType}, Target={name}"
+                );
+            }
+
+            return false;
+        }
+
+        if (!CanUseEscapeSkill(skillType))
+            return false;
+
+        return true;
+    }
+
+    protected virtual bool IsTargetUnableToUseSkills()
+    {
+        if (targetController == null)
+            return false;
+
+        if (targetController.IsCaught)
+            return true;
+
+        if (targetController.IsExhausted)
+            return true;
+
+        return false;
+    }
+
+    protected virtual bool IsSkillUnlocked(TargetSkillType skillType)
+    {
+        switch (skillType)
+        {
+            case TargetSkillType.Barricade:
+                return IsBarricadeUnlocked;
+
+            case TargetSkillType.Hologram:
+                return IsHologramUnlocked;
+
+            case TargetSkillType.Smoke:
+                return IsSmokeUnlocked;
+
+            case TargetSkillType.CommunicationJam:
+                return IsCommunicationJamUnlocked;
+
+            case TargetSkillType.CommandDistortion:
+                return IsCommandDistortionUnlocked;
+
+            case TargetSkillType.EmergencyEscape:
+                return IsEmergencyEscapeUnlocked;
+
+            default:
+                return false;
+        }
+    }
+
     protected bool CanUseEscapeSkill(TargetSkillType skillType)
     {
         if (!IsEscapeSkillBlocked)
             return true;
 
-        if (!IsBlockedByStopRequest(skillType))
+        if (!IsBlockedByEscapePrevention(skillType))
             return true;
 
         if (writeLog)
         {
             Debug.Log(
-                $"[TargetSkillController] 체이서의 정지 요청 효과로 스킬 사용 차단: " +
+                $"[TargetSkillController] 체이서의 도주 제지 효과로 스킬 사용 차단: " +
                 $"Skill={skillType}, Target={name}"
             );
         }
@@ -129,7 +228,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
         return false;
     }
 
-    protected bool IsBlockedByStopRequest(TargetSkillType skillType)
+    protected bool IsBlockedByEscapePrevention(TargetSkillType skillType)
     {
         switch (skillType)
         {
@@ -172,7 +271,8 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
         {
             Debug.LogWarning(
                 "[TargetSkillController] 구버전 ApplySkillUnlocks가 호출되었습니다. " +
-                "상속 구조에서는 ApplySkillUnlocks(int targetLevel)를 사용하는 것이 좋습니다.");
+                "상속 구조에서는 ApplySkillUnlocks(int targetLevel)를 사용하는 것이 좋습니다."
+            );
         }
     }
 
@@ -185,7 +285,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     public virtual bool TryUseBarricade(Vector3 escapeDestination)
     {
-        if (!CanUseEscapeSkill(TargetSkillType.Barricade))
+        if (!CanUseTargetSkill(TargetSkillType.Barricade))
             return false;
 
         return false;
@@ -193,7 +293,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     public virtual bool TryUseHologram()
     {
-        if (!CanUseEscapeSkill(TargetSkillType.Hologram))
+        if (!CanUseTargetSkill(TargetSkillType.Hologram))
             return false;
 
         return false;
@@ -201,7 +301,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     public virtual bool TryUseSmoke()
     {
-        if (!CanUseEscapeSkill(TargetSkillType.Smoke))
+        if (!CanUseTargetSkill(TargetSkillType.Smoke))
             return false;
 
         return false;
@@ -209,7 +309,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     public virtual bool TryUseCommunicationJam()
     {
-        if (!CanUseEscapeSkill(TargetSkillType.CommunicationJam))
+        if (!CanUseTargetSkill(TargetSkillType.CommunicationJam))
             return false;
 
         return false;
@@ -217,26 +317,35 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     public virtual bool TryUseCommunicationJamOnCommandSubmission()
     {
-        if (!CanUseEscapeSkill(TargetSkillType.CommunicationJam))
-            return false;
-
-        return false;
+        return TryUseCommunicationJam();
     }
 
     public virtual bool TryUseEmergencyEscape()
     {
-        if (!CanUseEscapeSkill(TargetSkillType.EmergencyEscape))
+        if (!CanUseTargetSkill(TargetSkillType.EmergencyEscape))
             return false;
 
-        return false;
+        if (escapeMotor == null)
+            return false;
+
+        return escapeMotor.TryActivateEmergencyEscape();
     }
 
     public virtual bool TryAutoEmergencyEscape(float healthRatio)
     {
-        if (!CanUseEscapeSkill(TargetSkillType.EmergencyEscape))
+        if (!AutoUseEmergencyEscape)
             return false;
 
-        return false;
+        if (!CanUseTargetSkill(TargetSkillType.EmergencyEscape))
+            return false;
+
+        if (escapeMotor == null)
+            return false;
+
+        if (!escapeMotor.ShouldAutoTriggerEmergencyEscape(healthRatio))
+            return false;
+
+        return TryUseEmergencyEscape();
     }
 
     public virtual bool TryDistortCommandPosition(
@@ -245,21 +354,37 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
     {
         distortedPosition = originalPosition;
 
-        if (!CanUseEscapeSkill(TargetSkillType.CommandDistortion))
+        if (!CanUseTargetSkill(TargetSkillType.CommandDistortion))
             return false;
 
         return false;
     }
 
-    public virtual bool TryUseSkill(TargetSkillType skillType, Vector3 escapeDestination)
+    public virtual bool TryDistortCommandPosition(
+        AgentController commandAgent,
+        Vector3 originalPosition,
+        out Vector3 distortedPosition)
     {
-        if (!CanUseEscapeSkill(skillType))
+        return TryDistortCommandPosition(originalPosition, out distortedPosition);
+    }
+
+    public virtual bool TryUseSkill(TargetSkillType skillType, Vector3 skillPosition)
+    {
+        return TryUseSkill(skillType, null, skillPosition);
+    }
+
+    public virtual bool TryUseSkill(
+        TargetSkillType skillType,
+        AgentController commandAgent,
+        Vector3 skillPosition)
+    {
+        if (!CanUseTargetSkill(skillType))
             return false;
 
         switch (skillType)
         {
             case TargetSkillType.Barricade:
-                return TryUseBarricade(escapeDestination);
+                return TryUseBarricade(skillPosition);
 
             case TargetSkillType.Hologram:
                 return TryUseHologram();
@@ -271,7 +396,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
                 return TryUseCommunicationJam();
 
             case TargetSkillType.CommandDistortion:
-                return TryDistortCommandPosition(escapeDestination, out _);
+                return TryDistortCommandPosition(commandAgent, skillPosition, out _);
 
             case TargetSkillType.EmergencyEscape:
                 return TryUseEmergencyEscape();
@@ -285,16 +410,47 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
         Vector3 escapeDestination,
         bool preferBarricadeFirst = true)
     {
+        if (IsTargetUnableToUseSkills())
+            return false;
+
+        if (preferBarricadeFirst)
+        {
+            if (TryUseSkill(TargetSkillType.Barricade, escapeDestination))
+                return true;
+
+            if (TryUseSkill(TargetSkillType.Hologram, escapeDestination))
+                return true;
+
+            if (TryUseSkill(TargetSkillType.Smoke, escapeDestination))
+                return true;
+        }
+        else
+        {
+            if (TryUseSkill(TargetSkillType.Hologram, escapeDestination))
+                return true;
+
+            if (TryUseSkill(TargetSkillType.Smoke, escapeDestination))
+                return true;
+
+            if (TryUseSkill(TargetSkillType.Barricade, escapeDestination))
+                return true;
+        }
+
         return false;
     }
 
     public virtual bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
     {
-        return false;
+        return TryUseDefensiveSkill(escapeDestination);
     }
 
     public virtual void ForceClearCurrentHologram()
     {
+    }
+
+    public void SetTargetController(TargetController controller)
+    {
+        targetController = controller;
     }
 
     public void SetThreatTracker(TargetThreatTracker tracker)
@@ -314,6 +470,9 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
     protected virtual void ResolveReferences()
     {
+        if (targetController == null)
+            targetController = GetComponent<TargetController>();
+
         if (threatTracker == null)
             threatTracker = GetComponent<TargetThreatTracker>();
 

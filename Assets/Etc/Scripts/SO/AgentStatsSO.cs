@@ -62,10 +62,10 @@ public class AgentStatsSO : ScriptableObject
     public float jokerCardSkillGaugeMax = 50f;
 
     [Header("트릭스터 조커 카드 설정")]
-    public float jokerCardDuration = 6f;
-    public float jokerCardMoveSpeedMultiplier = 1.25f;
-    public float jokerCardViewRadiusMultiplier = 1.2f;
-    public float jokerCardViewAngleBonus = 15f;
+    public float jokerCardDuration = 10f;
+    public float jokerCardMoveSpeedMultiplier = 1.5f;
+    public float jokerCardViewRadiusMultiplier = 1.25f;
+    public float jokerCardViewAngleBonus = 30f;
 
     [Header("Legacy Trickster Settings")]
     [HideInInspector] public float decoyDuration = 5f;

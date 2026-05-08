@@ -18,8 +18,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillStopSignal = "stopsignal";
     private const string SkillSlowTrap = "slowtrap";
 
-    private const string SkillNoisemaker = "noisemaker";
-    private const string SkillHologram = "hologram";
+    private const string SkillFakeBox = "fakebox";
+    private const string SkillJokerCard = "jokercard";
+
+    private const string LegacySkillNoisemaker = "noisemaker";
+    private const string LegacySkillHologram = "hologram";
 
     private enum GaugeFillDirection
     {
@@ -57,6 +60,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private Vector2 gaugeInfoLabelOffset = new Vector2(16f, -24f);
     [SerializeField] private Vector2 gaugeInfoLabelSize = new Vector2(180f, 32f);
 
+    [Header("Skill Name Paste")]
+    [SerializeField] private CommanderUIController commanderUIController;
+    [SerializeField] private bool pasteSkillNameOnFunctionKeyClick = true;
+    [SerializeField] private bool pasteOnlyWhenFunctionKeyInputMatchesClickedAgent = true;
+    [SerializeField] private bool showGaugeInfoAfterSkillPaste = false;
+    [SerializeField] private bool autoFindCommanderUIController = true;
+
     private bool hasCachedGaugeImages;
 
     private string gaugeInfoLabelText = "";
@@ -75,6 +85,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void Awake()
     {
         TrySetupByUIName();
+        TryCacheCommanderUIController();
         EnsureGaugeImages();
         Refresh();
     }
@@ -84,6 +95,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (targetAgent == null && autoBindByAgentId)
             TryCacheTargetAgent();
 
+        if (commanderUIController == null && autoFindCommanderUIController)
+            TryCacheCommanderUIController();
+
         Refresh();
     }
 
@@ -91,6 +105,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     {
         if (targetAgent == null && autoBindByAgentId && agentId >= 0)
             TryCacheTargetAgent();
+
+        if (commanderUIController == null && autoFindCommanderUIController)
+            TryCacheCommanderUIController();
 
         Refresh();
         HandleSkillGaugeInfoClick();
@@ -207,7 +224,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private void HandleSkillGaugeInfoClick()
     {
-        if (!showGaugeInfoOnSkillClick)
+        if (!showGaugeInfoOnSkillClick && !pasteSkillNameOnFunctionKeyClick)
             return;
 
         Mouse mouse = Mouse.current;
@@ -222,12 +239,105 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (IsScreenPointInside(skill1ClickArea, mousePosition))
         {
-            ShowGaugeInfoLabel(skill1Name, mousePosition);
+            HandleSkillIconClick(skill1Name, mousePosition);
             return;
         }
 
         if (IsScreenPointInside(skill2ClickArea, mousePosition))
-            ShowGaugeInfoLabel(skill2Name, mousePosition);
+            HandleSkillIconClick(skill2Name, mousePosition);
+    }
+
+    private void HandleSkillIconClick(string skillName, Vector2 mousePosition)
+    {
+        bool pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
+
+        if (pasted && !showGaugeInfoAfterSkillPaste)
+            return;
+
+        if (showGaugeInfoOnSkillClick)
+            ShowGaugeInfoLabel(skillName, mousePosition);
+    }
+
+    private bool TryPasteSkillNameToFunctionKeyInput(string skillName)
+    {
+        if (!pasteSkillNameOnFunctionKeyClick)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsAutoActivatedSkill(normalizedSkillName))
+            return false;
+
+        if (!TryGetHeldFunctionKeyInputIndex(out int inputIndex))
+            return false;
+
+        if (commanderUIController == null && autoFindCommanderUIController)
+            TryCacheCommanderUIController();
+
+        if (commanderUIController == null)
+            return false;
+
+        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
+        string displayName = GetSkillDisplayName(normalizedSkillName);
+
+        return commanderUIController.TryPasteSkillDisplayNameToInputIndex(
+            inputIndex,
+            clickedAgentId,
+            displayName,
+            pasteOnlyWhenFunctionKeyInputMatchesClickedAgent
+        );
+    }
+
+    private bool IsAutoActivatedSkill(string skillName)
+    {
+        return NormalizeSkillName(skillName) == SkillJokerCard;
+    }
+
+    private bool TryGetHeldFunctionKeyInputIndex(out int inputIndex)
+    {
+        inputIndex = -1;
+
+        Keyboard keyboard = Keyboard.current;
+
+        if (keyboard == null)
+            return false;
+
+        if (keyboard.f1Key.isPressed)
+        {
+            inputIndex = 0;
+            return true;
+        }
+
+        if (keyboard.f2Key.isPressed)
+        {
+            inputIndex = 1;
+            return true;
+        }
+
+        if (keyboard.f3Key.isPressed)
+        {
+            inputIndex = 2;
+            return true;
+        }
+
+        if (keyboard.f4Key.isPressed)
+        {
+            inputIndex = 3;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void TryCacheCommanderUIController()
+    {
+        if (commanderUIController != null)
+            return;
+
+        commanderUIController = FindFirstObjectByType<CommanderUIController>();
     }
 
     private void ShowGaugeInfoLabel(string skillName, Vector2 mousePosition)
@@ -247,14 +357,19 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(skillName))
             return "스킬 정보 없음";
 
-        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(skillName);
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
-            return $"{GetSkillDisplayName(skillName)}: 게이지 필요 없음";
+            return $"{GetSkillDisplayName(normalizedSkillName)}: 게이지 필요 없음";
 
-        float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(skillName);
+        float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(normalizedSkillName);
 
-        return $"{GetSkillDisplayName(skillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
+        if (IsAutoActivatedSkill(normalizedSkillName))
+            return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#} 자동 발동";
+
+        return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
     }
 
     private bool IsScreenPointInside(RectTransform rectTransform, Vector2 screenPosition)
@@ -462,12 +577,15 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (uiName.Contains("disruptor") ||
             uiName.Contains("distruptor") ||
             uiName.Contains("trickster") ||
+            uiName.Contains("magician") ||
             uiName.Contains("교란") ||
-            uiName.Contains("트릭스터"))
+            uiName.Contains("트릭스터") ||
+            uiName.Contains("마술사") ||
+            uiName.Contains("마술"))
         {
             agentId = 3;
-            skill1Name = SkillNoisemaker;
-            skill2Name = SkillHologram;
+            skill1Name = SkillFakeBox;
+            skill2Name = SkillJokerCard;
         }
     }
 
@@ -505,8 +623,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
                 break;
 
             case AgentRole.Trickster:
-                skill1Name = SkillNoisemaker;
-                skill2Name = SkillHologram;
+                skill1Name = SkillFakeBox;
+                skill2Name = SkillJokerCard;
                 break;
         }
     }
@@ -531,8 +649,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
                 break;
 
             case 3:
-                skill1Name = SkillNoisemaker;
-                skill2Name = SkillHologram;
+                skill1Name = SkillFakeBox;
+                skill2Name = SkillJokerCard;
                 break;
         }
     }
@@ -542,14 +660,14 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (agentId < 0)
             return;
 
-        AgentController[] agents = FindObjectsByType<AgentController>(
+        AgentController[] foundAgents = FindObjectsByType<AgentController>(
             FindObjectsInactive.Exclude,
             FindObjectsSortMode.None
         );
 
-        for (int i = 0; i < agents.Length; i++)
+        for (int i = 0; i < foundAgents.Length; i++)
         {
-            AgentController agent = agents[i];
+            AgentController agent = foundAgents[i];
 
             if (agent == null)
                 continue;
@@ -586,7 +704,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return;
         }
 
-        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(skillName);
+        string normalizedSkillName = NormalizeSkillName(skillName);
+        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
         {
@@ -594,7 +713,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return;
         }
 
-        float amount = targetAgent.GetSkillGaugeNormalizedForSkill(skillName);
+        float amount = targetAgent.GetSkillGaugeNormalizedForSkill(normalizedSkillName);
         SetGaugeAmount(image, amount);
     }
 
@@ -616,6 +735,18 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (IsLegacySlowTrapSkill(skill))
             return SkillStopSignal;
 
+        if (IsLegacyNoisemakerSkill(skill))
+            return SkillFakeBox;
+
+        if (IsLegacyHologramSkill(skill))
+            return SkillJokerCard;
+
+        if (IsFakeBoxSkill(skill))
+            return SkillFakeBox;
+
+        if (IsJokerCardSkill(skill))
+            return SkillJokerCard;
+
         return skill;
     }
 
@@ -633,6 +764,64 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("감속 함정") ||
                skill.Contains("구속함정") ||
                skill.Contains("구속 함정");
+    }
+
+    private bool IsLegacyNoisemakerSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == LegacySkillNoisemaker ||
+               skill.Contains("noise") ||
+               skill.Contains("소란장치") ||
+               skill.Contains("소란 장치") ||
+               skill.Contains("소음장치") ||
+               skill.Contains("소음 장치");
+    }
+
+    private bool IsLegacyHologramSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == LegacySkillHologram ||
+               skill.Contains("홀로그램");
+    }
+
+    private bool IsFakeBoxSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillFakeBox ||
+               skill.Contains("fake box") ||
+               skill.Contains("magicbox") ||
+               skill.Contains("magic box") ||
+               skill.Contains("페이크박스") ||
+               skill.Contains("페이크 박스") ||
+               skill.Contains("마술상자") ||
+               skill.Contains("마술 상자") ||
+               skill.Contains("가짜상자") ||
+               skill.Contains("가짜 상자");
+    }
+
+    private bool IsJokerCardSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillJokerCard ||
+               skill.Contains("joker card") ||
+               skill.Contains("조커카드") ||
+               skill.Contains("조커 카드");
     }
 
     private string GetSkillDisplayName(string skillName)
@@ -663,11 +852,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case SkillStopSignal:
                 return "정지 신호";
 
-            case SkillNoisemaker:
-                return "소란 장치";
+            case SkillFakeBox:
+                return "페이크 박스";
 
-            case SkillHologram:
-                return "홀로그램";
+            case SkillJokerCard:
+                return "조커 카드";
 
             default:
                 return skillName;
