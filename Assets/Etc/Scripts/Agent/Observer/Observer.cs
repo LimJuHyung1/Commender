@@ -35,6 +35,8 @@ public class Observer : AgentController
     [Header("Position Share")]
     [SerializeField] private bool targetPositionShareEnabled = true;
     [SerializeField] private bool includeSelfInTargetPositionShare = false;
+    [SerializeField] private float agentCacheRefreshInterval = 0.5f;
+    [SerializeField] private bool debugPositionShareTargets = false;
 
     [Header("Observer Animation")]
     [SerializeField] private float droneDeployLockSeconds = 0.8f;
@@ -44,6 +46,7 @@ public class Observer : AgentController
 
     private Drone currentDrone;
     private AgentController[] cachedAgents;
+    private float lastAgentCacheRefreshTime = -999f;
 
     private bool isTargetPositionSharing;
     private float lastTargetPositionShareTime = -999f;
@@ -104,6 +107,8 @@ public class Observer : AgentController
         droneDeployLockSeconds = Mathf.Max(0f, droneDeployLockSeconds);
         droneSpawnDelay = Mathf.Max(0f, droneSpawnDelay);
         hitReactionLockSeconds = Mathf.Max(0f, hitReactionLockSeconds);
+
+        agentCacheRefreshInterval = Mathf.Max(0.05f, agentCacheRefreshInterval);
 
         CacheObserverAnimationHashes();
     }
@@ -248,17 +253,17 @@ public class Observer : AgentController
         hitReactionRoutine = StartCoroutine(HitReactionRoutine(hitSourcePosition));
     }
 
-    public void PlayVictoryPose()
+    public override void PlayVictoryPose()
     {
         PlayResultAnimation(victoryHash, hasVictoryTrigger, "Victory");
     }
 
-    public void PlayDefeatPose()
+    public override void PlayDefeatPose()
     {
         PlayResultAnimation(defeatHash, hasDefeatTrigger, "Defeat");
     }
 
-    public void ClearResultAnimationLock()
+    public override void ClearResultAnimationLock()
     {
         isResultAnimationLocked = false;
         isHitReactionLocked = false;
@@ -354,6 +359,8 @@ public class Observer : AgentController
 
         currentDrone = drone;
 
+        RequestInstalledObjectCamera(drone.transform);
+
         Debug.Log(
             $"[Observer {AgentID}] Drone deployed. " +
             $"Observation Center: {observationCenter}, " +
@@ -438,8 +445,7 @@ public class Observer : AgentController
 
     private void ShareTargetPosition(Vector3 targetPosition)
     {
-        if (cachedAgents == null || cachedAgents.Length == 0 || HasInvalidCachedAgent())
-            RefreshCachedAgents();
+        EnsureAgentCache(false);
 
         if (cachedAgents == null)
             return;
@@ -451,17 +457,26 @@ public class Observer : AgentController
             if (agent == null)
                 continue;
 
+            if (!agent.isActiveAndEnabled)
+                continue;
+
             if (!includeSelfInTargetPositionShare && agent == this)
                 continue;
 
             agent.ReceiveSharedTargetPosition(targetPosition, this);
+
+            if (debugPositionShareTargets)
+            {
+                Debug.Log(
+                    $"[Observer {AgentID}] Share target position to {agent.GetType().Name} AgentID: {agent.AgentID}"
+                );
+            }
         }
     }
 
     private void ClearSharedTargetPositionFromThisObserver()
     {
-        if (cachedAgents == null || cachedAgents.Length == 0 || HasInvalidCachedAgent())
-            RefreshCachedAgents();
+        EnsureAgentCache(true);
 
         if (cachedAgents == null)
             return;
@@ -477,12 +492,29 @@ public class Observer : AgentController
         }
     }
 
+    private void EnsureAgentCache(bool forceRefresh)
+    {
+        bool shouldRefresh =
+            forceRefresh ||
+            cachedAgents == null ||
+            cachedAgents.Length == 0 ||
+            HasInvalidCachedAgent() ||
+            Time.time - lastAgentCacheRefreshTime >= agentCacheRefreshInterval;
+
+        if (!shouldRefresh)
+            return;
+
+        RefreshCachedAgents();
+    }
+
     private void RefreshCachedAgents()
     {
         cachedAgents = FindObjectsByType<AgentController>(
             FindObjectsInactive.Exclude,
             FindObjectsSortMode.None
         );
+
+        lastAgentCacheRefreshTime = Time.time;
     }
 
     private bool HasInvalidCachedAgent()

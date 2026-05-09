@@ -49,17 +49,17 @@ public class AgentStatsSO : ScriptableObject
     public float droneObservationAreaYOffset = 0.05f;
 
     [Header("옵저버 스킬 게이지")]
-    public float droneSkillGaugeMax = 50f;
+    public float droneSkillGaugeMax = 100f;
 
     [Header("안전 관리자 스킬 게이지")]
-    public float barricadeSkillGaugeMax = 80f;
+    public float barricadeSkillGaugeMax = 50f;
 
     [FormerlySerializedAs("slowTrapSkillGaugeMax")]
-    public float stopSignalSkillGaugeMax = 90f;
+    public float stopSignalSkillGaugeMax = 80f;
 
     [Header("트릭스터 스킬 게이지")]
     public float fakeBoxSkillGaugeMax = 70f;
-    public float jokerCardSkillGaugeMax = 50f;
+    public float jokerCardSkillGaugeMax = 100f;
 
     [Header("트릭스터 조커 카드 설정")]
     public float jokerCardDuration = 10f;

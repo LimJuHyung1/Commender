@@ -99,6 +99,8 @@ public class CaptureSequenceController : MonoBehaviour
 
         FaceTarget(capturedTarget.transform, targetLookDirection);
 
+        bool wasCameraFollowEnabled = cameraFollow != null && cameraFollow.enabled;
+
         if (cameraFollow != null)
             cameraFollow.enabled = false;
 

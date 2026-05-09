@@ -279,17 +279,17 @@ public class Trickster : AgentController
         hitReactionRoutine = StartCoroutine(HitReactionRoutine(hitSourcePosition));
     }
 
-    public void PlayVictoryPose()
+    public override void PlayVictoryPose()
     {
         PlayResultAnimation(victoryHash, hasVictoryTrigger, "Victory");
     }
 
-    public void PlayDefeatPose()
+    public override void PlayDefeatPose()
     {
         PlayResultAnimation(defeatHash, hasDefeatTrigger, "Defeat");
     }
 
-    public void ClearResultAnimationLock()
+    public override void ClearResultAnimationLock()
     {
         isResultAnimationLocked = false;
         isHitReactionLocked = false;
@@ -368,6 +368,8 @@ public class Trickster : AgentController
 
         currentFakeBox.SetOwner(this);
 
+        RequestInstalledObjectCamera(currentFakeBox.transform);
+
         Debug.Log($"[Trickster {AgentID}] Fake Box deployed: {spawnPos}");
     }
 
@@ -395,6 +397,8 @@ public class Trickster : AgentController
         CacheJokerCardOriginalValues();
         ApplyJokerCardBuff();
         PlayJokerCardEffect();
+
+        RequestUserSkillCamera();
 
         float duration = stats != null ? stats.jokerCardDuration : 6f;
 

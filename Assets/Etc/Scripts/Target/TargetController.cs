@@ -21,7 +21,7 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     [SerializeField] private float startHealth = 100f;
 
     [Header("Flee Health Drain")]
-    [SerializeField] private float fleeHealthDrainPerSecond = 12f;
+    [SerializeField] private float fleeHealthDrainPerSecond = 8f;
 
     [Header("Safe Recovery")]
     [SerializeField] private float recoveryDelayAfterSafe = 2f;
@@ -204,8 +204,13 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
         healthSystem.Damage(damageAmount);
 
-        if (healthSystem != null && !healthSystem.IsDead())
-            escapeMotor.TryFleeFromThreats();
+        if (healthSystem == null || healthSystem.IsDead())
+            return;
+
+        if (TryAutoEmergencyEscape())
+            return;
+
+        escapeMotor.TryFleeFromThreats();
     }
 
     private void HandleSafeState()

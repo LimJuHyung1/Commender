@@ -186,6 +186,15 @@ public class Engineer : AgentController
         base.Update();
     }
 
+    protected override string[] GetCurrentAgentGaugeKeys()
+    {
+        return new[]
+        {
+        SkillBarricade,
+        SkillStopSignal
+    };
+    }
+
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -264,17 +273,17 @@ public class Engineer : AgentController
         hitReactionRoutine = StartCoroutine(HitReactionRoutine(hitSourcePosition));
     }
 
-    public void PlayVictoryPose()
+    public override void PlayVictoryPose()
     {
         PlayResultAnimation(victoryHash, hasVictoryTrigger, "Victory");
     }
 
-    public void PlayDefeatPose()
+    public override void PlayDefeatPose()
     {
         PlayResultAnimation(defeatHash, hasDefeatTrigger, "Defeat");
     }
 
-    public void ClearResultAnimationLock()
+    public override void ClearResultAnimationLock()
     {
         isResultAnimationLocked = false;
         isHitReactionLocked = false;
@@ -514,6 +523,8 @@ public class Engineer : AgentController
 
         currentBarricade = spawnedBarricade;
 
+        RequestInstalledObjectCamera(spawnedBarricade.transform);
+
         Debug.Log($"[Engineer {AgentID}] 바리케이드 설치 완료: {spawnPos}");
     }
 
@@ -548,6 +559,8 @@ public class Engineer : AgentController
         );
 
         currentStopSignal = spawnedStopSignal;
+
+        RequestInstalledObjectCamera(spawnedStopSignal.transform);
 
         Debug.Log(
             $"[Engineer {AgentID}] 정지 신호 설치 완료: {spawnPos}, " +

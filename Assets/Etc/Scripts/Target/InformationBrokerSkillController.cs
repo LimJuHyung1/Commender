@@ -34,7 +34,11 @@ public class InformationBrokerSkillController : TargetSkillController
     [SerializeField] private bool logCommandDistortionCheck = true;
 
     [Header("Emergency Escape")]
-    [SerializeField] private bool autoUseEmergencyEscape = false;
+    [SerializeField] private bool autoUseEmergencyEscape = true;
+
+    [Header("Skill Camera")]
+    [SerializeField] private bool useEmergencyEscapeCamera = true;
+    [SerializeField] private bool useHologramCamera = false;
 
     [Header("Skill Unlock Level")]
     [SerializeField] private int communicationJamUnlockLevel = 1;
@@ -244,13 +248,18 @@ public class InformationBrokerSkillController : TargetSkillController
 
         bool activated = EscapeMotor.TryActivateEmergencyEscape();
 
-        if (activated && animationController != null)
+        if (!activated)
+            return false;
+
+        RequestEmergencyEscapeCamera();
+
+        if (animationController != null)
             animationController.PlayEmergencyEscape();
 
-        if (activated && enableDebugLog)
+        if (enableDebugLog)
             Debug.Log("[InformationBrokerSkillController] 긴급 탈출 발동");
 
-        return activated;
+        return true;
     }
 
     public override bool TryAutoEmergencyEscape(float healthRatio)
@@ -366,6 +375,8 @@ public class InformationBrokerSkillController : TargetSkillController
         remainingHologramUseCount--;
         nextHologramReadyTime = Time.time + hologramCooldown;
 
+        RequestHologramCamera(spawnedHologram.transform);
+
         if (animationController != null)
             animationController.PlayHologramSlide();
 
@@ -473,6 +484,29 @@ public class InformationBrokerSkillController : TargetSkillController
 
         if (animationController == null)
             animationController = GetComponent<TargetAnimationController>();
+    }
+
+    private void RequestEmergencyEscapeCamera()
+    {
+        if (!useEmergencyEscapeCamera)
+            return;
+
+        SkillCameraEventBus.Request(
+            SkillCameraFocusMode.StrongTargetEvent,
+            transform
+        );
+    }
+
+    private void RequestHologramCamera(Transform hologramTransform)
+    {
+        if (!useHologramCamera)
+            return;
+
+        SkillCameraEventBus.Request(
+            SkillCameraFocusMode.UserAndObject,
+            transform,
+            hologramTransform
+        );
     }
 
     private void TickRandomCommunicationJam()

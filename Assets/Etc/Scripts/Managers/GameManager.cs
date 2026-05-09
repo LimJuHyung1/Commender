@@ -34,6 +34,7 @@ public class GameManager : MonoBehaviour
 
     private bool stageFinished = false;
     private bool timerRunning = false;
+    private bool stageResultMotionApplied = false;
     private float remainingTime = 0f;
 
     public bool IsTargetDebugRevealEnabled { get; private set; }
@@ -105,6 +106,7 @@ public class GameManager : MonoBehaviour
 
         stageFinished = false;
         timerRunning = true;
+        stageResultMotionApplied = false;
         remainingTime = Mathf.Max(0.1f, timeLimitSeconds);
 
         Time.timeScale = 1.0f;
@@ -159,6 +161,8 @@ public class GameManager : MonoBehaviour
             stageFinished = true;
             timerRunning = false;
 
+            ApplyWinStageResultMotion();
+
             StartCoroutine(CompleteStageAfterCaptureSequence(
                 captureSequenceController,
                 target,
@@ -197,7 +201,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"<color=green>[GameManager]</color> 스테이지 클리어: {message}");
 
         UnlockNextStage();
-        StopAllMovingObjects();
+        ApplyWinStageResultMotion();
 
         if (uiController != null)
             uiController.ShowResultPanel(true, message);
@@ -230,7 +234,7 @@ public class GameManager : MonoBehaviour
         if (playTargetTimeOverAnimationOnFail)
             PlayTargetTimeOverAnimations();
 
-        StopAllMovingObjects();
+        ApplyFailStageResultMotion();
 
         if (uiController != null)
             uiController.ShowResultPanel(false, message);
@@ -247,6 +251,66 @@ public class GameManager : MonoBehaviour
             FailStage(message);
 
         ReturnToLobby();
+    }
+
+    private void ApplyWinStageResultMotion()
+    {
+        if (stageResultMotionApplied)
+            return;
+
+        stageResultMotionApplied = true;
+
+        PlayAgentVictoryAnimations();
+        StopAllMovingObjects();
+    }
+
+    private void ApplyFailStageResultMotion()
+    {
+        if (stageResultMotionApplied)
+            return;
+
+        stageResultMotionApplied = true;
+
+        PlayAgentDefeatAnimations();
+        StopAllMovingObjects();
+    }
+
+    private void PlayAgentVictoryAnimations()
+    {
+        AgentController[] agents =
+            Object.FindObjectsByType<AgentController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < agents.Length; i++)
+        {
+            AgentController agent = agents[i];
+
+            if (agent == null)
+                continue;
+
+            if (!agent.isActiveAndEnabled)
+                continue;
+
+            agent.PlayVictoryPose();
+        }
+    }
+
+    private void PlayAgentDefeatAnimations()
+    {
+        AgentController[] agents =
+            Object.FindObjectsByType<AgentController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < agents.Length; i++)
+        {
+            AgentController agent = agents[i];
+
+            if (agent == null)
+                continue;
+
+            if (!agent.isActiveAndEnabled)
+                continue;
+
+            agent.PlayDefeatPose();
+        }
     }
 
     private void PlayTargetTimeOverAnimations()
@@ -328,6 +392,7 @@ public class GameManager : MonoBehaviour
 
             agent.isStopped = true;
             agent.velocity = Vector3.zero;
+            agent.ResetPath();
         }
     }
 

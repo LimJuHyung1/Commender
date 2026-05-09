@@ -387,17 +387,17 @@ public class Chaser : AgentController
         hitReactionRoutine = StartCoroutine(HitReactionRoutine(hitSourcePosition));
     }
 
-    public void PlayVictoryPose()
+    public override void PlayVictoryPose()
     {
         PlayResultAnimation(victoryHash, hasVictoryTrigger, "Victory");
     }
 
-    public void PlayDefeatPose()
+    public override void PlayDefeatPose()
     {
         PlayResultAnimation(defeatHash, hasDefeatTrigger, "Defeat");
     }
 
-    public void ClearResultAnimationLock()
+    public override void ClearResultAnimationLock()
     {
         isResultAnimationLocked = false;
         isHitReactionLocked = false;
@@ -617,6 +617,8 @@ public class Chaser : AgentController
         );
 
         currentAccessControlZone = zone;
+
+        RequestInstalledObjectCamera(zone.transform);
 
         MoveToAccessControlPoint(centerPosition);
 

@@ -116,6 +116,45 @@ public abstract class AgentController : MonoBehaviour
 
     public abstract void ExecuteSkill(string skillName, Vector3 targetPos);
 
+    protected void RequestSkillCamera(SkillCameraFocusMode mode)
+    {
+        SkillCameraEventBus.Request(
+            mode,
+            transform
+        );
+    }
+
+    protected void RequestSkillCamera(SkillCameraFocusMode mode, Transform objectTarget)
+    {
+        SkillCameraEventBus.Request(
+            mode,
+            transform,
+            objectTarget
+        );
+    }
+
+    protected void RequestUserSkillCamera()
+    {
+        RequestSkillCamera(SkillCameraFocusMode.UserOnly);
+    }
+
+    protected void RequestInstalledObjectCamera(Transform objectTarget)
+    {
+        if (objectTarget == null)
+            return;
+
+        SkillCameraEventBus.Request(
+            SkillCameraFocusMode.ObjectOnly,
+            null,
+            objectTarget
+        );
+    }
+
+    protected void RequestStrongSkillCamera()
+    {
+        RequestSkillCamera(SkillCameraFocusMode.StrongTargetEvent);
+    }
+
     protected virtual void Awake()
     {
         navAgent = GetComponent<NavMeshAgent>();
@@ -547,14 +586,14 @@ public abstract class AgentController : MonoBehaviour
         return skill;
     }
 
-    private string[] GetCurrentAgentGaugeKeys()
+    protected virtual string[] GetCurrentAgentGaugeKeys()
     {
         if (stats == null)
         {
             return new[]
             {
-                SkillGaugeDefaultKey
-            };
+            SkillGaugeDefaultKey
+        };
         }
 
         switch (stats.role)
@@ -562,41 +601,41 @@ public abstract class AgentController : MonoBehaviour
             case AgentRole.Chaser:
                 return new[]
                 {
-                    SkillAccessControlKey
-                };
+                SkillAccessControlKey
+            };
 
             case AgentRole.Observer:
                 return new[]
                 {
-                    SkillDroneKey
-                };
+                SkillDroneKey
+            };
 
             case AgentRole.Engineer:
                 return new[]
                 {
-                    SkillBarricadeKey,
-                    SkillStopSignalKey
-                };
+                SkillBarricadeKey,
+                SkillStopSignalKey
+            };
 
             case AgentRole.Trickster:
                 return new[]
                 {
-                    SkillFakeBoxKey,
-                    SkillJokerCardKey
-                };
+                SkillFakeBoxKey,
+                SkillJokerCardKey
+            };
 
             default:
                 return new[]
                 {
-                    SkillAccessControlKey,
-                    SkillDroneKey,
-                    SkillBarricadeKey,
-                    SkillStopSignalKey,
-                    SkillFakeBoxKey,
-                    SkillJokerCardKey,
-                    SkillNoisemakerKey,
-                    SkillHologramKey
-                };
+                SkillAccessControlKey,
+                SkillDroneKey,
+                SkillBarricadeKey,
+                SkillStopSignalKey,
+                SkillFakeBoxKey,
+                SkillJokerCardKey,
+                SkillNoisemakerKey,
+                SkillHologramKey
+            };
         }
     }
 
@@ -997,6 +1036,52 @@ public abstract class AgentController : MonoBehaviour
         UpdateStateIcon();
 
         Debug.Log($"[Agent {AgentID}] Chase stopped.");
+    }
+
+    public virtual void StopAllMovementForStageResult()
+    {
+        if (isLookingAround)
+            StopLookAroundInternal(false);
+
+        currentTarget = null;
+        isManualMoving = false;
+
+        hasLastChaseDestination = false;
+        chaseRepathTimer = 0f;
+
+        hasSharedTargetPosition = false;
+        isFollowingSharedTargetPosition = false;
+        sharedTargetReporter = null;
+        sharedTargetPositionExpireTime = -1f;
+        sharedTargetRepathTimer = 0f;
+        hasLastSharedTargetDestination = false;
+
+        cachedAnimationIsMoving = false;
+        lastAnimationMovingTime = -999f;
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+        {
+            navAgent.isStopped = true;
+            navAgent.velocity = Vector3.zero;
+            navAgent.ResetPath();
+        }
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+    }
+
+    public virtual void PlayVictoryPose()
+    {
+        StopAllMovementForStageResult();
+    }
+
+    public virtual void PlayDefeatPose()
+    {
+        StopAllMovementForStageResult();
+    }
+
+    public virtual void ClearResultAnimationLock()
+    {
     }
 
     public virtual void ReceiveSharedTargetPosition(Vector3 position, AgentController reporter)

@@ -21,7 +21,7 @@ public class TargetLevelStatApplier : MonoBehaviour
     [SerializeField] private bool refillHealthOnApply = true;
 
     [Header("Fixed Controller Stats")]
-    [SerializeField] private float fleeHealthDrainPerSecond = 12f;
+    [SerializeField] private float fleeHealthDrainPerSecond = 8f;
     [SerializeField] private float recoveryDuration = 1.5f;
 
     private TargetController targetController;

@@ -30,11 +30,11 @@ MonoBehaviour:
   droneRadius: 7
   droneSpawnHeight: 6
   droneObservationAreaYOffset: 0.05
-  droneSkillGaugeMax: 50
+  droneSkillGaugeMax: 100
   barricadeSkillGaugeMax: 0
   stopSignalSkillGaugeMax: 0
   fakeBoxSkillGaugeMax: 70
-  jokerCardSkillGaugeMax: 50
+  jokerCardSkillGaugeMax: 100
   jokerCardDuration: 10
   jokerCardMoveSpeedMultiplier: 1.5
   jokerCardViewRadiusMultiplier: 1.25
