@@ -242,7 +242,21 @@ public class Observer : AgentController
         isTargetPositionSharing = true;
     }
 
-    public void PlayHitReaction(Vector3 hitSourcePosition)
+    public void NotifyDroneSkillRevealedTarget(Transform target)
+    {
+        if (target == null)
+            return;
+
+        ConstructionWorker constructionWorker =
+            target.GetComponentInParent<ConstructionWorker>();
+
+        if (constructionWorker == null)
+            return;
+
+        constructionWorker.OnTargetPositionRevealedByAgentSkill();
+    }
+
+    public override void PlayHitReaction(Vector3 hitSourcePosition)
     {
         if (isResultAnimationLocked)
             return;

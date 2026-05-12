@@ -2,7 +2,7 @@ using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Collider))]
-public class BarricadeObject : MonoBehaviour
+public class Barricade : MonoBehaviour
 {
     [Header("Drop")]
     [SerializeField] private float dropHeight = 5f;

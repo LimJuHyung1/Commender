@@ -73,6 +73,22 @@ public class SkillCameraDirector : MonoBehaviour
     [SerializeField] private Vector3 topDownSkillEuler = new Vector3(90f, 0f, 90f);
     [SerializeField] private float objectSkillSize = 5.5f;
 
+    [Header("Follow User Shot")]
+    [SerializeField] private float followUserMoveTime = 0.2f;
+    [SerializeField] private float followUserDuration = 1.2f;
+    [SerializeField] private float followUserReturnTime = 0.35f;
+    [SerializeField] private float followUserPositionSmooth = 12f;
+    [SerializeField] private float followUserRotationSmooth = 12f;
+    [SerializeField] private float followUserSize = 4.2f;
+
+    [Header("Follow Object Shot")]
+    [SerializeField] private float followObjectMoveTime = 0.18f;
+    [SerializeField] private float followObjectDuration = 0.75f;
+    [SerializeField] private float followObjectReturnTime = 0.35f;
+    [SerializeField] private float followObjectPositionSmooth = 14f;
+    [SerializeField] private float followObjectRotationSmooth = 14f;
+    [SerializeField] private float followObjectSize = 4.2f;
+
     [Header("Timing")]
     [SerializeField] private float userMoveTime = 0.2f;
     [SerializeField] private float userHoldTime = 0.3f;
@@ -183,22 +199,32 @@ public class SkillCameraDirector : MonoBehaviour
         TryPlaySkillCamera(
             request.Mode,
             request.User,
-            request.ObjectTarget
+            request.ObjectTarget,
+            request.HasFocusPoint,
+            request.FocusPoint
         );
     }
 
     public bool TryPlaySkillCamera(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget = null)
+        Transform objectTarget = null,
+        bool hasExplicitFocusPoint = false,
+        Vector3 explicitFocusPoint = default)
     {
-        if (!CanPlay(mode, user, objectTarget))
+        if (!CanPlay(mode, user, objectTarget, hasExplicitFocusPoint))
             return false;
 
         LockPlayback();
 
         currentRoutine = StartCoroutine(
-            PlaySkillCameraRoutine(mode, user, objectTarget)
+            PlaySkillCameraRoutine(
+                mode,
+                user,
+                objectTarget,
+                hasExplicitFocusPoint,
+                explicitFocusPoint
+            )
         );
 
         return true;
@@ -207,20 +233,63 @@ public class SkillCameraDirector : MonoBehaviour
     public IEnumerator PlaySkillCameraAndWait(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget = null)
+        Transform objectTarget = null,
+        bool hasExplicitFocusPoint = false,
+        Vector3 explicitFocusPoint = default)
     {
-        if (!CanPlay(mode, user, objectTarget))
+        if (!CanPlay(mode, user, objectTarget, hasExplicitFocusPoint))
             yield break;
 
         LockPlayback();
 
-        yield return PlaySkillCameraRoutine(mode, user, objectTarget);
+        yield return PlaySkillCameraRoutine(
+            mode,
+            user,
+            objectTarget,
+            hasExplicitFocusPoint,
+            explicitFocusPoint
+        );
+    }
+
+    public IEnumerator ForcePlaySkillCameraAndWait(
+        SkillCameraFocusMode mode,
+        Transform user,
+        Transform objectTarget = null,
+        bool hasExplicitFocusPoint = false,
+        Vector3 explicitFocusPoint = default)
+    {
+        ResolveReferences();
+
+        if (!enableSkillCamera)
+            yield break;
+
+        if (mode == SkillCameraFocusMode.None)
+            yield break;
+
+        if (!IsValidRequest(mode, user, objectTarget, hasExplicitFocusPoint))
+            yield break;
+
+        if (mainCamera == null)
+            yield break;
+
+        CancelCurrentPlaybackForForce();
+
+        LockPlayback();
+
+        yield return PlaySkillCameraRoutine(
+            mode,
+            user,
+            objectTarget,
+            hasExplicitFocusPoint,
+            explicitFocusPoint
+        );
     }
 
     private bool CanPlay(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint = false)
     {
         if (!enableSkillCamera)
             return Reject("스킬 카메라 기능이 꺼져 있습니다.");
@@ -228,7 +297,7 @@ public class SkillCameraDirector : MonoBehaviour
         if (mode == SkillCameraFocusMode.None)
             return Reject("카메라 모드가 None입니다.");
 
-        if (!IsValidRequest(mode, user, objectTarget))
+        if (!IsValidRequest(mode, user, objectTarget, hasExplicitFocusPoint))
             return Reject("카메라 요청 대상이 올바르지 않습니다.");
 
         if (dropRequestWhilePlaying && isPlaying)
@@ -258,18 +327,25 @@ public class SkillCameraDirector : MonoBehaviour
     private bool IsValidRequest(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint = false)
     {
         switch (mode)
         {
             case SkillCameraFocusMode.UserOnly:
                 return user != null;
 
+            case SkillCameraFocusMode.FollowUser:
+                return user != null;
+
             case SkillCameraFocusMode.ObjectOnly:
+                return objectTarget != null || hasExplicitFocusPoint;
+
+            case SkillCameraFocusMode.FollowObject:
                 return objectTarget != null;
 
             case SkillCameraFocusMode.UserAndObject:
-                return user != null || objectTarget != null;
+                return user != null || objectTarget != null || hasExplicitFocusPoint;
 
             case SkillCameraFocusMode.StrongTargetEvent:
                 return user != null;
@@ -324,9 +400,16 @@ public class SkillCameraDirector : MonoBehaviour
     private IEnumerator PlaySkillCameraRoutine(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint = false,
+        Vector3 explicitFocusPoint = default)
     {
-        bool objectOnlyRequest = IsObjectOnlyRequest(mode, user, objectTarget);
+        bool objectOnlyRequest = IsObjectOnlyRequest(
+            mode,
+            user,
+            objectTarget,
+            hasExplicitFocusPoint
+        );
 
         if (objectOnlyRequest &&
             clearFocusForObjectOnly &&
@@ -351,7 +434,27 @@ public class SkillCameraDirector : MonoBehaviour
 
         float slowEndTime = Time.unscaledTime + slowDuration;
 
-        CameraShot[] shots = BuildShots(mode, user, objectTarget);
+        if (mode == SkillCameraFocusMode.FollowUser)
+        {
+            yield return PlayFollowUserShot(user, originalState, slowEndTime);
+            FinishPlayback();
+            yield break;
+        }
+
+        if (mode == SkillCameraFocusMode.FollowObject)
+        {
+            yield return PlayFollowObjectShot(objectTarget, originalState, slowEndTime);
+            FinishPlayback();
+            yield break;
+        }
+
+        CameraShot[] shots = BuildShots(
+            mode,
+            user,
+            objectTarget,
+            hasExplicitFocusPoint,
+            explicitFocusPoint
+        );
 
         for (int i = 0; i < shots.Length; i++)
         {
@@ -369,6 +472,148 @@ public class SkillCameraDirector : MonoBehaviour
         }
 
         FinishPlayback();
+    }
+
+    private IEnumerator PlayFollowUserShot(
+        Transform target,
+        CameraState originalState,
+        float slowEndTime)
+    {
+        if (target == null)
+            yield break;
+
+        CameraShot firstShot = CreateCharacterShot(
+            target,
+            followUserSize,
+            followUserMoveTime,
+            0f
+        );
+
+        yield return MoveCameraToShot(firstShot);
+
+        float elapsed = 0f;
+        float duration = Mathf.Max(0.01f, followUserDuration);
+
+        while (elapsed < duration)
+        {
+            if (target == null)
+                break;
+
+            if (timeScaleChanged && Time.unscaledTime >= slowEndTime)
+                RestoreWorldTimeScale();
+
+            elapsed += Time.unscaledDeltaTime;
+
+            CameraShot currentShot = CreateCharacterShot(
+                target,
+                followUserSize,
+                0f,
+                0f
+            );
+
+            float positionT = Mathf.Clamp01(followUserPositionSmooth * Time.unscaledDeltaTime);
+            float rotationT = Mathf.Clamp01(followUserRotationSmooth * Time.unscaledDeltaTime);
+
+            mainCamera.transform.position = Vector3.Lerp(
+                mainCamera.transform.position,
+                currentShot.Position,
+                positionT
+            );
+
+            mainCamera.transform.rotation = Quaternion.Slerp(
+                mainCamera.transform.rotation,
+                currentShot.Rotation,
+                rotationT
+            );
+
+            SetCameraSize(
+                Mathf.Lerp(
+                    GetCameraSize(),
+                    currentShot.Size,
+                    positionT
+                )
+            );
+
+            yield return null;
+        }
+
+        RestoreWorldTimeScale();
+
+        yield return MoveCameraToState(
+            originalState,
+            followUserReturnTime
+        );
+    }
+
+    private IEnumerator PlayFollowObjectShot(
+        Transform target,
+        CameraState originalState,
+        float slowEndTime)
+    {
+        if (target == null)
+            yield break;
+
+        CameraShot firstShot = CreateTopDownShot(
+            target,
+            followObjectSize,
+            followObjectMoveTime,
+            0f
+        );
+
+        yield return MoveCameraToShot(firstShot);
+
+        float elapsed = 0f;
+        float duration = Mathf.Max(0.01f, followObjectDuration);
+
+        while (elapsed < duration)
+        {
+            if (target == null)
+                break;
+
+            if (timeScaleChanged && Time.unscaledTime >= slowEndTime)
+                RestoreWorldTimeScale();
+
+            elapsed += Time.unscaledDeltaTime;
+
+            CameraShot currentShot = CreateTopDownShot(
+                target,
+                followObjectSize,
+                0f,
+                0f
+            );
+
+            float positionT = Mathf.Clamp01(followObjectPositionSmooth * Time.unscaledDeltaTime);
+            float rotationT = Mathf.Clamp01(followObjectRotationSmooth * Time.unscaledDeltaTime);
+
+            mainCamera.transform.position = Vector3.Lerp(
+                mainCamera.transform.position,
+                currentShot.Position,
+                positionT
+            );
+
+            mainCamera.transform.rotation = Quaternion.Slerp(
+                mainCamera.transform.rotation,
+                currentShot.Rotation,
+                rotationT
+            );
+
+            SetCameraSize(
+                Mathf.Lerp(
+                    GetCameraSize(),
+                    currentShot.Size,
+                    positionT
+                )
+            );
+
+            yield return null;
+        }
+
+        RestoreWorldTimeScale();
+
+        yield return MoveCameraToState(
+            originalState,
+            followObjectReturnTime
+        );
     }
 
     private void FinishPlayback()
@@ -390,14 +635,24 @@ public class SkillCameraDirector : MonoBehaviour
     private bool IsObjectOnlyRequest(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint = false)
     {
-        if (mode == SkillCameraFocusMode.ObjectOnly && objectTarget != null)
+        if (mode == SkillCameraFocusMode.ObjectOnly &&
+            (objectTarget != null || hasExplicitFocusPoint))
+        {
             return true;
+        }
+
+        if (mode == SkillCameraFocusMode.FollowObject &&
+            objectTarget != null)
+        {
+            return true;
+        }
 
         if (mode == SkillCameraFocusMode.UserAndObject &&
             user == null &&
-            objectTarget != null)
+            (objectTarget != null || hasExplicitFocusPoint))
         {
             return true;
         }
@@ -408,7 +663,9 @@ public class SkillCameraDirector : MonoBehaviour
     private CameraShot[] BuildShots(
         SkillCameraFocusMode mode,
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint = false,
+        Vector3 explicitFocusPoint = default)
     {
         switch (mode)
         {
@@ -416,10 +673,19 @@ public class SkillCameraDirector : MonoBehaviour
                 return BuildUserOnlyShots(user);
 
             case SkillCameraFocusMode.ObjectOnly:
-                return BuildObjectOnlyShots(objectTarget);
+                return BuildObjectOnlyShots(
+                    objectTarget,
+                    hasExplicitFocusPoint,
+                    explicitFocusPoint
+                );
 
             case SkillCameraFocusMode.UserAndObject:
-                return BuildSinglePriorityShot(user, objectTarget);
+                return BuildSinglePriorityShot(
+                    user,
+                    objectTarget,
+                    hasExplicitFocusPoint,
+                    explicitFocusPoint
+                );
 
             case SkillCameraFocusMode.StrongTargetEvent:
                 return BuildStrongTargetShots(user);
@@ -445,8 +711,24 @@ public class SkillCameraDirector : MonoBehaviour
         };
     }
 
-    private CameraShot[] BuildObjectOnlyShots(Transform objectTarget)
+    private CameraShot[] BuildObjectOnlyShots(
+        Transform objectTarget,
+        bool hasExplicitFocusPoint,
+        Vector3 explicitFocusPoint)
     {
+        if (hasExplicitFocusPoint)
+        {
+            return new CameraShot[]
+            {
+                CreateTopDownShot(
+                    explicitFocusPoint,
+                    objectSkillSize,
+                    objectMoveTime,
+                    objectHoldTime
+                )
+            };
+        }
+
         if (objectTarget == null)
             return new CameraShot[0];
 
@@ -463,8 +745,23 @@ public class SkillCameraDirector : MonoBehaviour
 
     private CameraShot[] BuildSinglePriorityShot(
         Transform user,
-        Transform objectTarget)
+        Transform objectTarget,
+        bool hasExplicitFocusPoint,
+        Vector3 explicitFocusPoint)
     {
+        if (hasExplicitFocusPoint)
+        {
+            return new CameraShot[]
+            {
+                CreateTopDownShot(
+                    explicitFocusPoint,
+                    objectSkillSize,
+                    objectMoveTime,
+                    objectHoldTime
+                )
+            };
+        }
+
         if (objectTarget != null)
         {
             return new CameraShot[]
@@ -554,6 +851,24 @@ public class SkillCameraDirector : MonoBehaviour
         float holdTime)
     {
         Vector3 focusPoint = GetFocusPoint(target);
+        Vector3 position = focusPoint + topDownSkillOffset;
+        Quaternion rotation = Quaternion.Euler(topDownSkillEuler);
+
+        return new CameraShot(
+            position,
+            rotation,
+            size,
+            moveTime,
+            holdTime
+        );
+    }
+
+    private CameraShot CreateTopDownShot(
+        Vector3 focusPoint,
+        float size,
+        float moveTime,
+        float holdTime)
+    {
         Vector3 position = focusPoint + topDownSkillOffset;
         Quaternion rotation = Quaternion.Euler(topDownSkillEuler);
 
@@ -826,5 +1141,21 @@ public class SkillCameraDirector : MonoBehaviour
     private float SmoothStep(float t)
     {
         return t * t * (3f - 2f * t);
+    }
+
+    private void CancelCurrentPlaybackForForce()
+    {
+        if (currentRoutine != null)
+        {
+            StopCoroutine(currentRoutine);
+            currentRoutine = null;
+        }
+
+        RestoreCameraFollow();
+        RestoreWorldTimeScale();
+
+        isPlaying = false;
+        wasCameraFollowEnabledBeforePlay = false;
+        nextAllowedTime = 0f;
     }
 }

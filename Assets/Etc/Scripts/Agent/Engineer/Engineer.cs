@@ -69,6 +69,8 @@ public class Engineer : AgentController
     private GameObject currentBarricade;
     private GameObject currentStopSignal;
 
+    private Transform skillCameraFocusAnchor;
+
     private int isMovingHash;
     private int moveSpeedHash;
     private int moveModeHash;
@@ -190,9 +192,9 @@ public class Engineer : AgentController
     {
         return new[]
         {
-        SkillBarricade,
-        SkillStopSignal
-    };
+            SkillBarricade,
+            SkillStopSignal
+        };
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -262,7 +264,7 @@ public class Engineer : AgentController
             animator.SetFloat(moveSpeedHash, normalizedSpeed, 0.08f, Time.deltaTime);
     }
 
-    public void PlayHitReaction(Vector3 hitSourcePosition)
+    public override void PlayHitReaction(Vector3 hitSourcePosition)
     {
         if (isResultAnimationLocked)
             return;
@@ -514,7 +516,7 @@ public class Engineer : AgentController
             deployParent != null ? deployParent : null
         );
 
-        BarricadeObject barricade = spawnedBarricade.GetComponent<BarricadeObject>();
+        Barricade barricade = spawnedBarricade.GetComponent<Barricade>();
 
         if (barricade != null)
             barricade.Deploy(spawnPos, spawnRotation);
@@ -523,7 +525,7 @@ public class Engineer : AgentController
 
         currentBarricade = spawnedBarricade;
 
-        RequestInstalledObjectCamera(spawnedBarricade.transform);
+        RequestInstalledObjectCameraAtPosition(spawnPos);
 
         Debug.Log($"[Engineer {AgentID}] 바리케이드 설치 완료: {spawnPos}");
     }
@@ -566,6 +568,30 @@ public class Engineer : AgentController
             $"[Engineer {AgentID}] 정지 신호 설치 완료: {spawnPos}, " +
             $"범위: {stopSignalRadius}, 정지 시간: {stopSignalDuration}초"
         );
+    }
+
+    private void RequestInstalledObjectCameraAtPosition(Vector3 focusPosition)
+    {
+        Transform focusAnchor = GetOrCreateSkillCameraFocusAnchor();
+
+        focusAnchor.position = focusPosition;
+        focusAnchor.rotation = Quaternion.identity;
+
+        RequestInstalledObjectCamera(focusAnchor);
+    }
+
+    private Transform GetOrCreateSkillCameraFocusAnchor()
+    {
+        if (skillCameraFocusAnchor != null)
+            return skillCameraFocusAnchor;
+
+        GameObject anchorObject = new GameObject($"Engineer_{AgentID}_SkillCameraFocusAnchor");
+        anchorObject.hideFlags = HideFlags.HideInHierarchy;
+
+        skillCameraFocusAnchor = anchorObject.transform;
+        skillCameraFocusAnchor.SetParent(transform, false);
+
+        return skillCameraFocusAnchor;
     }
 
     private Vector3 BuildSpawnPosition(Vector3 targetPos)

@@ -10,6 +10,7 @@ public class GameManager : MonoBehaviour
     [Header("References")]
     [SerializeField] private UIController uiController;
     [SerializeField] private StageMapManager stageMapManager;
+    [SerializeField] private SkillCameraDirector skillCameraDirector;
 
     [Header("Stage Settings")]
     [SerializeField] private string missionDescription = "제한 시간 안에 타겟을 체포하세요.";
@@ -28,6 +29,10 @@ public class GameManager : MonoBehaviour
 
     [Header("Fail Animation")]
     [SerializeField] private bool playTargetTimeOverAnimationOnFail = true;
+
+    [Header("Fail Camera")]
+    [SerializeField] private bool playTargetCameraOnFail = true;
+    [SerializeField] private bool forceShowTargetOnFail = true;
 
     [Header("Debug Target Reveal")]
     [SerializeField] private bool startWithTargetDebugReveal = false;
@@ -98,6 +103,9 @@ public class GameManager : MonoBehaviour
 
         if (stageMapManager == null)
             stageMapManager = FindFirstObjectByType<StageMapManager>();
+
+        if (skillCameraDirector == null)
+            skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
     }
 
     private void SetupStage()
@@ -226,15 +234,30 @@ public class GameManager : MonoBehaviour
         if (stageFinished)
             return;
 
+        StartCoroutine(FailStageRoutine(message));
+    }
+
+    private IEnumerator FailStageRoutine(string message)
+    {
+        if (stageFinished)
+            yield break;
+
         stageFinished = true;
         timerRunning = false;
 
+        ResolveReferences();
+
         Debug.Log($"<color=red>[GameManager]</color> 스테이지 실패: {message}");
+
+        if (forceShowTargetOnFail)
+            ForceShowAllTargetsForFail();
 
         if (playTargetTimeOverAnimationOnFail)
             PlayTargetTimeOverAnimations();
 
         ApplyFailStageResultMotion();
+
+        yield return PlayFailTargetCameraIfPossible();
 
         if (uiController != null)
             uiController.ShowResultPanel(false, message);
@@ -251,6 +274,94 @@ public class GameManager : MonoBehaviour
             FailStage(message);
 
         ReturnToLobby();
+    }
+
+    private void ForceShowAllTargetsForFail()
+    {
+        TargetVisibilityController[] visibilityControllers =
+            FindObjectsByType<TargetVisibilityController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < visibilityControllers.Length; i++)
+        {
+            TargetVisibilityController visibilityController = visibilityControllers[i];
+
+            if (visibilityController == null)
+                continue;
+
+            if (!visibilityController.isActiveAndEnabled)
+                continue;
+
+            visibilityController.ForceShow();
+        }
+    }
+
+    private IEnumerator PlayFailTargetCameraIfPossible()
+    {
+        if (!playTargetCameraOnFail)
+            yield break;
+
+        ResolveReferences();
+
+        if (skillCameraDirector == null)
+            yield break;
+
+        Transform target = FindFailCameraTarget();
+
+        if (target == null)
+            yield break;
+
+        yield return skillCameraDirector.ForcePlaySkillCameraAndWait(
+            SkillCameraFocusMode.StrongTargetEvent,
+            target
+        );
+    }
+
+    private Transform FindFailCameraTarget()
+    {
+        TargetAnimationController[] targetAnimationControllers =
+            FindObjectsByType<TargetAnimationController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < targetAnimationControllers.Length; i++)
+        {
+            TargetAnimationController targetAnimationController = targetAnimationControllers[i];
+
+            if (targetAnimationController == null)
+                continue;
+
+            if (!targetAnimationController.isActiveAndEnabled)
+                continue;
+
+            return targetAnimationController.transform;
+        }
+
+        TargetSkillController[] targetSkillControllers =
+            FindObjectsByType<TargetSkillController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < targetSkillControllers.Length; i++)
+        {
+            TargetSkillController targetSkillController = targetSkillControllers[i];
+
+            if (targetSkillController == null)
+                continue;
+
+            if (!targetSkillController.isActiveAndEnabled)
+                continue;
+
+            return targetSkillController.transform;
+        }
+
+        try
+        {
+            GameObject taggedTarget = GameObject.FindGameObjectWithTag("Target");
+
+            if (taggedTarget != null)
+                return taggedTarget.transform;
+        }
+        catch (UnityException)
+        {
+        }
+
+        return null;
     }
 
     private void ApplyWinStageResultMotion()
@@ -325,6 +436,9 @@ public class GameManager : MonoBehaviour
             if (targetAnimationController == null)
                 continue;
 
+            if (!targetAnimationController.isActiveAndEnabled)
+                continue;
+
             targetAnimationController.PlayTimeOverCelebration();
         }
     }
@@ -374,6 +488,22 @@ public class GameManager : MonoBehaviour
 
     private void StopAllMovingObjects()
     {
+        AgentController[] agentControllers =
+            Object.FindObjectsByType<AgentController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < agentControllers.Length; i++)
+        {
+            AgentController agentController = agentControllers[i];
+
+            if (agentController == null)
+                continue;
+
+            if (!agentController.isActiveAndEnabled)
+                continue;
+
+            agentController.StopAllMovementForStageResult();
+        }
+
         NavMeshAgent[] allAgents =
             Object.FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
 

@@ -326,6 +326,7 @@ public class Drone : MonoBehaviour
             if (revealedTargets.Add(target))
             {
                 target.AddReconReveal();
+                NotifyOwnerSkillReveal(target);
 
                 if (debugLog)
                 {
@@ -371,6 +372,17 @@ public class Drone : MonoBehaviour
         }
 
         targetsToRemove.Clear();
+    }
+
+    private void NotifyOwnerSkillReveal(TargetController target)
+    {
+        if (owner == null)
+            return;
+
+        if (target == null)
+            return;
+
+        owner.NotifyDroneSkillRevealedTarget(target.transform);
     }
 
     private bool IsColliderInsideVisibleObservationArea(Collider targetCollider)

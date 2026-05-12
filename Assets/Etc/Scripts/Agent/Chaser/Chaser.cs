@@ -376,7 +376,7 @@ public class Chaser : AgentController
         InitializeEscapeBlockGauge();
     }
 
-    public void PlayHitReaction(Vector3 hitSourcePosition)
+    public override void PlayHitReaction(Vector3 hitSourcePosition)
     {
         if (isResultAnimationLocked)
             return;

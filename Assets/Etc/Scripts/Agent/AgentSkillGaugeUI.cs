@@ -13,6 +13,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string SkillDrone = "drone";
     private const string SkillPositionShare = "positionshare";
+    private const string SkillPositionShareOn = "positionshare_on";
+    private const string SkillPositionShareOff = "positionshare_off";
 
     private const string SkillBarricade = "barricade";
     private const string SkillStopSignal = "stopsignal";
@@ -53,6 +55,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [Header("Gauge Fill Setting")]
     [SerializeField] private bool setupImageFillSetting = true;
     [SerializeField] private GaugeFillDirection fillDirection = GaugeFillDirection.VerticalBottom;
+
+    [Header("Toggle Skill Gauge")]
+    [SerializeField] private float toggleSkillOnFillAmount = 1f;
+    [SerializeField] private float toggleSkillOffFillAmount = 0f;
 
     [Header("Gauge Info Label")]
     [SerializeField] private bool showGaugeInfoOnSkillClick = true;
@@ -118,6 +124,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
         gaugeInfoLabelDuration = Mathf.Max(0f, gaugeInfoLabelDuration);
         gaugeInfoLabelSize.x = Mathf.Max(1f, gaugeInfoLabelSize.x);
         gaugeInfoLabelSize.y = Mathf.Max(1f, gaugeInfoLabelSize.y);
+
+        toggleSkillOnFillAmount = Mathf.Clamp01(toggleSkillOnFillAmount);
+        toggleSkillOffFillAmount = Mathf.Clamp01(toggleSkillOffFillAmount);
 
         skill1Name = NormalizeSkillName(skill1Name);
         skill2Name = NormalizeSkillName(skill2Name);
@@ -219,7 +228,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(skillName))
             return false;
 
-        return targetAgent.CanUseSkillGaugeForSkill(skillName);
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsPositionShareSkill(normalizedSkillName))
+            return targetAgent is Observer;
+
+        return targetAgent.CanUseSkillGaugeForSkill(normalizedSkillName);
     }
 
     private void HandleSkillGaugeInfoClick()
@@ -358,6 +372,17 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return "스킬 정보 없음";
 
         string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsPositionShareSkill(normalizedSkillName))
+        {
+            Observer observer = targetAgent as Observer;
+
+            if (observer == null)
+                return $"{GetSkillDisplayName(normalizedSkillName)}: 사용 불가";
+
+            string stateText = observer.IsTargetPositionShareEnabled ? "켜짐" : "꺼짐";
+            return $"{GetSkillDisplayName(normalizedSkillName)}: {stateText}";
+        }
 
         float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
 
@@ -705,6 +730,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (TryUpdateToggleSkillGaugeImage(image, normalizedSkillName))
+            return;
+
         float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
@@ -715,6 +744,27 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         float amount = targetAgent.GetSkillGaugeNormalizedForSkill(normalizedSkillName);
         SetGaugeAmount(image, amount);
+    }
+
+    private bool TryUpdateToggleSkillGaugeImage(Image image, string normalizedSkillName)
+    {
+        if (!IsPositionShareSkill(normalizedSkillName))
+            return false;
+
+        Observer observer = targetAgent as Observer;
+
+        if (observer == null)
+        {
+            SetGaugeAmount(image, toggleSkillOffFillAmount);
+            return true;
+        }
+
+        float amount = observer.IsTargetPositionShareEnabled
+            ? toggleSkillOnFillAmount
+            : toggleSkillOffFillAmount;
+
+        SetGaugeAmount(image, amount);
+        return true;
     }
 
     private void SetGaugeAmount(Image image, float amount)
@@ -732,6 +782,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         string skill = skillName.Trim().ToLower();
 
+        if (IsPositionShareSkill(skill))
+            return SkillPositionShare;
+
         if (IsLegacySlowTrapSkill(skill))
             return SkillStopSignal;
 
@@ -748,6 +801,23 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return SkillJokerCard;
 
         return skill;
+    }
+
+    private bool IsPositionShareSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillPositionShare ||
+               skill == SkillPositionShareOn ||
+               skill == SkillPositionShareOff ||
+               skill.Contains("position share") ||
+               skill.Contains("target position share") ||
+               skill.Contains("share position") ||
+               skill.Contains("위치공유") ||
+               skill.Contains("위치 공유");
     }
 
     private bool IsLegacySlowTrapSkill(string skillName)

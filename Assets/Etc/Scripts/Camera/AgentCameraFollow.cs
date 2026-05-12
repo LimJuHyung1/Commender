@@ -133,6 +133,17 @@ public class AgentCameraFollow : MonoBehaviour
     public bool IsFocusedOrbitInputActive => focusedAgent != null && isRightMouseHeld;
     public bool IsFocusedOrbitDragging => focusedAgent != null && isOrbitDragging;
 
+    public bool TryGetFocusedAgentFocusPoint(out Vector3 focusPoint)
+    {
+        focusPoint = Vector3.zero;
+
+        if (focusedAgent == null)
+            return false;
+
+        focusPoint = GetFocusedAgentWorldPoint();
+        return true;
+    }
+
     private void Awake()
     {
         cam = GetComponent<Camera>();
@@ -409,6 +420,7 @@ public class AgentCameraFollow : MonoBehaviour
             return;
 
         float draggedDistance = Vector2.Distance(mousePosition, dragStartScreenPosition);
+
         if (draggedDistance >= dragStartThreshold)
             isDraggingCamera = true;
     }
@@ -443,6 +455,7 @@ public class AgentCameraFollow : MonoBehaviour
             return;
 
         float draggedDistance = Vector2.Distance(mousePosition, orbitDragStartScreenPosition);
+
         if (draggedDistance >= orbitStartThreshold)
             isOrbitDragging = true;
     }
@@ -591,6 +604,7 @@ public class AgentCameraFollow : MonoBehaviour
         for (int i = 0; i < root.childCount; i++)
         {
             Transform found = FindChildRecursive(root.GetChild(i), targetName);
+
             if (found != null)
                 return found;
         }
@@ -640,6 +654,7 @@ public class AgentCameraFollow : MonoBehaviour
             Destroy(lastSpawnedObject);
 
         Vector3 spawnPosition = hit.point + hit.normal * spawnSurfaceOffset;
+
         Quaternion spawnRotation = alignToGroundNormal
             ? Quaternion.FromToRotation(Vector3.up, hit.normal)
             : Quaternion.identity;
@@ -828,6 +843,7 @@ public class AgentCameraFollow : MonoBehaviour
         for (int i = 0; i < items.Length; i++)
         {
             T item = items[i];
+
             if (item == null || !isValid(item))
                 continue;
 

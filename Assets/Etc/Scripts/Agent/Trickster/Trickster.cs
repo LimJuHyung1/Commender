@@ -268,7 +268,7 @@ public class Trickster : AgentController
         }
     }
 
-    public void PlayHitReaction(Vector3 hitSourcePosition)
+    public override void PlayHitReaction(Vector3 hitSourcePosition)
     {
         if (isResultAnimationLocked)
             return;
@@ -398,7 +398,7 @@ public class Trickster : AgentController
         ApplyJokerCardBuff();
         PlayJokerCardEffect();
 
-        RequestUserSkillCamera();
+        RequestFollowUserSkillCamera();
 
         float duration = stats != null ? stats.jokerCardDuration : 6f;
 

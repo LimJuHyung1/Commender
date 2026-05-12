@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.AI;
 
-public class InformationBrokerSkillController : TargetSkillController
+public class InformationBroker : TargetSkillController
 {
     [Header("Communication Jam")]
     [SerializeField] private Vector2 communicationJamCooldownRange = new Vector2(30f, 60f);
@@ -35,6 +35,16 @@ public class InformationBrokerSkillController : TargetSkillController
 
     [Header("Emergency Escape")]
     [SerializeField] private bool autoUseEmergencyEscape = true;
+
+    [Header("Emergency Escape Smoke Effect")]
+    [SerializeField] private GameObject emergencyEscapeSmokePrefab;
+    [SerializeField] private Transform emergencyEscapeSmokeSpawnPoint;
+    [SerializeField] private Vector3 emergencyEscapeSmokeSpawnOffset = Vector3.zero;
+    [SerializeField] private Vector3 emergencyEscapeSmokeRotationOffset = Vector3.zero;
+    [SerializeField] private bool useTargetRotationForEmergencyEscapeSmoke = true;
+    [SerializeField] private bool parentEmergencyEscapeSmokeToTarget = false;
+    [SerializeField] private bool autoDestroyEmergencyEscapeSmoke = true;
+    [SerializeField] private float emergencyEscapeSmokeDestroyDelay = 4f;
 
     [Header("Skill Camera")]
     [SerializeField] private bool useEmergencyEscapeCamera = true;
@@ -246,10 +256,15 @@ public class InformationBrokerSkillController : TargetSkillController
 
         ApplyEmergencyEscapeSettingsToEscapeMotor(false);
 
+        Vector3 smokeSpawnPosition = GetEmergencyEscapeSmokeSpawnPosition();
+        Quaternion smokeSpawnRotation = GetEmergencyEscapeSmokeSpawnRotation();
+
         bool activated = EscapeMotor.TryActivateEmergencyEscape();
 
         if (!activated)
             return false;
+
+        SpawnEmergencyEscapeSmokeEffect(smokeSpawnPosition, smokeSpawnRotation);
 
         RequestEmergencyEscapeCamera();
 
@@ -507,6 +522,42 @@ public class InformationBrokerSkillController : TargetSkillController
             transform,
             hologramTransform
         );
+    }
+
+    private void SpawnEmergencyEscapeSmokeEffect(Vector3 spawnPosition, Quaternion spawnRotation)
+    {
+        if (emergencyEscapeSmokePrefab == null)
+            return;
+
+        Transform parent = parentEmergencyEscapeSmokeToTarget ? transform : null;
+
+        GameObject smokeObject = Instantiate(
+            emergencyEscapeSmokePrefab,
+            spawnPosition,
+            spawnRotation,
+            parent
+        );
+
+        if (autoDestroyEmergencyEscapeSmoke)
+            Destroy(smokeObject, emergencyEscapeSmokeDestroyDelay);
+    }
+
+    private Vector3 GetEmergencyEscapeSmokeSpawnPosition()
+    {
+        Transform basePoint = emergencyEscapeSmokeSpawnPoint != null
+            ? emergencyEscapeSmokeSpawnPoint
+            : transform;
+
+        return basePoint.position + emergencyEscapeSmokeSpawnOffset;
+    }
+
+    private Quaternion GetEmergencyEscapeSmokeSpawnRotation()
+    {
+        Quaternion baseRotation = useTargetRotationForEmergencyEscapeSmoke
+            ? transform.rotation
+            : Quaternion.identity;
+
+        return baseRotation * Quaternion.Euler(emergencyEscapeSmokeRotationOffset);
     }
 
     private void TickRandomCommunicationJam()
@@ -879,5 +930,7 @@ public class InformationBrokerSkillController : TargetSkillController
 
         autoDefensiveSharedCooldown = Mathf.Max(0f, autoDefensiveSharedCooldown);
         threatResetDelay = Mathf.Max(0f, threatResetDelay);
+
+        emergencyEscapeSmokeDestroyDelay = Mathf.Max(0.1f, emergencyEscapeSmokeDestroyDelay);
     }
 }

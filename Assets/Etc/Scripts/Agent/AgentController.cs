@@ -1317,4 +1317,17 @@ public abstract class AgentController : MonoBehaviour
             ? Animator.StringToHash("MoveSpeed")
             : Animator.StringToHash(moveSpeedParameter);
     }
+
+    protected void RequestFollowUserSkillCamera()
+    {
+        SkillCameraEventBus.Request(
+            SkillCameraFocusMode.FollowUser,
+            transform
+        );
+    }
+
+
+    public virtual void PlayHitReaction(Vector3 hitSourcePosition)
+    {
+    }
 }

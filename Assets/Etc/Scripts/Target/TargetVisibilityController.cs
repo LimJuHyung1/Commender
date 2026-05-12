@@ -19,6 +19,7 @@ public class TargetVisibilityController : MonoBehaviour
     public bool debugVisibility = false;
 
     private bool isCurrentlyVisible = true;
+    private bool forceVisible;
     private Transform targetRoot;
     private string lastVisibleReason = "None";
 
@@ -128,6 +129,12 @@ public class TargetVisibilityController : MonoBehaviour
         if (targetRoot == null)
             return false;
 
+        if (forceVisible)
+        {
+            visibleReason = "ForceVisible";
+            return true;
+        }
+
         if (GameManager.Instance != null &&
             GameManager.Instance.IsTargetDebugRevealEnabled)
         {
@@ -214,8 +221,25 @@ public class TargetVisibilityController : MonoBehaviour
             agentVisionSensors.Add(sensor);
     }
 
+    public void SetForceVisible(bool visible)
+    {
+        forceVisible = visible;
+        RefreshVisibilityImmediate();
+    }
+
+    public void ForceShow()
+    {
+        SetForceVisible(true);
+    }
+
+    public void ClearForceVisible()
+    {
+        SetForceVisible(false);
+    }
+
     public void ResetRuntimeState()
     {
+        forceVisible = false;
         CollectSceneSensorsIfNeeded();
         RefreshVisibilityImmediate();
     }
