@@ -14,14 +14,15 @@ public class StageMapManager : MonoBehaviour
     }
 
     [Header("Stages")]
-    public StageEntry[] stages;
+    [SerializeField] private StageEntry[] stages;
 
     [Header("Unit Prefabs")]
-    public GameObject targetPrefab;
-    public GameObject[] agentPrefabs;
+    [SerializeField] private GameObject targetPrefab;
+    [SerializeField] private GameObject[] debugTargetPrefabs;
+    [SerializeField] private GameObject[] agentPrefabs;
 
     [Header("Options")]
-    public bool buildNavMeshOnSpawn = false;
+    [SerializeField] private bool buildNavMeshOnSpawn = false;
 
     private GameObject currentMap;
     private GameObject currentTarget;
@@ -43,6 +44,9 @@ public class StageMapManager : MonoBehaviour
 
     private const string DebugStageEnabledKey = "DebugStageEnabled";
     private const string DebugStageIndexKey = "DebugStageIndex";
+    private const string DebugTargetEnabledKey = "DebugTargetEnabled";
+    private const string DebugTargetIndexKey = "DebugTargetIndex";
+    private const string DebugTargetClearKeyPrefix = "DebugTargetClear";
 
     private void Start()
     {
@@ -62,6 +66,16 @@ public class StageMapManager : MonoBehaviour
     public static void LoadDebugStageScene(string gameSceneName, int stageNumber)
     {
         SetDebugStageSelection(stageNumber);
+        ClearDebugTargetSelection();
+
+        SceneManager.LoadScene(gameSceneName);
+    }
+
+    public static void LoadDebugStageScene(string gameSceneName, int stageNumber, int targetPrefabIndex)
+    {
+        SetDebugStageSelection(stageNumber);
+        SetDebugTargetSelection(targetPrefabIndex);
+
         SceneManager.LoadScene(gameSceneName);
     }
 
@@ -83,13 +97,80 @@ public class StageMapManager : MonoBehaviour
         Debug.Log($"[StageMapManager] 디버그 스테이지 예약 완료: StageNumber={stageNumber}, StageIndex={stageIndex}");
     }
 
+    public static void SetDebugTargetSelection(int targetPrefabIndex)
+    {
+        if (!CanUseDebugStage())
+        {
+            Debug.LogWarning("[StageMapManager] 현재 빌드에서는 디버그 타겟 선택을 사용할 수 없습니다.");
+            return;
+        }
+
+        int safeTargetPrefabIndex = Mathf.Max(0, targetPrefabIndex);
+
+        PlayerPrefs.SetInt(DebugTargetEnabledKey, 1);
+        PlayerPrefs.SetInt(DebugTargetIndexKey, safeTargetPrefabIndex);
+        PlayerPrefs.Save();
+
+        Debug.Log($"[StageMapManager] 디버그 타겟 예약 완료: TargetPrefabIndex={safeTargetPrefabIndex}");
+    }
+
     public static void ClearDebugStageSelection()
     {
         PlayerPrefs.SetInt(DebugStageEnabledKey, 0);
         PlayerPrefs.DeleteKey(DebugStageIndexKey);
+
+        ClearDebugTargetSelection();
+
         PlayerPrefs.Save();
 
         Debug.Log("[StageMapManager] 디버그 스테이지 예약 해제");
+    }
+
+    public static void ClearDebugTargetSelection()
+    {
+        PlayerPrefs.SetInt(DebugTargetEnabledKey, 0);
+        PlayerPrefs.DeleteKey(DebugTargetIndexKey);
+        PlayerPrefs.Save();
+
+        Debug.Log("[StageMapManager] 디버그 타겟 예약 해제");
+    }
+
+    public static bool IsDebugTargetCleared(int stageNumber, int targetPrefabIndex)
+    {
+        int stageIndex = Mathf.Max(0, stageNumber - 1);
+        int safeTargetPrefabIndex = Mathf.Max(0, targetPrefabIndex);
+
+        string clearKey = GetDebugTargetClearKey(stageIndex, safeTargetPrefabIndex);
+
+        return PlayerPrefs.GetInt(clearKey, 0) == 1;
+    }
+
+    public static void ClearDebugTargetClearState(int stageNumber, int targetPrefabIndex)
+    {
+        int stageIndex = Mathf.Max(0, stageNumber - 1);
+        int safeTargetPrefabIndex = Mathf.Max(0, targetPrefabIndex);
+
+        string clearKey = GetDebugTargetClearKey(stageIndex, safeTargetPrefabIndex);
+
+        PlayerPrefs.DeleteKey(clearKey);
+        PlayerPrefs.Save();
+    }
+
+    public static void ClearDebugTargetClearStates(int stageNumber, int targetPrefabCount)
+    {
+        int safeTargetPrefabCount = Mathf.Max(0, targetPrefabCount);
+
+        for (int i = 0; i < safeTargetPrefabCount; i++)
+        {
+            ClearDebugTargetClearState(stageNumber, i);
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private static string GetDebugTargetClearKey(int stageIndex, int targetPrefabIndex)
+    {
+        return $"{DebugTargetClearKeyPrefix}_{stageIndex}_{targetPrefabIndex}";
     }
 
     private static bool CanUseDebugStage()
@@ -258,9 +339,11 @@ public class StageMapManager : MonoBehaviour
 
     private void SpawnTarget()
     {
-        if (targetPrefab == null)
+        GameObject selectedTargetPrefab = GetSelectedTargetPrefab();
+
+        if (selectedTargetPrefab == null)
         {
-            Debug.LogWarning("[StageMapManager] targetPrefab이 설정되어 있지 않습니다.");
+            Debug.LogWarning("[StageMapManager] 생성할 타겟 프리팹이 설정되어 있지 않습니다.");
             return;
         }
 
@@ -271,11 +354,31 @@ public class StageMapManager : MonoBehaviour
             return;
         }
 
-        currentTarget = Instantiate(targetPrefab, spawnPoint.position, spawnPoint.rotation);
+        currentTarget = Instantiate(selectedTargetPrefab, spawnPoint.position, spawnPoint.rotation);
 
         ApplyTargetLevelToCurrentTarget();
 
-        Debug.Log($"[StageMapManager] 타겟 생성 위치: {spawnPoint.name}");
+        Debug.Log($"[StageMapManager] 타겟 생성 완료: Prefab={selectedTargetPrefab.name}, SpawnPoint={spawnPoint.name}");
+    }
+
+    private GameObject GetSelectedTargetPrefab()
+    {
+        if (IsDebugStageMode() && PlayerPrefs.GetInt(DebugTargetEnabledKey, 0) == 1)
+        {
+            int targetPrefabIndex = PlayerPrefs.GetInt(DebugTargetIndexKey, 0);
+
+            if (debugTargetPrefabs != null &&
+                targetPrefabIndex >= 0 &&
+                targetPrefabIndex < debugTargetPrefabs.Length &&
+                debugTargetPrefabs[targetPrefabIndex] != null)
+            {
+                return debugTargetPrefabs[targetPrefabIndex];
+            }
+
+            Debug.LogWarning($"[StageMapManager] 디버그 타겟 인덱스가 유효하지 않습니다. TargetPrefabIndex={targetPrefabIndex}");
+        }
+
+        return targetPrefab;
     }
 
     private void ApplyTargetLevelToCurrentTarget()
@@ -408,7 +511,9 @@ public class StageMapManager : MonoBehaviour
     {
         if (IsDebugStageMode())
         {
-            Debug.Log("[StageMapManager] 디버그 스테이지 모드이므로 실제 스테이지 진행도는 저장하지 않습니다.");
+            SaveCurrentDebugTargetClearState();
+
+            Debug.Log("[StageMapManager] 디버그 스테이지 클리어 기록을 저장했습니다.");
             return;
         }
 
@@ -417,6 +522,25 @@ public class StageMapManager : MonoBehaviour
 
         PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Clamp(nextUnlockedStageCount, 1, Mathf.Max(1, StageCount)));
         PlayerPrefs.Save();
+    }
+
+    private void SaveCurrentDebugTargetClearState()
+    {
+        if (PlayerPrefs.GetInt(DebugTargetEnabledKey, 0) != 1)
+            return;
+
+        int debugStageIndex = PlayerPrefs.GetInt(DebugStageIndexKey, currentStageIndex);
+        int debugTargetIndex = PlayerPrefs.GetInt(DebugTargetIndexKey, -1);
+
+        if (debugTargetIndex < 0)
+            return;
+
+        string clearKey = GetDebugTargetClearKey(debugStageIndex, debugTargetIndex);
+
+        PlayerPrefs.SetInt(clearKey, 1);
+        PlayerPrefs.Save();
+
+        Debug.Log($"[StageMapManager] 디버그 타겟 클리어 저장: StageIndex={debugStageIndex}, TargetIndex={debugTargetIndex}");
     }
 
     public bool HasNextStage()

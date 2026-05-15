@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -411,6 +412,47 @@ public sealed class CommandValidator
 
         return parsedX && parsedZ;
     }
+
+    public bool TryExtractCoordinates(string source, out List<Vector2> coordinates)
+    {
+        coordinates = new List<Vector2>();
+
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        MatchCollection matches = CoordinateRegex.Matches(source);
+
+        if (matches == null || matches.Count == 0)
+            return false;
+
+        foreach (Match match in matches)
+        {
+            if (!match.Success)
+                continue;
+
+            bool parsedX = float.TryParse(
+                match.Groups[1].Value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out float x
+            );
+
+            bool parsedZ = float.TryParse(
+                match.Groups[2].Value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out float z
+            );
+
+            if (!parsedX || !parsedZ)
+                continue;
+
+            coordinates.Add(new Vector2(x, z));
+        }
+
+        return coordinates.Count > 0;
+    }
+
 
     private bool TryResolveAccessControlSkill(
         string normalizedInstruction,

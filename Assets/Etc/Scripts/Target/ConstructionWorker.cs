@@ -101,6 +101,7 @@ public class ConstructionWorker : TargetSkillController
         new Dictionary<int, AnimatorControllerParameterType>();
 
     private Animator targetAnimator;
+    private TargetVisibilityController visibilityController;
     private Coroutine skillAnimationLockRoutine;
     private Renderer[] targetRenderers;
     private Canvas[] targetCanvases;
@@ -171,7 +172,6 @@ public class ConstructionWorker : TargetSkillController
         StopAllCoroutines();
         skillAnimationLockRoutine = null;
 
-        RestoreTargetVisuals();
         ResetAnimationState();
 
         isThrowingObject = false;
@@ -252,10 +252,10 @@ public class ConstructionWorker : TargetSkillController
         nextBarricadeReadyTime = -999f;
         nextAutoDefensiveReadyTime = -999f;
 
-        RestoreTargetVisuals();
-
         ScheduleNextMaterialThrow(false);
         ScheduleNextDustZone(false);
+
+        RefreshTargetVisibility();
     }
 
     public override bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
@@ -631,7 +631,7 @@ public class ConstructionWorker : TargetSkillController
         if (digEscapeReappearDelay > 0f)
             yield return new WaitForSeconds(digEscapeReappearDelay);
 
-        RestoreTargetVisuals();
+        RestoreVisibilityAfterTemporaryHide();
 
         isDigEscaping = false;
     }
@@ -1367,8 +1367,22 @@ public class ConstructionWorker : TargetSkillController
         }
     }
 
-    private void RestoreTargetVisuals()
+    private void RefreshTargetVisibility()
     {
+        if (visibilityController == null)
+            return;
+
+        visibilityController.ResetRuntimeState();
+    }
+
+    private void RestoreVisibilityAfterTemporaryHide()
+    {
+        if (visibilityController != null)
+        {
+            visibilityController.ResetRuntimeState();
+            return;
+        }
+
         SetTargetVisuals(true);
     }
 
@@ -1376,6 +1390,12 @@ public class ConstructionWorker : TargetSkillController
     {
         if (targetAnimator == null)
             targetAnimator = GetComponentInChildren<Animator>();
+
+        if (visibilityController == null)
+            visibilityController = GetComponent<TargetVisibilityController>();
+
+        if (visibilityController == null)
+            visibilityController = GetComponentInChildren<TargetVisibilityController>(true);
 
         targetRenderers = GetComponentsInChildren<Renderer>(true);
         targetCanvases = GetComponentsInChildren<Canvas>(true);

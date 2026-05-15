@@ -340,10 +340,12 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         for (int i = 0; i < hitCount; i++)
         {
             Collider col = targetResults[i];
+
             if (col == null)
                 continue;
 
             Transform candidate = ResolveTargetRoot(col);
+
             if (candidate == null)
                 continue;
 
@@ -379,6 +381,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             }
 
             TargetHologram targetHologram = candidate.GetComponent<TargetHologram>();
+
             if (targetHologram != null)
             {
                 if (sqrDistance < bestTargetHologramSqrDistance)
@@ -409,10 +412,12 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             return null;
 
         TargetHologram targetHologram = col.GetComponentInParent<TargetHologram>();
+
         if (targetHologram != null)
             return targetHologram.transform;
 
         TargetController targetController = col.GetComponentInParent<TargetController>();
+
         if (targetController != null)
             return targetController.transform;
 
@@ -428,6 +433,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         }
 
         bool sameTarget = currentSeenTarget == seenTarget;
+
         if (isSeeingTarget == canSee && sameTarget)
             return;
 

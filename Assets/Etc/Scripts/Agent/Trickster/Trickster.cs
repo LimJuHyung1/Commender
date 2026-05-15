@@ -173,6 +173,9 @@ public class Trickster : AgentController
         if (isResultAnimationLocked || isHitReactionLocked || isSkillAnimationLocked)
             return;
 
+        if (!CanReceivePlayerSkillCommand(true))
+            return;
+
         string skill = skillName.Trim().ToLower();
 
         Debug.Log($"[Trickster {AgentID}] Skill request: {skillName}, Position: {targetPos}");
@@ -486,11 +489,8 @@ public class Trickster : AgentController
             return;
 
         currentJokerCardEffect.StopImmediate();
-
-        // 자식으로 배치한 JokerCard는 절대 Destroy하지 않습니다.
-        // duration 종료 시에도 호출되지 않고,
-        // OnDisable 같은 강제 종료 상황에서만 StopImmediate로 시각 상태만 초기화합니다.
     }
+
     private void RestoreJokerCardOriginalValues()
     {
         if (!hasCachedJokerCardValues)

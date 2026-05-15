@@ -3,8 +3,8 @@ using UnityEngine;
 public enum TargetType
 {
     InformationBroker,
-    DisguiseExpert,
-    EscapeSpecialist
+    ConstructionWorker,
+    GraffitiArtist
 }
 
 [DisallowMultipleComponent]
@@ -45,32 +45,32 @@ public class TargetLevelStatApplier : MonoBehaviour
         new TargetLevelStats(100f, 5.0f, 30f, 13.5f, 50f, 1080f, 30f, 5)
     };
 
-    private static readonly TargetLevelStats[] DisguiseExpertStats =
+    private static readonly TargetLevelStats[] ConstructionWorkerStats =
     {
-        new TargetLevelStats(100f, 10.0f, 10f, 10.0f, 30f, 1080f, 24f, 5),
-        new TargetLevelStats(100f, 9.4f, 12f, 10.5f, 32f, 1080f, 25f, 5),
-        new TargetLevelStats(100f, 8.9f, 14f, 11.0f, 34f, 1080f, 25f, 5),
-        new TargetLevelStats(100f, 8.3f, 16f, 11.5f, 37f, 1080f, 26f, 5),
-        new TargetLevelStats(100f, 7.8f, 18f, 12.0f, 39f, 1080f, 27f, 5),
-        new TargetLevelStats(100f, 7.2f, 21f, 12.5f, 41f, 1080f, 27f, 5),
-        new TargetLevelStats(100f, 6.7f, 23f, 13.0f, 43f, 1080f, 28f, 5),
-        new TargetLevelStats(100f, 6.1f, 25f, 13.5f, 46f, 1080f, 29f, 5),
-        new TargetLevelStats(100f, 5.6f, 28f, 14.0f, 48f, 1080f, 29f, 5),
-        new TargetLevelStats(100f, 5.0f, 30f, 14.5f, 50f, 1080f, 30f, 5)
+        new TargetLevelStats(110f, 10.5f, 10f, 9.2f, 28f, 900f, 23f, 5),
+        new TargetLevelStats(110f, 10.0f, 12f, 9.6f, 30f, 900f, 24f, 5),
+        new TargetLevelStats(110f, 9.4f, 14f, 10.0f, 32f, 900f, 25f, 5),
+        new TargetLevelStats(110f, 8.8f, 16f, 10.4f, 35f, 900f, 26f, 5),
+        new TargetLevelStats(110f, 8.2f, 18f, 10.8f, 37f, 900f, 27f, 5),
+        new TargetLevelStats(110f, 7.6f, 21f, 11.2f, 39f, 900f, 27f, 5),
+        new TargetLevelStats(110f, 7.0f, 23f, 11.6f, 42f, 900f, 28f, 5),
+        new TargetLevelStats(110f, 6.5f, 25f, 12.0f, 44f, 900f, 29f, 5),
+        new TargetLevelStats(110f, 6.0f, 28f, 12.4f, 46f, 900f, 30f, 5),
+        new TargetLevelStats(110f, 5.5f, 30f, 12.8f, 48f, 900f, 31f, 5)
     };
 
-    private static readonly TargetLevelStats[] EscapeSpecialistStats =
+    private static readonly TargetLevelStats[] GraffitiArtistStats =
     {
-        new TargetLevelStats(100f, 10.0f, 10f, 10.5f, 32f, 1080f, 24f, 5),
-        new TargetLevelStats(100f, 9.4f, 12f, 11.0f, 34f, 1080f, 25f, 5),
-        new TargetLevelStats(100f, 8.9f, 14f, 11.5f, 36f, 1080f, 25f, 5),
-        new TargetLevelStats(100f, 8.3f, 16f, 12.0f, 38f, 1080f, 26f, 5),
-        new TargetLevelStats(100f, 7.8f, 18f, 12.5f, 40f, 1080f, 27f, 5),
-        new TargetLevelStats(100f, 7.2f, 21f, 13.0f, 42f, 1080f, 27f, 5),
-        new TargetLevelStats(100f, 6.7f, 23f, 13.5f, 44f, 1080f, 28f, 5),
-        new TargetLevelStats(100f, 6.1f, 25f, 14.0f, 46f, 1080f, 29f, 5),
-        new TargetLevelStats(100f, 5.6f, 28f, 14.5f, 48f, 1080f, 29f, 5),
-        new TargetLevelStats(100f, 5.0f, 30f, 15.0f, 50f, 1080f, 30f, 5)
+        new TargetLevelStats(95f, 9.5f, 9f, 10.5f, 34f, 1260f, 25f, 5),
+        new TargetLevelStats(95f, 8.9f, 11f, 11.0f, 36f, 1260f, 26f, 5),
+        new TargetLevelStats(95f, 8.3f, 13f, 11.5f, 38f, 1260f, 27f, 5),
+        new TargetLevelStats(95f, 7.7f, 15f, 12.0f, 41f, 1260f, 28f, 5),
+        new TargetLevelStats(95f, 7.1f, 17f, 12.5f, 43f, 1260f, 29f, 5),
+        new TargetLevelStats(95f, 6.5f, 20f, 13.0f, 45f, 1260f, 29f, 5),
+        new TargetLevelStats(95f, 6.0f, 22f, 13.5f, 48f, 1260f, 30f, 5),
+        new TargetLevelStats(95f, 5.5f, 24f, 14.0f, 50f, 1260f, 31f, 5),
+        new TargetLevelStats(95f, 5.1f, 26f, 14.5f, 52f, 1260f, 31f, 5),
+        new TargetLevelStats(95f, 4.7f, 28f, 15.0f, 55f, 1260f, 32f, 5)
     };
 
     private void Awake()
@@ -110,6 +110,11 @@ public class TargetLevelStatApplier : MonoBehaviour
         ApplySkillUnlocks(targetLevel);
     }
 
+    public void ApplyCurrentLevel(bool refillHealth = true)
+    {
+        ApplyLevel(targetLevel, refillHealth);
+    }
+
     public void SetTargetType(TargetType newTargetType, bool applyImmediately = true)
     {
         targetType = newTargetType;
@@ -144,11 +149,11 @@ public class TargetLevelStatApplier : MonoBehaviour
             case TargetType.InformationBroker:
                 return InformationBrokerStats[index];
 
-            case TargetType.DisguiseExpert:
-                return DisguiseExpertStats[index];
+            case TargetType.ConstructionWorker:
+                return ConstructionWorkerStats[index];
 
-            case TargetType.EscapeSpecialist:
-                return EscapeSpecialistStats[index];
+            case TargetType.GraffitiArtist:
+                return GraffitiArtistStats[index];
 
             default:
                 return InformationBrokerStats[index];

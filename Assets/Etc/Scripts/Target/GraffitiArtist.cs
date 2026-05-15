@@ -2,115 +2,250 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.Serialization;
 
-public class GraffitiArtist : TargetSkillController
+public partial class GraffitiArtist : TargetSkillController
 {
     [Header("Obstacle Leap")]
-    [SerializeField] private float obstacleLeapCooldown = 8f;
-    [SerializeField] private float obstacleLeapDistance = 5f;
-    [SerializeField] private float obstacleLeapDuration = 0.35f;
+    [SerializeField] private float obstacleLeapCooldown = 18f;
+    [SerializeField] private float obstacleLeapDuration = 1f;
     [SerializeField] private float obstacleLeapArcHeight = 1.2f;
-    [SerializeField] private float obstacleLeapNavMeshSampleRadius = 3f;
-    [SerializeField] private float obstacleLeapMinThreatDistance = 7f;
+    [SerializeField] private float obstacleLeapLandingDelay = 0.2f;
+    [SerializeField] private float obstacleLeapNavMeshSampleRadius = 2.5f;
+    [SerializeField] private float obstacleLeapActivationMinDistance = 3.5f;
+
+    [FormerlySerializedAs("obstacleLeapMinThreatDistance")]
+    [SerializeField] private float obstacleLeapActivationMaxDistance = 8f;
+
     [SerializeField] private bool blockLeapWhenEscapeSkillBlocked = true;
 
-    [Header("Spray Paint Zone")]
-    [SerializeField] private GameObject sprayPaintZonePrefab;
-    [SerializeField] private float sprayPaintCooldown = 12f;
-    [SerializeField] private float sprayPaintRetryDelay = 3f;
-    [SerializeField] private float sprayPaintDuration = 7f;
-    [SerializeField] private float sprayPaintRadius = 3.5f;
-    [SerializeField][Range(0.1f, 1f)] private float sprayPaintMoveSpeedMultiplier = 0.55f;
-    [SerializeField] private float sprayPaintSpawnBackDistance = 1.3f;
-    [SerializeField] private float sprayPaintNavMeshSampleRadius = 3f;
+    [Header("Obstacle Leap Object Search")]
+    [SerializeField] private string obstacleLeapLayerName = "Obstacle";
+    [SerializeField] private float obstacleLeapSearchRadius = 4.5f;
+    [SerializeField] private float obstacleLeapLandingDistance = 2f;
+    [SerializeField] private float obstacleLeapLandingSideOffset = 0.75f;
+    [SerializeField] private int obstacleLeapLandingSampleCount = 5;
+    [SerializeField] private float obstacleLeapMinObjectHeight = 0.2f;
+    [SerializeField] private float obstacleLeapMaxObjectHeight = 2.5f;
+    [SerializeField] private float obstacleLeapMinDirectionDot = 0.1f;
+    [SerializeField] private bool checkObstacleLeapLandingClearance = true;
+    [SerializeField] private float obstacleLeapLandingClearanceRadius = 0.35f;
+    [SerializeField] private float obstacleLeapLandingClearanceHeight = 0.5f;
+    [SerializeField] private float obstacleLeapProbeRetryDelay = 2f;
+
+    [Header("Obstacle Leap Presentation")]
+    [SerializeField] private bool forceShowDuringObstacleLeap = true;
+    [SerializeField] private bool useObstacleLeapSkillCamera = true;
+    [SerializeField] private SkillCameraFocusMode obstacleLeapCameraMode = SkillCameraFocusMode.FollowUser;
+    [SerializeField] private TargetVisibilityController targetVisibilityController;
+
+    [Header("Graffiti")]
+    [FormerlySerializedAs("sprayPaintZonePrefab")]
+    [SerializeField] private GameObject graffitiZonePrefab;
+
+    [FormerlySerializedAs("sprayPaintCooldown")]
+    [SerializeField] private float graffitiCooldown = 35f;
+
+    [FormerlySerializedAs("sprayPaintRetryDelay")]
+    [SerializeField] private float graffitiRetryDelay = 5f;
+
+    [SerializeField] private float graffitiCancelledRetryDelay = 8f;
+
+    [FormerlySerializedAs("sprayPaintDuration")]
+    [SerializeField] private float graffitiDuration = 10f;
+
+    [FormerlySerializedAs("sprayPaintRadius")]
+    [SerializeField] private float graffitiRadius = 3.5f;
+
+    [FormerlySerializedAs("sprayPaintNavMeshSampleRadius")]
+    [SerializeField] private float graffitiNavMeshSampleRadius = 3f;
+
     [SerializeField] private LayerMask agentLayerMask;
-    [SerializeField] private bool allowOnlyOneActiveSprayPaintZone = true;
 
-    [Header("Paint Smoke")]
-    [SerializeField] private GameObject paintSmokePrefab;
-    [SerializeField] private Transform paintSmokeSpawnPoint;
-    [SerializeField] private Vector3 paintSmokeSpawnOffset = Vector3.zero;
-    [SerializeField] private float paintSmokeCooldown = 14f;
-    [SerializeField] private float paintSmokeDuration = 5f;
-    [SerializeField] private float paintSmokeDetectionRadius = 1.2f;
-    [SerializeField] private bool autoDestroyPaintSmoke = true;
-    [SerializeField] private float paintSmokeDestroyDelay = 5f;
+    [FormerlySerializedAs("allowOnlyOneActiveSprayPaintZone")]
+    [SerializeField] private bool allowOnlyOneActiveGraffitiZone = true;
 
-    [Header("Wall Run Passive")]
-    [SerializeField] private LayerMask wallLayerMask;
-    [SerializeField] private float wallCheckDistance = 1.2f;
-    [SerializeField] private float wallCheckSphereRadius = 0.2f;
-    [SerializeField] private float wallCheckHeightOffset = 0.6f;
-    [SerializeField] private float wallRunSpeedMultiplier = 1.2f;
-    [SerializeField] private float wallRunAccelerationMultiplier = 1.15f;
-    [SerializeField] private bool requireThreatForWallRun = true;
+    [Header("Graffiti Animation Event")]
+    [SerializeField] private float graffitiAnimationEventTimeout = 10f;
+    [SerializeField] private bool cancelGraffitiAnimationOnThreat = true;
+    [SerializeField] private string graffitiCancelStateName = "Run";
+    [SerializeField] private float graffitiCancelCrossFadeDuration = 0.05f;
+
+    [Header("Graffiti Spawn Position")]
+    [SerializeField] private bool useRandomGraffitiSpawnPosition = true;
+    [SerializeField] private float graffitiRandomSpawnMinDistance = 2f;
+    [SerializeField] private float graffitiRandomSpawnMaxDistance = 7f;
+    [SerializeField] private int graffitiRandomSpawnSampleCount = 12;
+
+    [Header("Graffiti Difficulty Scaling")]
+    [SerializeField] private bool scaleGraffitiByStageDifficulty = true;
+    [SerializeField, Range(1, 10)] private int maxGraffitiDifficultyLevel = 10;
+    [SerializeField] private float maxGraffitiRadius = 6f;
+    [SerializeField] private float maxGraffitiSpawnMinDistance = 3.5f;
+    [SerializeField] private float maxGraffitiSpawnMaxDistance = 11f;
+
+    [SerializeField]
+    private AnimationCurve graffitiDifficultyCurve =
+        AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
+    [Header("Safe Graffiti Timing")]
+    [SerializeField] private bool autoCreateGraffitiWhenSafe = true;
+    [SerializeField] private float safeGraffitiInitialDelay = 6f;
+    [SerializeField] private float safeGraffitiMinNoThreatTime = 8f;
+
+    [Header("Color Rush Passive")]
+    [SerializeField] private GameObject colorRushTrailPrefab;
+    [SerializeField] private ColorRushTrailPool colorRushTrailPool;
+    [SerializeField] private Transform colorRushTrailParent;
+    [SerializeField] private bool autoCreateColorRushTrailPool = true;
+    [SerializeField] private int colorRushTrailPoolSize = 40;
+    [SerializeField] private float colorRushPassiveSpeedMultiplier = 1.25f;
+    [SerializeField] private float colorRushTrailSpawnDistance = 1.2f;
+    [SerializeField] private float colorRushTrailLifetime = 10f;
+    [SerializeField] private float colorRushTrailNavMeshSampleRadius = 1.5f;
+    [SerializeField] private float colorRushTrailYOffset = 0.03f;
+    [SerializeField] private float colorRushTrailMinMoveSpeed = 0.05f;
+
+    [Header("Spray Smoke")]
+    [FormerlySerializedAs("paintSmokePrefab")]
+    [SerializeField] private GameObject spraySmokePrefab;
+
+    [FormerlySerializedAs("paintSmokeSpawnPoint")]
+    [SerializeField] private Transform spraySmokeSpawnPoint;
+
+    [FormerlySerializedAs("paintSmokeSpawnOffset")]
+    [SerializeField] private Vector3 spraySmokeSpawnOffset = Vector3.zero;
+
+    [FormerlySerializedAs("paintSmokeCooldown")]
+    [SerializeField] private float spraySmokeCooldown = 14f;
+
+    [SerializeField] private float spraySmokeActivationDistance = 5.5f;
+    [SerializeField] private float spraySmokeUrgentDistance = 3.5f;
+
+    [Header("Spray Smoke Uses")]
+    [SerializeField] private int spraySmokeMaxUseCount = 5;
 
     [Header("Skill Unlock Level")]
-    [SerializeField] private int obstacleLeapUnlockLevel = 1;
-    [SerializeField] private int sprayPaintUnlockLevel = 3;
-    [SerializeField] private int paintSmokeUnlockLevel = 5;
-    [SerializeField] private int wallRunUnlockLevel = 7;
+    [SerializeField] private int spraySmokeUnlockLevel = 1;
+
+    [FormerlySerializedAs("sprayPaintUnlockLevel")]
+    [SerializeField] private int graffitiUnlockLevel = 3;
+
+    [SerializeField] private int obstacleLeapUnlockLevel = 5;
+
+    [FormerlySerializedAs("wallRunUnlockLevel")]
+    [SerializeField] private int colorRushUnlockLevel = 7;
 
     [Header("Auto Defensive Skill")]
-    [SerializeField] private bool autoUseOnlyOncePerThreatEncounter = true;
+    [SerializeField] private bool autoUseOnlyOncePerThreatEncounter = false;
     [SerializeField] private float autoDefensiveSharedCooldown = 6f;
     [SerializeField] private float threatResetDelay = 1f;
+    [SerializeField] private bool checkDefensiveSkillInUpdate = true;
+    [SerializeField] private float defensiveSkillCheckInterval = 0.2f;
+    [SerializeField] private float defensiveEscapeDestinationDistance = 8f;
 
     [Header("Animation Trigger Names")]
     [SerializeField] private string obstacleLeapTriggerName = "SkillObstacleLeap";
-    [SerializeField] private string sprayPaintTriggerName = "SkillSprayPaint";
-    [SerializeField] private string paintSmokeTriggerName = "SkillPaintSmoke";
-    [SerializeField] private string wallRunBoolName = "IsWallRunning";
+
+    [FormerlySerializedAs("sprayPaintTriggerName")]
+    [SerializeField] private string graffitiTriggerName = "SkillGraffiti";
+
+    [Header("Local References")]
+    [SerializeField] private Animator targetAnimator;
+    [SerializeField] private TargetWanderMotor wanderMotor;
+    [SerializeField] private bool forceDisableAnimatorRootMotion = true;
+    [SerializeField] private bool autoSetupAnimationEventRelay = true;
 
     [Header("Debug")]
     [SerializeField] private bool enableDebugLog = true;
 
-    private readonly List<GraffitiPaintZone> activeSprayPaintZones = new List<GraffitiPaintZone>();
+    private readonly List<GraffitiPaintZone> activeGraffitiZones = new List<GraffitiPaintZone>();
 
-    private Animator targetAnimator;
+    private Coroutine graffitiCastRoutine;
+
+    private LayerMask obstacleLeapObjectLayerMask;
 
     private bool enableObstacleLeapSkill;
-    private bool enableSprayPaintSkill;
-    private bool enablePaintSmokeSkill;
-    private bool enableWallRunPassive;
+    private bool enableGraffitiSkill;
+    private bool enableColorRushSkill;
+    private bool enableSpraySmokeSkill;
 
     private bool wasThreatActiveLastFrame;
     private bool autoDefensiveUsedInCurrentThreatEncounter;
     private bool isLeaping;
-    private bool isWallRunning;
 
+    private bool isGraffitiCasting;
+    private bool graffitiMovementLockActive;
+    private bool hasSavedGraffitiAgentStopState;
+    private bool savedGraffitiAgentStopState;
+
+    private bool obstacleLeapMovementModeActive;
+    private bool hasSavedObstacleLeapAgentState;
+    private bool savedObstacleLeapAgentStopped;
+    private bool savedObstacleLeapUpdatePosition;
+    private bool savedObstacleLeapUpdateRotation;
+    private bool obstacleLeapForceVisibleActive;
+
+    private bool isColorRushPassiveActive;
+    private bool isColorRushSpeedMultiplierApplied;
+    private bool hasLastTrailSpawnPosition;
+    private bool colorRushTrailPoolInitialized;
+
+    private Vector3 lastTrailSpawnPosition;
+
+    private int currentGraffitiDifficultyLevel = 1;
+    private float currentGraffitiRadius;
+    private float currentGraffitiSpawnMinDistance;
+    private float currentGraffitiSpawnMaxDistance;
+
+    private int remainingSpraySmokeUseCount;
+
+    private float runtimeStartTime = -999f;
     private float threatLastLostTime = -999f;
     private float nextObstacleLeapReadyTime = -999f;
-    private float nextSprayPaintReadyTime = -999f;
-    private float nextPaintSmokeReadyTime = -999f;
+    private float nextObstacleLeapProbeReadyTime = -999f;
+    private float nextGraffitiReadyTime = -999f;
+    private float nextSpraySmokeReadyTime = -999f;
     private float nextAutoDefensiveReadyTime = -999f;
+    private float nextDefensiveSkillCheckTime = -999f;
 
     public bool IsObstacleLeapUnlocked => enableObstacleLeapSkill;
-    public bool IsSprayPaintUnlocked => enableSprayPaintSkill;
-    public bool IsWallRunUnlocked => enableWallRunPassive;
+    public bool IsGraffitiUnlocked => enableGraffitiSkill;
+    public bool IsColorRushUnlocked => enableColorRushSkill;
+    public bool IsColorRushPassiveActive => isColorRushPassiveActive;
+    public int RemainingSpraySmokeUseCount => remainingSpraySmokeUseCount;
 
-    public override bool IsSmokeUnlocked => enablePaintSmokeSkill;
+    public override bool IsSmokeUnlocked => enableSpraySmokeSkill;
 
     public float ObstacleLeapRemainingCooldown =>
         Mathf.Max(0f, nextObstacleLeapReadyTime - Time.time);
 
-    public float SprayPaintRemainingCooldown =>
-        Mathf.Max(0f, nextSprayPaintReadyTime - Time.time);
+    public float GraffitiRemainingCooldown =>
+        Mathf.Max(0f, nextGraffitiReadyTime - Time.time);
+
+    public float ColorRushRemainingCooldown => 0f;
 
     public override float SmokeRemainingCooldown =>
-        Mathf.Max(0f, nextPaintSmokeReadyTime - Time.time);
+        Mathf.Max(0f, nextSpraySmokeReadyTime - Time.time);
 
     protected override void Awake()
     {
         base.Awake();
 
         ResolveLocalReferences();
+        ResolveObstacleLeapLayerMask();
         ClampValues();
+        ApplyGraffitiDifficultyScaling(1);
+
+        remainingSpraySmokeUseCount = spraySmokeMaxUseCount;
+        runtimeStartTime = Time.time;
     }
 
     protected override void OnValidate()
     {
         base.OnValidate();
+
+        ResolveObstacleLeapLayerMask();
         ClampValues();
     }
 
@@ -119,9 +254,13 @@ public class GraffitiArtist : TargetSkillController
         base.OnDisable();
 
         StopAllCoroutines();
-        DestroyActiveSprayPaintZones();
+        ForceEndGraffitiCastState(false);
+        EndObstacleLeapMovementMode(transform.position, false);
+        EndObstacleLeapPresentation();
+        DestroyActiveGraffitiZones();
+        DisableColorRushPassive();
+
         isLeaping = false;
-        SetWallRunAnimation(false);
     }
 
     private void Update()
@@ -130,32 +269,36 @@ public class GraffitiArtist : TargetSkillController
             return;
 
         UpdateThreatEncounterState();
-        CleanupSprayPaintZoneList();
-    }
-
-    private void LateUpdate()
-    {
-        TickWallRunPassive();
+        TryUseAutoDefensiveSkillByInterval();
+        CleanupGraffitiZoneList();
+        TryUseSafeStateGraffiti();
+        UpdateColorRushPassive();
     }
 
     public override void ApplySkillUnlocks(int targetLevel)
     {
+        enableSpraySmokeSkill = targetLevel >= spraySmokeUnlockLevel;
+        enableGraffitiSkill = targetLevel >= graffitiUnlockLevel;
         enableObstacleLeapSkill = targetLevel >= obstacleLeapUnlockLevel;
-        enableSprayPaintSkill = targetLevel >= sprayPaintUnlockLevel;
-        enablePaintSmokeSkill = targetLevel >= paintSmokeUnlockLevel;
-        enableWallRunPassive = targetLevel >= wallRunUnlockLevel;
+        enableColorRushSkill = targetLevel >= colorRushUnlockLevel;
+
+        ApplyGraffitiDifficultyScaling(targetLevel);
 
         ResetRuntimeState(true, true);
+        UpdateColorRushPassiveState();
 
         if (enableDebugLog)
         {
             Debug.Log(
                 $"[GraffitiArtist] Skill unlock applied. " +
                 $"Level: {targetLevel}, " +
+                $"SpraySmoke: {enableSpraySmokeSkill}, " +
+                $"Graffiti: {enableGraffitiSkill}, " +
                 $"ObstacleLeap: {enableObstacleLeapSkill}, " +
-                $"SprayPaint: {enableSprayPaintSkill}, " +
-                $"PaintSmoke: {enablePaintSmokeSkill}, " +
-                $"WallRun: {enableWallRunPassive}"
+                $"ColorRushPassive: {enableColorRushSkill}, " +
+                $"GraffitiRadius: {currentGraffitiRadius}, " +
+                $"GraffitiSpawnRange: {currentGraffitiSpawnMinDistance}~{currentGraffitiSpawnMaxDistance}, " +
+                $"SmokeUses: {remainingSpraySmokeUseCount}"
             );
         }
     }
@@ -167,21 +310,63 @@ public class GraffitiArtist : TargetSkillController
         base.ResetRuntimeState(destroyActiveBarricades, destroyActiveHologram);
 
         StopAllCoroutines();
-
-        DestroyActiveSprayPaintZones();
+        ForceEndGraffitiCastState(false);
+        EndObstacleLeapMovementMode(transform.position, false);
+        EndObstacleLeapPresentation();
+        DestroyActiveGraffitiZones();
+        DisableColorRushPassive();
 
         wasThreatActiveLastFrame = false;
         autoDefensiveUsedInCurrentThreatEncounter = false;
         isLeaping = false;
-        isWallRunning = false;
 
+        remainingSpraySmokeUseCount = spraySmokeMaxUseCount;
+
+        runtimeStartTime = Time.time;
         threatLastLostTime = -999f;
         nextObstacleLeapReadyTime = -999f;
-        nextSprayPaintReadyTime = -999f;
-        nextPaintSmokeReadyTime = -999f;
+        nextObstacleLeapProbeReadyTime = -999f;
+        nextGraffitiReadyTime = -999f;
+        nextSpraySmokeReadyTime = -999f;
         nextAutoDefensiveReadyTime = -999f;
+        nextDefensiveSkillCheckTime = -999f;
 
-        SetWallRunAnimation(false);
+        UpdateColorRushPassiveState();
+    }
+
+    private void TryUseAutoDefensiveSkillByInterval()
+    {
+        if (!checkDefensiveSkillInUpdate)
+            return;
+
+        if (Time.time < nextDefensiveSkillCheckTime)
+            return;
+
+        nextDefensiveSkillCheckTime = Time.time + defensiveSkillCheckInterval;
+
+        if (!HasActiveThreat())
+            return;
+
+        Vector3 escapeDestination = CalculateDefensiveEscapeDestination();
+
+        TryUseAutoDefensiveSkill(escapeDestination);
+    }
+
+    private Vector3 CalculateDefensiveEscapeDestination()
+    {
+        Vector3 fleeDirection = Vector3.zero;
+
+        if (ThreatTracker != null)
+            fleeDirection = ThreatTracker.CalculateCombinedFleeDirection();
+
+        fleeDirection.y = 0f;
+
+        if (fleeDirection.sqrMagnitude <= 0.001f)
+            fleeDirection = transform.forward;
+
+        fleeDirection.Normalize();
+
+        return transform.position + fleeDirection * defensiveEscapeDestinationDistance;
     }
 
     public override bool TryUseAutoDefensiveSkill(Vector3 escapeDestination)
@@ -189,160 +374,64 @@ public class GraffitiArtist : TargetSkillController
         if (IsTargetUnableToUseSkills())
             return false;
 
+        if (isLeaping)
+            return false;
+
+        if (isGraffitiCasting && HasActiveThreat())
+            CancelGraffitiCastByThreat(true);
+
         if (!CanUseAutoDefensiveSkill())
             return false;
 
-        bool used = false;
+        float nearestThreatDistance = GetNearestThreatDistance();
+        bool isUrgentThreat = nearestThreatDistance <= spraySmokeUrgentDistance;
 
-        if (CanUseObstacleLeapByThreatDistance())
-            used = TryUseObstacleLeap(escapeDestination);
+        if (isUrgentThreat && ShouldUseSpraySmoke(nearestThreatDistance))
+        {
+            if (TryUseSmoke())
+            {
+                CompleteAutoDefensiveSkillUse();
+                return true;
+            }
+        }
 
-        if (!used)
-            used = TryCreateSprayPaintZone();
+        if (ShouldUseObstacleLeap())
+        {
+            if (TryUseObstacleLeap(escapeDestination))
+            {
+                CompleteAutoDefensiveSkillUse();
+                return true;
+            }
 
-        if (!used)
-            used = TryUseSmoke();
+            nextObstacleLeapProbeReadyTime = Time.time + obstacleLeapProbeRetryDelay;
 
-        if (!used)
-            return false;
+            if (enableDebugLog)
+            {
+                Debug.Log(
+                    "[GraffitiArtist] Obstacle leap failed. Spray smoke fallback will be checked."
+                );
+            }
+        }
 
+        if (ShouldUseSpraySmoke(nearestThreatDistance))
+        {
+            if (TryUseSmoke())
+            {
+                CompleteAutoDefensiveSkillUse();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void CompleteAutoDefensiveSkillUse()
+    {
         nextAutoDefensiveReadyTime = Time.time + autoDefensiveSharedCooldown;
         autoDefensiveUsedInCurrentThreatEncounter = true;
 
         if (enableDebugLog)
-            Debug.Log("[GraffitiArtist] Auto defensive skill used.");
-
-        return true;
-    }
-
-    public bool TryUseObstacleLeap(Vector3 escapeDestination)
-    {
-        if (!CanUseObstacleLeap())
-            return false;
-
-        if (!TryFindLeapDestination(escapeDestination, out Vector3 leapDestination))
-            return false;
-
-        StartCoroutine(ObstacleLeapRoutine(leapDestination));
-
-        nextObstacleLeapReadyTime = Time.time + obstacleLeapCooldown;
-        PlayTargetTrigger(obstacleLeapTriggerName);
-
-        if (enableDebugLog)
-            Debug.Log("[GraffitiArtist] Obstacle leap used.");
-
-        return true;
-    }
-
-    public bool TryCreateSprayPaintZone()
-    {
-        if (!CanUseSprayPaint())
-            return false;
-
-        Vector3 spawnPosition = GetSprayPaintSpawnPosition();
-
-        if (!NavMesh.SamplePosition(
-                spawnPosition,
-                out NavMeshHit hit,
-                sprayPaintNavMeshSampleRadius,
-                NavMesh.AllAreas))
-        {
-            nextSprayPaintReadyTime = Time.time + sprayPaintRetryDelay;
-            return false;
-        }
-
-        GameObject zoneObject;
-
-        if (sprayPaintZonePrefab != null)
-        {
-            zoneObject = Instantiate(
-                sprayPaintZonePrefab,
-                hit.position,
-                Quaternion.identity
-            );
-        }
-        else
-        {
-            zoneObject = new GameObject("GraffitiPaintZone");
-            zoneObject.transform.position = hit.position;
-        }
-
-        GraffitiPaintZone paintZone = zoneObject.GetComponent<GraffitiPaintZone>();
-
-        if (paintZone == null)
-            paintZone = zoneObject.AddComponent<GraffitiPaintZone>();
-
-        paintZone.Initialize(
-            sprayPaintRadius,
-            sprayPaintDuration,
-            sprayPaintMoveSpeedMultiplier,
-            agentLayerMask,
-            enableDebugLog
-        );
-
-        activeSprayPaintZones.Add(paintZone);
-
-        nextSprayPaintReadyTime = Time.time + sprayPaintCooldown;
-        PlayTargetTrigger(sprayPaintTriggerName);
-
-        if (enableDebugLog)
-            Debug.Log("[GraffitiArtist] Spray paint zone created.");
-
-        return true;
-    }
-
-    public override bool TryUseSmoke()
-    {
-        if (!CanUseTargetSkill(TargetSkillType.Smoke))
-            return false;
-
-        if (!CanUsePaintSmoke())
-            return false;
-
-        SpawnPaintSmokeEffect();
-
-        if (ThreatTracker != null)
-            ThreatTracker.ApplySmokeDebuff(paintSmokeDetectionRadius, paintSmokeDuration);
-
-        nextPaintSmokeReadyTime = Time.time + paintSmokeCooldown;
-        PlayTargetTrigger(paintSmokeTriggerName);
-
-        if (enableDebugLog)
-            Debug.Log("[GraffitiArtist] Paint smoke used.");
-
-        return true;
-    }
-
-    private IEnumerator ObstacleLeapRoutine(Vector3 leapDestination)
-    {
-        isLeaping = true;
-
-        StopTargetNavigation();
-
-        Vector3 startPosition = transform.position;
-        float elapsed = 0f;
-
-        while (elapsed < obstacleLeapDuration)
-        {
-            elapsed += Time.deltaTime;
-
-            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, obstacleLeapDuration));
-
-            Vector3 nextPosition = Vector3.Lerp(startPosition, leapDestination, t);
-            nextPosition += Vector3.up * Mathf.Sin(t * Mathf.PI) * obstacleLeapArcHeight;
-
-            WarpTarget(nextPosition);
-
-            yield return null;
-        }
-
-        WarpTarget(leapDestination);
-        StopTargetNavigation();
-
-        isLeaping = false;
-
-        if (EscapeMotor != null)
-            EscapeMotor.TryFleeFromThreats(true);
+            Debug.Log("[GraffitiArtist] Reactive defensive skill used.");
     }
 
     private bool CanUseAutoDefensiveSkill()
@@ -365,231 +454,9 @@ public class GraffitiArtist : TargetSkillController
         return true;
     }
 
-    private bool CanUseObstacleLeap()
-    {
-        if (!enableObstacleLeapSkill)
-            return false;
-
-        if (isLeaping)
-            return false;
-
-        if (blockLeapWhenEscapeSkillBlocked && IsEscapeSkillBlocked)
-            return false;
-
-        if (Time.time < nextObstacleLeapReadyTime)
-            return false;
-
-        if (NavAgent == null)
-            return false;
-
-        return true;
-    }
-
-    private bool CanUseObstacleLeapByThreatDistance()
-    {
-        if (!CanUseObstacleLeap())
-            return false;
-
-        if (ThreatTracker == null)
-            return true;
-
-        float nearestThreatDistance = ThreatTracker.GetNearestRealAgentDistance();
-
-        return nearestThreatDistance <= obstacleLeapMinThreatDistance;
-    }
-
-    private bool CanUseSprayPaint()
-    {
-        if (!enableSprayPaintSkill)
-            return false;
-
-        if (allowOnlyOneActiveSprayPaintZone && activeSprayPaintZones.Count > 0)
-            return false;
-
-        if (Time.time < nextSprayPaintReadyTime)
-            return false;
-
-        return true;
-    }
-
-    private bool CanUsePaintSmoke()
-    {
-        if (!enablePaintSmokeSkill)
-            return false;
-
-        if (Time.time < nextPaintSmokeReadyTime)
-            return false;
-
-        return true;
-    }
-
-    private bool TryFindLeapDestination(
-        Vector3 escapeDestination,
-        out Vector3 leapDestination)
-    {
-        leapDestination = transform.position;
-
-        Vector3 direction = escapeDestination - transform.position;
-        direction.y = 0f;
-
-        if (direction.sqrMagnitude <= 0.001f && ThreatTracker != null)
-            direction = ThreatTracker.CalculateCombinedFleeDirection();
-
-        direction.y = 0f;
-
-        if (direction.sqrMagnitude <= 0.001f)
-            direction = transform.forward;
-
-        direction.Normalize();
-
-        Vector3 desiredPosition = transform.position + direction * obstacleLeapDistance;
-
-        if (!NavMesh.SamplePosition(
-                desiredPosition,
-                out NavMeshHit hit,
-                obstacleLeapNavMeshSampleRadius,
-                NavMesh.AllAreas))
-        {
-            return false;
-        }
-
-        leapDestination = hit.position;
-        return true;
-    }
-
-    private Vector3 GetSprayPaintSpawnPosition()
-    {
-        Vector3 backDirection = -transform.forward;
-        backDirection.y = 0f;
-
-        if (backDirection.sqrMagnitude <= 0.001f)
-            backDirection = Vector3.back;
-
-        backDirection.Normalize();
-
-        return transform.position + backDirection * sprayPaintSpawnBackDistance;
-    }
-
-    private void SpawnPaintSmokeEffect()
-    {
-        if (paintSmokePrefab == null)
-            return;
-
-        Vector3 spawnPosition = GetPaintSmokeSpawnPosition();
-        Quaternion spawnRotation = transform.rotation;
-
-        GameObject smokeObject = Instantiate(
-            paintSmokePrefab,
-            spawnPosition,
-            spawnRotation
-        );
-
-        if (autoDestroyPaintSmoke)
-            Destroy(smokeObject, paintSmokeDestroyDelay);
-    }
-
-    private Vector3 GetPaintSmokeSpawnPosition()
-    {
-        if (paintSmokeSpawnPoint != null)
-            return paintSmokeSpawnPoint.position + paintSmokeSpawnOffset;
-
-        return transform.position + paintSmokeSpawnOffset;
-    }
-
-    private void TickWallRunPassive()
-    {
-        bool shouldWallRun = CanUseWallRunPassive();
-
-        if (shouldWallRun && NavAgent != null)
-        {
-            NavAgent.speed *= wallRunSpeedMultiplier;
-            NavAgent.acceleration *= wallRunAccelerationMultiplier;
-        }
-
-        if (isWallRunning != shouldWallRun)
-        {
-            isWallRunning = shouldWallRun;
-            SetWallRunAnimation(isWallRunning);
-
-            if (enableDebugLog)
-                Debug.Log($"[GraffitiArtist] Wall run state changed: {isWallRunning}");
-        }
-    }
-
-    private bool CanUseWallRunPassive()
-    {
-        if (!enableWallRunPassive)
-            return false;
-
-        if (isLeaping)
-            return false;
-
-        if (TargetController == null)
-            return false;
-
-        if (requireThreatForWallRun && !TargetController.HasActiveThreat)
-            return false;
-
-        if (wallLayerMask.value == 0)
-            return false;
-
-        return IsNearWall();
-    }
-
-    private bool IsNearWall()
-    {
-        Vector3 origin = transform.position + Vector3.up * wallCheckHeightOffset;
-
-        if (Physics.SphereCast(
-                origin,
-                wallCheckSphereRadius,
-                transform.forward,
-                out _,
-                wallCheckDistance,
-                wallLayerMask))
-        {
-            return true;
-        }
-
-        if (Physics.SphereCast(
-                origin,
-                wallCheckSphereRadius,
-                -transform.forward,
-                out _,
-                wallCheckDistance,
-                wallLayerMask))
-        {
-            return true;
-        }
-
-        if (Physics.SphereCast(
-                origin,
-                wallCheckSphereRadius,
-                transform.right,
-                out _,
-                wallCheckDistance,
-                wallLayerMask))
-        {
-            return true;
-        }
-
-        if (Physics.SphereCast(
-                origin,
-                wallCheckSphereRadius,
-                -transform.right,
-                out _,
-                wallCheckDistance,
-                wallLayerMask))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
     private void UpdateThreatEncounterState()
     {
-        bool hasThreat = ThreatTracker != null && ThreatTracker.HasAnyThreat();
+        bool hasThreat = HasActiveThreat();
 
         if (hasThreat)
         {
@@ -608,71 +475,100 @@ public class GraffitiArtist : TargetSkillController
         wasThreatActiveLastFrame = hasThreat;
     }
 
-    private void StopTargetNavigation()
+    private bool HasActiveThreat()
+    {
+        return ThreatTracker != null && ThreatTracker.HasAnyThreat();
+    }
+
+    private bool CanUseNavAgent()
     {
         if (NavAgent == null)
-            return;
+            return false;
 
         if (!NavAgent.enabled)
-            return;
+            return false;
 
         if (!NavAgent.isActiveAndEnabled)
-            return;
+            return false;
 
         if (!NavAgent.isOnNavMesh)
-            return;
+            return false;
 
-        NavAgent.isStopped = false;
-        NavAgent.ResetPath();
-        NavAgent.velocity = Vector3.zero;
+        return true;
     }
 
-    private void WarpTarget(Vector3 position)
+    private void DestroyActiveGraffitiZones()
     {
-        if (NavAgent != null &&
-            NavAgent.enabled &&
-            NavAgent.isActiveAndEnabled &&
-            NavAgent.isOnNavMesh)
+        for (int i = activeGraffitiZones.Count - 1; i >= 0; i--)
         {
-            NavAgent.Warp(position);
+            GraffitiPaintZone graffitiZone = activeGraffitiZones[i];
+
+            if (graffitiZone != null)
+                Destroy(graffitiZone.gameObject);
         }
-        else
-        {
-            transform.position = position;
-        }
+
+        activeGraffitiZones.Clear();
     }
 
-    private void DestroyActiveSprayPaintZones()
+    private void CleanupGraffitiZoneList()
     {
-        for (int i = activeSprayPaintZones.Count - 1; i >= 0; i--)
+        for (int i = activeGraffitiZones.Count - 1; i >= 0; i--)
         {
-            GraffitiPaintZone paintZone = activeSprayPaintZones[i];
-
-            if (paintZone != null)
-                Destroy(paintZone.gameObject);
-        }
-
-        activeSprayPaintZones.Clear();
-    }
-
-    private void CleanupSprayPaintZoneList()
-    {
-        for (int i = activeSprayPaintZones.Count - 1; i >= 0; i--)
-        {
-            if (activeSprayPaintZones[i] == null)
-                activeSprayPaintZones.RemoveAt(i);
+            if (activeGraffitiZones[i] == null)
+                activeGraffitiZones.RemoveAt(i);
         }
     }
 
     private void ResolveLocalReferences()
     {
         if (targetAnimator == null)
-            targetAnimator = GetComponentInChildren<Animator>();
+            targetAnimator = GetComponentInChildren<Animator>(true);
+
+        if (wanderMotor == null)
+            wanderMotor = GetComponent<TargetWanderMotor>();
+
+        if (targetVisibilityController == null)
+            targetVisibilityController = GetComponent<TargetVisibilityController>();
+
+        if (targetAnimator != null && forceDisableAnimatorRootMotion)
+            targetAnimator.applyRootMotion = false;
+
+        if (!autoSetupAnimationEventRelay)
+            return;
+
+        if (targetAnimator == null)
+            return;
+
+        GraffitiArtistAnimationEventRelay relay =
+            targetAnimator.GetComponent<GraffitiArtistAnimationEventRelay>();
+
+        if (relay == null)
+            relay = targetAnimator.gameObject.AddComponent<GraffitiArtistAnimationEventRelay>();
+
+        relay.SetOwner(this);
+    }
+
+    private void ResolveObstacleLeapLayerMask()
+    {
+        obstacleLeapObjectLayerMask = 0;
+
+        if (string.IsNullOrWhiteSpace(obstacleLeapLayerName))
+            return;
+
+        int obstacleLayer = LayerMask.NameToLayer(obstacleLeapLayerName);
+
+        if (obstacleLayer < 0)
+            return;
+
+        obstacleLeapObjectLayerMask = 1 << obstacleLayer;
     }
 
     private void PlayTargetTrigger(string triggerName)
     {
         if (targetAnimator == null)
+            return;
+
+        if (string.IsNullOrEmpty(triggerName))
             return;
 
         if (!HasAnimatorParameter(
@@ -686,20 +582,23 @@ public class GraffitiArtist : TargetSkillController
         targetAnimator.SetTrigger(triggerName);
     }
 
-    private void SetWallRunAnimation(bool value)
+    private void ResetTargetTrigger(string triggerName)
     {
         if (targetAnimator == null)
             return;
 
+        if (string.IsNullOrEmpty(triggerName))
+            return;
+
         if (!HasAnimatorParameter(
                 targetAnimator,
-                wallRunBoolName,
-                AnimatorControllerParameterType.Bool))
+                triggerName,
+                AnimatorControllerParameterType.Trigger))
         {
             return;
         }
 
-        targetAnimator.SetBool(wallRunBoolName, value);
+        targetAnimator.ResetTrigger(triggerName);
     }
 
     private bool HasAnimatorParameter(
@@ -729,215 +628,100 @@ public class GraffitiArtist : TargetSkillController
         return false;
     }
 
+    private void CancelGraffitiAnimationIfNeeded()
+    {
+        if (!cancelGraffitiAnimationOnThreat)
+            return;
+
+        if (targetAnimator == null)
+            return;
+
+        if (string.IsNullOrEmpty(graffitiCancelStateName))
+            return;
+
+        targetAnimator.CrossFade(
+            graffitiCancelStateName,
+            graffitiCancelCrossFadeDuration,
+            0
+        );
+    }
+
     private void ClampValues()
     {
         obstacleLeapCooldown = Mathf.Max(0.1f, obstacleLeapCooldown);
-        obstacleLeapDistance = Mathf.Max(0.1f, obstacleLeapDistance);
         obstacleLeapDuration = Mathf.Max(0.05f, obstacleLeapDuration);
         obstacleLeapArcHeight = Mathf.Max(0f, obstacleLeapArcHeight);
+        obstacleLeapLandingDelay = Mathf.Max(0f, obstacleLeapLandingDelay);
         obstacleLeapNavMeshSampleRadius = Mathf.Max(0.1f, obstacleLeapNavMeshSampleRadius);
-        obstacleLeapMinThreatDistance = Mathf.Max(0.1f, obstacleLeapMinThreatDistance);
+        obstacleLeapActivationMinDistance = Mathf.Max(0f, obstacleLeapActivationMinDistance);
+        obstacleLeapActivationMaxDistance = Mathf.Max(
+            obstacleLeapActivationMinDistance,
+            obstacleLeapActivationMaxDistance
+        );
 
-        sprayPaintCooldown = Mathf.Max(0.1f, sprayPaintCooldown);
-        sprayPaintRetryDelay = Mathf.Max(0.1f, sprayPaintRetryDelay);
-        sprayPaintDuration = Mathf.Max(0.1f, sprayPaintDuration);
-        sprayPaintRadius = Mathf.Max(0.1f, sprayPaintRadius);
-        sprayPaintMoveSpeedMultiplier = Mathf.Clamp(sprayPaintMoveSpeedMultiplier, 0.1f, 1f);
-        sprayPaintSpawnBackDistance = Mathf.Max(0f, sprayPaintSpawnBackDistance);
-        sprayPaintNavMeshSampleRadius = Mathf.Max(0.1f, sprayPaintNavMeshSampleRadius);
+        obstacleLeapSearchRadius = Mathf.Max(0.1f, obstacleLeapSearchRadius);
+        obstacleLeapLandingDistance = Mathf.Max(0.1f, obstacleLeapLandingDistance);
+        obstacleLeapLandingSideOffset = Mathf.Max(0f, obstacleLeapLandingSideOffset);
+        obstacleLeapLandingSampleCount = Mathf.Max(1, obstacleLeapLandingSampleCount);
+        obstacleLeapMinObjectHeight = Mathf.Max(0f, obstacleLeapMinObjectHeight);
+        obstacleLeapMaxObjectHeight = Mathf.Max(
+            obstacleLeapMinObjectHeight,
+            obstacleLeapMaxObjectHeight
+        );
+        obstacleLeapMinDirectionDot = Mathf.Clamp(obstacleLeapMinDirectionDot, -1f, 1f);
+        obstacleLeapLandingClearanceRadius = Mathf.Max(0.05f, obstacleLeapLandingClearanceRadius);
+        obstacleLeapLandingClearanceHeight = Mathf.Max(0f, obstacleLeapLandingClearanceHeight);
+        obstacleLeapProbeRetryDelay = Mathf.Max(0.1f, obstacleLeapProbeRetryDelay);
 
-        paintSmokeCooldown = Mathf.Max(0.1f, paintSmokeCooldown);
-        paintSmokeDuration = Mathf.Max(0.1f, paintSmokeDuration);
-        paintSmokeDetectionRadius = Mathf.Max(0f, paintSmokeDetectionRadius);
-        paintSmokeDestroyDelay = Mathf.Max(0.1f, paintSmokeDestroyDelay);
+        graffitiCooldown = Mathf.Clamp(graffitiCooldown, 30f, 40f);
+        graffitiRetryDelay = Mathf.Max(0.1f, graffitiRetryDelay);
+        graffitiCancelledRetryDelay = Mathf.Max(0.1f, graffitiCancelledRetryDelay);
+        graffitiDuration = Mathf.Max(0.1f, graffitiDuration);
+        graffitiRadius = Mathf.Max(0.1f, graffitiRadius);
+        graffitiNavMeshSampleRadius = Mathf.Max(0.1f, graffitiNavMeshSampleRadius);
+        graffitiAnimationEventTimeout = Mathf.Max(0.5f, graffitiAnimationEventTimeout);
+        graffitiCancelCrossFadeDuration = Mathf.Max(0f, graffitiCancelCrossFadeDuration);
 
-        wallCheckDistance = Mathf.Max(0.1f, wallCheckDistance);
-        wallCheckSphereRadius = Mathf.Max(0.01f, wallCheckSphereRadius);
-        wallCheckHeightOffset = Mathf.Max(0f, wallCheckHeightOffset);
-        wallRunSpeedMultiplier = Mathf.Max(1f, wallRunSpeedMultiplier);
-        wallRunAccelerationMultiplier = Mathf.Max(1f, wallRunAccelerationMultiplier);
+        graffitiRandomSpawnMinDistance = Mathf.Max(0f, graffitiRandomSpawnMinDistance);
+        graffitiRandomSpawnMaxDistance = Mathf.Max(0.1f, graffitiRandomSpawnMaxDistance);
+        graffitiRandomSpawnSampleCount = Mathf.Max(1, graffitiRandomSpawnSampleCount);
 
+        maxGraffitiDifficultyLevel = Mathf.Clamp(maxGraffitiDifficultyLevel, 1, 10);
+        maxGraffitiRadius = Mathf.Max(graffitiRadius, maxGraffitiRadius);
+        maxGraffitiSpawnMinDistance = Mathf.Max(0f, maxGraffitiSpawnMinDistance);
+        maxGraffitiSpawnMaxDistance = Mathf.Max(
+            maxGraffitiSpawnMinDistance,
+            maxGraffitiSpawnMaxDistance
+        );
+
+        safeGraffitiInitialDelay = Mathf.Max(0f, safeGraffitiInitialDelay);
+        safeGraffitiMinNoThreatTime = Mathf.Max(0f, safeGraffitiMinNoThreatTime);
+
+        colorRushTrailPoolSize = Mathf.Max(1, colorRushTrailPoolSize);
+        colorRushPassiveSpeedMultiplier = Mathf.Max(1f, colorRushPassiveSpeedMultiplier);
+        colorRushTrailSpawnDistance = Mathf.Max(0.1f, colorRushTrailSpawnDistance);
+        colorRushTrailLifetime = Mathf.Max(0.1f, colorRushTrailLifetime);
+        colorRushTrailNavMeshSampleRadius = Mathf.Max(0.1f, colorRushTrailNavMeshSampleRadius);
+        colorRushTrailYOffset = Mathf.Max(0f, colorRushTrailYOffset);
+        colorRushTrailMinMoveSpeed = Mathf.Max(0f, colorRushTrailMinMoveSpeed);
+
+        spraySmokeCooldown = Mathf.Max(0.1f, spraySmokeCooldown);
+        spraySmokeActivationDistance = Mathf.Max(0.1f, spraySmokeActivationDistance);
+        spraySmokeUrgentDistance = Mathf.Clamp(
+            spraySmokeUrgentDistance,
+            0.1f,
+            spraySmokeActivationDistance
+        );
+        spraySmokeMaxUseCount = Mathf.Max(0, spraySmokeMaxUseCount);
+
+        spraySmokeUnlockLevel = Mathf.Max(1, spraySmokeUnlockLevel);
+        graffitiUnlockLevel = Mathf.Max(1, graffitiUnlockLevel);
         obstacleLeapUnlockLevel = Mathf.Max(1, obstacleLeapUnlockLevel);
-        sprayPaintUnlockLevel = Mathf.Max(1, sprayPaintUnlockLevel);
-        paintSmokeUnlockLevel = Mathf.Max(1, paintSmokeUnlockLevel);
-        wallRunUnlockLevel = Mathf.Max(1, wallRunUnlockLevel);
+        colorRushUnlockLevel = Mathf.Max(1, colorRushUnlockLevel);
 
         autoDefensiveSharedCooldown = Mathf.Max(0.1f, autoDefensiveSharedCooldown);
         threatResetDelay = Mathf.Max(0f, threatResetDelay);
-    }
-}
-
-public class GraffitiPaintZone : MonoBehaviour
-{
-    [SerializeField] private float radius = 3.5f;
-    [SerializeField] private float duration = 7f;
-    [SerializeField][Range(0.1f, 1f)] private float moveSpeedMultiplier = 0.55f;
-    [SerializeField] private LayerMask agentLayerMask;
-    [SerializeField] private float tickInterval = 0.05f;
-    [SerializeField] private bool enableDebugLog = true;
-
-    private readonly Dictionary<NavMeshAgent, float> originalAgentSpeeds = new Dictionary<NavMeshAgent, float>();
-    private readonly HashSet<NavMeshAgent> agentsInsideThisTick = new HashSet<NavMeshAgent>();
-
-    private float spawnTime;
-    private float nextTickTime;
-
-    public void Initialize(
-        float radius,
-        float duration,
-        float moveSpeedMultiplier,
-        LayerMask agentLayerMask,
-        bool enableDebugLog)
-    {
-        this.radius = Mathf.Max(0.1f, radius);
-        this.duration = Mathf.Max(0.1f, duration);
-        this.moveSpeedMultiplier = Mathf.Clamp(moveSpeedMultiplier, 0.1f, 1f);
-        this.agentLayerMask = agentLayerMask;
-        this.enableDebugLog = enableDebugLog;
-
-        spawnTime = Time.time;
-        nextTickTime = Time.time;
-
-        if (this.enableDebugLog)
-            Debug.Log("[GraffitiPaintZone] Initialized.");
-    }
-
-    private void Awake()
-    {
-        spawnTime = Time.time;
-    }
-
-    private void Update()
-    {
-        if (Time.time - spawnTime >= duration)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
-        if (Time.time < nextTickTime)
-            return;
-
-        nextTickTime = Time.time + tickInterval;
-
-        TickAgentsInsideZone();
-    }
-
-    private void OnDestroy()
-    {
-        RestoreAllAgents();
-    }
-
-    private void TickAgentsInsideZone()
-    {
-        agentsInsideThisTick.Clear();
-
-        Collider[] colliders;
-
-        if (agentLayerMask.value != 0)
-        {
-            colliders = Physics.OverlapSphere(
-                transform.position,
-                radius,
-                agentLayerMask
-            );
-        }
-        else
-        {
-            colliders = Physics.OverlapSphere(
-                transform.position,
-                radius
-            );
-        }
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Collider currentCollider = colliders[i];
-
-            if (currentCollider == null)
-                continue;
-
-            AgentController agentController =
-                currentCollider.GetComponentInParent<AgentController>();
-
-            if (agentController == null)
-                continue;
-
-            NavMeshAgent navAgent = agentController.GetComponent<NavMeshAgent>();
-
-            if (navAgent == null)
-                continue;
-
-            ApplySlow(navAgent);
-            agentsInsideThisTick.Add(navAgent);
-        }
-
-        RestoreAgentsOutsideZone();
-    }
-
-    private void ApplySlow(NavMeshAgent navAgent)
-    {
-        if (navAgent == null)
-            return;
-
-        if (!originalAgentSpeeds.ContainsKey(navAgent))
-            originalAgentSpeeds.Add(navAgent, navAgent.speed);
-
-        float originalSpeed = originalAgentSpeeds[navAgent];
-        float slowedSpeed = originalSpeed * moveSpeedMultiplier;
-
-        navAgent.speed = Mathf.Min(navAgent.speed, slowedSpeed);
-    }
-
-    private void RestoreAgentsOutsideZone()
-    {
-        List<NavMeshAgent> restoreTargets = new List<NavMeshAgent>();
-
-        foreach (KeyValuePair<NavMeshAgent, float> pair in originalAgentSpeeds)
-        {
-            NavMeshAgent navAgent = pair.Key;
-
-            if (navAgent == null)
-            {
-                restoreTargets.Add(navAgent);
-                continue;
-            }
-
-            if (!agentsInsideThisTick.Contains(navAgent))
-                restoreTargets.Add(navAgent);
-        }
-
-        for (int i = 0; i < restoreTargets.Count; i++)
-        {
-            RestoreAgent(restoreTargets[i]);
-        }
-    }
-
-    private void RestoreAllAgents()
-    {
-        List<NavMeshAgent> restoreTargets = new List<NavMeshAgent>();
-
-        foreach (KeyValuePair<NavMeshAgent, float> pair in originalAgentSpeeds)
-        {
-            restoreTargets.Add(pair.Key);
-        }
-
-        for (int i = 0; i < restoreTargets.Count; i++)
-        {
-            RestoreAgent(restoreTargets[i]);
-        }
-    }
-
-    private void RestoreAgent(NavMeshAgent navAgent)
-    {
-        if (navAgent != null && originalAgentSpeeds.TryGetValue(navAgent, out float originalSpeed))
-            navAgent.speed = originalSpeed;
-
-        originalAgentSpeeds.Remove(navAgent);
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        Gizmos.DrawWireSphere(transform.position, radius);
+        defensiveSkillCheckInterval = Mathf.Max(0.05f, defensiveSkillCheckInterval);
+        defensiveEscapeDestinationDistance = Mathf.Max(1f, defensiveEscapeDestinationDistance);
     }
 }

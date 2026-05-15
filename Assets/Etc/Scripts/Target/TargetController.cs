@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using CodeMonkey.HealthSystemCM;
 using UnityEngine;
 using UnityEngine.AI;
@@ -27,6 +28,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     [SerializeField] private float recoveryDelayAfterSafe = 2f;
     [SerializeField] private float recoveryAmountTotal = 30f;
     [SerializeField] private float recoveryDuration = 1.5f;
+
+    private readonly HashSet<Component> fleeHealthDrainBlockSources = new HashSet<Component>();
 
     private NavMeshAgent navAgent;
     private TargetWanderMotor wanderMotor;
@@ -58,6 +61,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
     public bool HasUsedEmergencyEscape => escapeMotor != null && escapeMotor.HasUsedEmergencyEscape;
     public bool IsEmergencyEscaping => escapeMotor != null && escapeMotor.IsEmergencyEscaping;
     public bool CanBeCaught => !isCaught && (escapeMotor == null || escapeMotor.CanBeCaught);
+    public bool IsFleeHealthDrainBlocked => fleeHealthDrainBlockSources.Count > 0;
+
     public int RemainingEmergencyEscapeCount => escapeMotor != null ? escapeMotor.RemainingEmergencyEscapeCount : 0;
 
     public float CurrentHealth => healthSystem != null ? healthSystem.GetHealth() : 0f;
@@ -144,6 +149,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         recoveryStartHealth = 0f;
         hadThreatLastFrame = false;
 
+        ClearFleeHealthDrainBlockSources();
+
         if (wanderMotor != null)
         {
             wanderMotor.StopWandering(true);
@@ -191,6 +198,22 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             RecreateHealthSystem();
     }
 
+    public void SetFleeHealthDrainBlocked(Component source, bool blocked)
+    {
+        if (source == null)
+            return;
+
+        if (blocked)
+            fleeHealthDrainBlockSources.Add(source);
+        else
+            fleeHealthDrainBlockSources.Remove(source);
+    }
+
+    public void ClearFleeHealthDrainBlockSources()
+    {
+        fleeHealthDrainBlockSources.Clear();
+    }
+
     private void HandleThreatState()
     {
         safeRecoveryTimer = 0f;
@@ -201,8 +224,11 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
         escapeMotor.RefreshDynamicMovementSettings(true, GetHealthRatio());
 
-        float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
-        healthSystem.Damage(damageAmount);
+        if (!IsFleeHealthDrainBlocked)
+        {
+            float damageAmount = fleeHealthDrainPerSecond * Time.deltaTime;
+            healthSystem.Damage(damageAmount);
+        }
 
         if (healthSystem == null || healthSystem.IsDead())
             return;
@@ -480,6 +506,8 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         isRecoveringAfterSafe = false;
         recoveryStartHealth = 0f;
         hadThreatLastFrame = false;
+
+        ClearFleeHealthDrainBlockSources();
 
         if (resetHealth)
             RecreateHealthSystem();

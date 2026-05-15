@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -221,6 +222,8 @@ public class TargetEscapeMotor : MonoBehaviour
     private float activeSlowMultiplier = 1f;
     private float stuckTimer = 0f;
 
+    private readonly Dictionary<object, float> externalSpeedMultipliers = new Dictionary<object, float>();
+
     private int emergencyEscapeUsedCount;
     private int fakeBoxCandidateLimitForNextSearch = -1;
 
@@ -288,13 +291,65 @@ public class TargetEscapeMotor : MonoBehaviour
         skillController = controller;
     }
 
+    public void SetExternalSpeedMultiplier(object source, float multiplier)
+    {
+        if (source == null)
+            return;
+
+        externalSpeedMultipliers[source] = Mathf.Max(0f, multiplier);
+
+        bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
+        RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
+    }
+
+    public void RemoveExternalSpeedMultiplier(object source)
+    {
+        if (source == null)
+            return;
+
+        if (!externalSpeedMultipliers.Remove(source))
+            return;
+
+        bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
+        RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
+    }
+
+    public void ClearExternalSpeedMultipliers()
+    {
+        if (externalSpeedMultipliers.Count <= 0)
+            return;
+
+        externalSpeedMultipliers.Clear();
+
+        bool hasThreat = threatTracker != null && threatTracker.HasAnyThreat();
+        RefreshDynamicMovementSettings(hasThreat, lastKnownHealthRatio);
+    }
+
+    private float GetExternalSpeedMultiplier()
+    {
+        if (externalSpeedMultipliers.Count <= 0)
+            return 1f;
+
+        float result = 1f;
+
+        foreach (KeyValuePair<object, float> pair in externalSpeedMultipliers)
+        {
+            result *= Mathf.Max(0f, pair.Value);
+        }
+
+        return Mathf.Max(0f, result);
+    }
+
     public void ApplyNavAgentBaseSettings()
     {
         if (navAgent == null)
             return;
 
-        navAgent.speed = settings.fleeMoveSpeed;
-        navAgent.acceleration = settings.fleeAcceleration;
+        float speed = settings.fleeMoveSpeed * GetExternalSpeedMultiplier();
+        float acceleration = settings.fleeAcceleration * GetExternalSpeedMultiplier();
+
+        navAgent.speed = speed;
+        navAgent.acceleration = acceleration;
         navAgent.angularSpeed = settings.fleeAngularSpeed;
         navAgent.autoBraking = false;
         navAgent.autoRepath = true;
@@ -317,8 +372,13 @@ public class TargetEscapeMotor : MonoBehaviour
             acceleration *= settings.panicSpeedMultiplier;
         }
 
+        float externalSpeedMultiplier = GetExternalSpeedMultiplier();
+
         speed *= activeSlowMultiplier;
         acceleration *= activeSlowMultiplier;
+
+        speed *= externalSpeedMultiplier;
+        acceleration *= externalSpeedMultiplier;
 
         navAgent.speed = speed;
         navAgent.acceleration = acceleration;
@@ -506,6 +566,7 @@ public class TargetEscapeMotor : MonoBehaviour
         isSlowed = false;
         isEmergencyEscaping = false;
         activeSlowMultiplier = 1f;
+        externalSpeedMultipliers.Clear();
         lastRepathTime = -999f;
         lastKnownHealthRatio = 1f;
         currentDestinationSetTime = -999f;
@@ -1242,6 +1303,7 @@ public class TargetEscapeMotor : MonoBehaviour
         isSlowed = false;
         isEmergencyEscaping = false;
         activeSlowMultiplier = 1f;
+        externalSpeedMultipliers.Clear();
         hasCurrentDestination = false;
         currentDestinationSetTime = -999f;
         stuckTimer = 0f;

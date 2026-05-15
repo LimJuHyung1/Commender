@@ -38,6 +38,10 @@ public class TargetAnimationController : MonoBehaviour
     [SerializeField] private string timeOverTriggerName = "TimeOver";
     [SerializeField] private string exhaustedTriggerName = "Exhausted";
 
+    [Header("Graffiti Artist Skill Triggers")]
+    [SerializeField] private string graffitiSkillTriggerName = "SkillGraffiti";
+    [SerializeField] private string obstacleLeapTriggerName = "SkillObstacleLeap";
+
     [Header("Movement Detection")]
     [SerializeField] private float movingSpeedThreshold = 0.08f;
     [SerializeField] private float arriveDistance = 0.35f;
@@ -46,6 +50,8 @@ public class TargetAnimationController : MonoBehaviour
     [Header("Skill Animation Duration")]
     [SerializeField] private float communicationJamLockDuration = 1.2f;
     [SerializeField] private float commandDistortionLockDuration = 1.2f;
+    [SerializeField] private float graffitiSkillLockDuration = 0.8f;
+    [SerializeField] private float obstacleLeapLockDuration = 0.45f;
     [SerializeField] private bool useRootForLockedSkill = true;
 
     [Header("End State")]
@@ -69,6 +75,8 @@ public class TargetAnimationController : MonoBehaviour
     private int capturedTriggerHash;
     private int timeOverTriggerHash;
     private int exhaustedTriggerHash;
+    private int graffitiSkillTriggerHash;
+    private int obstacleLeapTriggerHash;
 
     private bool hasStateParameter;
     private bool hasMoveSpeedParameter;
@@ -83,6 +91,8 @@ public class TargetAnimationController : MonoBehaviour
     private bool hasCapturedTrigger;
     private bool hasTimeOverTrigger;
     private bool hasExhaustedTrigger;
+    private bool hasGraffitiSkillTrigger;
+    private bool hasObstacleLeapTrigger;
 
     private bool isSkillLocked;
     private bool isTimeOver;
@@ -119,6 +129,8 @@ public class TargetAnimationController : MonoBehaviour
 
         communicationJamLockDuration = Mathf.Max(0.01f, communicationJamLockDuration);
         commandDistortionLockDuration = Mathf.Max(0.01f, commandDistortionLockDuration);
+        graffitiSkillLockDuration = Mathf.Max(0.01f, graffitiSkillLockDuration);
+        obstacleLeapLockDuration = Mathf.Max(0.01f, obstacleLeapLockDuration);
     }
 
     private void Update()
@@ -183,6 +195,24 @@ public class TargetAnimationController : MonoBehaviour
             commandDistortionTriggerHash,
             hasCommandDistortionTrigger,
             commandDistortionLockDuration
+        );
+    }
+
+    public void PlayGraffitiSkill()
+    {
+        PlayLockedSkillAnimation(
+            graffitiSkillTriggerHash,
+            hasGraffitiSkillTrigger,
+            graffitiSkillLockDuration
+        );
+    }
+
+    public void PlayObstacleLeapSkill()
+    {
+        PlayLockedSkillAnimation(
+            obstacleLeapTriggerHash,
+            hasObstacleLeapTrigger,
+            obstacleLeapLockDuration
         );
     }
 
@@ -281,6 +311,9 @@ public class TargetAnimationController : MonoBehaviour
         if (IsSpecialAnimationBlocked())
             return;
 
+        if (!hasTrigger)
+            return;
+
         StopSkillLockRoutine();
         skillLockRoutine = StartCoroutine(LockedSkillRoutine(triggerHash, hasTrigger, duration));
     }
@@ -291,9 +324,20 @@ public class TargetAnimationController : MonoBehaviour
         SetBoolSafe(skillLockedHash, true, hasSkillLockedParameter);
         SetTriggerSafe(triggerHash, hasTrigger);
 
-        if (useRootForLockedSkill && escapeMotor != null)
+        if (useRootForLockedSkill)
         {
-            escapeMotor.ApplyRoot(duration);
+            if (targetController != null)
+            {
+                targetController.ApplyRoot(duration);
+            }
+            else if (escapeMotor != null)
+            {
+                escapeMotor.ApplyRoot(duration);
+            }
+            else
+            {
+                BeginManualAgentLock();
+            }
         }
         else
         {
@@ -551,6 +595,8 @@ public class TargetAnimationController : MonoBehaviour
         capturedTriggerHash = Animator.StringToHash(capturedTriggerName);
         timeOverTriggerHash = Animator.StringToHash(timeOverTriggerName);
         exhaustedTriggerHash = Animator.StringToHash(exhaustedTriggerName);
+        graffitiSkillTriggerHash = Animator.StringToHash(graffitiSkillTriggerName);
+        obstacleLeapTriggerHash = Animator.StringToHash(obstacleLeapTriggerName);
     }
 
     private void CacheAnimatorParameterStatus()
@@ -568,6 +614,8 @@ public class TargetAnimationController : MonoBehaviour
         hasCapturedTrigger = HasAnimatorParameter(capturedTriggerName, AnimatorControllerParameterType.Trigger);
         hasTimeOverTrigger = HasAnimatorParameter(timeOverTriggerName, AnimatorControllerParameterType.Trigger);
         hasExhaustedTrigger = HasAnimatorParameter(exhaustedTriggerName, AnimatorControllerParameterType.Trigger);
+        hasGraffitiSkillTrigger = HasAnimatorParameter(graffitiSkillTriggerName, AnimatorControllerParameterType.Trigger);
+        hasObstacleLeapTrigger = HasAnimatorParameter(obstacleLeapTriggerName, AnimatorControllerParameterType.Trigger);
     }
 
     private bool HasAnimatorParameter(string parameterName, AnimatorControllerParameterType parameterType)
@@ -642,6 +690,8 @@ public class TargetAnimationController : MonoBehaviour
         ResetTriggerSafe(capturedTriggerHash, hasCapturedTrigger);
         ResetTriggerSafe(timeOverTriggerHash, hasTimeOverTrigger);
         ResetTriggerSafe(exhaustedTriggerHash, hasExhaustedTrigger);
+        ResetTriggerSafe(graffitiSkillTriggerHash, hasGraffitiSkillTrigger);
+        ResetTriggerSafe(obstacleLeapTriggerHash, hasObstacleLeapTrigger);
 
         SetBoolSafe(skillLockedHash, false, hasSkillLockedParameter);
         SetBoolSafe(emergencyEscapingHash, false, hasEmergencyEscapingParameter);

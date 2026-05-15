@@ -7,7 +7,8 @@ public class AgentStateController : MonoBehaviour
     {
         None,
         ChasingTarget,
-        BlindedBySmoke
+        BlindedBySmoke,
+        SkillCommandBlocked
     }
 
     [Header("References")]
@@ -18,6 +19,7 @@ public class AgentStateController : MonoBehaviour
     [Header("Sprites")]
     [SerializeField] private Sprite eyeSprite;
     [SerializeField] private Sprite eyeSlashSprite;
+    [SerializeField] private Sprite skillBlockedSprite;
 
     [Header("Local Position")]
     [SerializeField] private Vector3 localOffset = Vector3.zero;
@@ -111,6 +113,12 @@ public class AgentStateController : MonoBehaviour
                 stateIcon.enabled = true;
                 stateIcon.color = Color.white;
                 break;
+
+            case AgentAwarenessState.SkillCommandBlocked:
+                stateIcon.sprite = skillBlockedSprite != null ? skillBlockedSprite : eyeSlashSprite;
+                stateIcon.enabled = true;
+                stateIcon.color = Color.white;
+                break;
         }
 
         if (forceUpdateTransform)
@@ -134,8 +142,12 @@ public class AgentStateController : MonoBehaviour
     {
         currentLocalOffset = localOffset;
 
-        if (targetCamera == null || iconRoot.parent == null || Mathf.Abs(towardCameraOffset) <= 0.0001f)
+        if (targetCamera == null ||
+            iconRoot.parent == null ||
+            Mathf.Abs(towardCameraOffset) <= 0.0001f)
+        {
             return;
+        }
 
         Vector3 toCameraWorld = targetCamera.transform.position - iconRoot.parent.position;
 
@@ -156,6 +168,9 @@ public class AgentStateController : MonoBehaviour
         if (toCamera.sqrMagnitude <= 0.0001f)
             return;
 
-        iconRoot.rotation = Quaternion.LookRotation(toCamera.normalized, targetCamera.transform.up);
+        iconRoot.rotation = Quaternion.LookRotation(
+            toCamera.normalized,
+            targetCamera.transform.up
+        );
     }
 }

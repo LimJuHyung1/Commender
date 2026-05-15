@@ -1,17 +1,24 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class LobbyStageSelect : MonoBehaviour
 {
     [Header("Scene")]
-    public string gameSceneName = "Stage1";
+    [SerializeField] private string gameSceneName = "Stage1";
 
     [Header("Progress")]
-    public int firstStageIndex = 0;
-    public int firstDifficultyIndex = 0;
+    [SerializeField] private int firstStageIndex = 0;
+    [SerializeField] private int firstDifficultyIndex = 0;
 
     [Header("Debug")]
-    public bool resetProgressOnStart = false;
-    public int debugStageNumber = 1;
+    [SerializeField] private bool resetProgressOnStart = false;
+    [SerializeField] private int debugStageNumber = 10;
+
+    [Header("Debug Target Buttons")]
+    [SerializeField] private Button[] debugTargetButtons;
+    [SerializeField, Range(0.1f, 1f)] private float unclearedButtonAlpha = 1.0f;
+    [SerializeField, Range(0.1f, 1f)] private float clearedButtonAlpha = 0.35f;
+    [SerializeField] private bool keepClearedButtonsInteractable = true;
 
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string SelectedDifficultyKey = "SelectedDifficultyIndex";
@@ -23,31 +30,47 @@ public class LobbyStageSelect : MonoBehaviour
             ResetProgress();
         else
             EnsureDefaultProgress();
+
+        RefreshDebugTargetButtonVisuals();
     }
 
     public void PlayButton()
     {
-        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
-        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
-        PlayerPrefs.Save();
+        SaveBaseProgressPrefs();
 
         StageMapManager.LoadNormalGameScene(gameSceneName);
     }
 
     public void DebugStageButton()
     {
-        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
-        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
-        PlayerPrefs.Save();
+        DebugStageButtonByTargetIndex(0);
+    }
 
-        StageMapManager.LoadDebugStageScene(gameSceneName, debugStageNumber);
+    public void DebugStageTargetButton1()
+    {
+        DebugStageButtonByTargetIndex(0);
+    }
+
+    public void DebugStageTargetButton2()
+    {
+        DebugStageButtonByTargetIndex(1);
+    }
+
+    public void DebugStageTargetButton3()
+    {
+        DebugStageButtonByTargetIndex(2);
+    }
+
+    public void DebugStageButtonByTargetIndex(int targetPrefabIndex)
+    {
+        SaveBaseProgressPrefs();
+
+        StageMapManager.LoadDebugStageScene(gameSceneName, debugStageNumber, targetPrefabIndex);
     }
 
     public void DebugStageButtonByNumber(int stageNumber)
     {
-        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
-        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
-        PlayerPrefs.Save();
+        SaveBaseProgressPrefs();
 
         StageMapManager.LoadDebugStageScene(gameSceneName, stageNumber);
     }
@@ -60,6 +83,48 @@ public class LobbyStageSelect : MonoBehaviour
         PlayerPrefs.Save();
 
         StageMapManager.ClearDebugStageSelection();
+
+        int buttonCount = debugTargetButtons != null ? debugTargetButtons.Length : 0;
+        StageMapManager.ClearDebugTargetClearStates(debugStageNumber, buttonCount);
+
+        RefreshDebugTargetButtonVisuals();
+    }
+
+    public void RefreshDebugTargetButtonVisuals()
+    {
+        if (debugTargetButtons == null || debugTargetButtons.Length == 0)
+            return;
+
+        for (int i = 0; i < debugTargetButtons.Length; i++)
+        {
+            Button button = debugTargetButtons[i];
+
+            if (button == null)
+                continue;
+
+            bool isCleared = StageMapManager.IsDebugTargetCleared(debugStageNumber, i);
+
+            ApplyButtonVisual(button, isCleared);
+        }
+    }
+
+    private void ApplyButtonVisual(Button button, bool isCleared)
+    {
+        if (button == null)
+            return;
+
+        CanvasGroup canvasGroup = button.GetComponent<CanvasGroup>();
+
+        if (canvasGroup == null)
+            canvasGroup = button.gameObject.AddComponent<CanvasGroup>();
+
+        canvasGroup.alpha = isCleared ? clearedButtonAlpha : unclearedButtonAlpha;
+
+        bool canClick = keepClearedButtonsInteractable || !isCleared;
+
+        button.interactable = canClick;
+        canvasGroup.interactable = canClick;
+        canvasGroup.blocksRaycasts = canClick;
     }
 
     private void EnsureDefaultProgress()
@@ -73,6 +138,13 @@ public class LobbyStageSelect : MonoBehaviour
         if (!PlayerPrefs.HasKey(SelectedDifficultyKey))
             PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
 
+        PlayerPrefs.Save();
+    }
+
+    private void SaveBaseProgressPrefs()
+    {
+        PlayerPrefs.SetInt(SelectedDifficultyKey, Mathf.Max(0, firstDifficultyIndex));
+        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Max(1, PlayerPrefs.GetInt(UnlockedStageCountKey, 1)));
         PlayerPrefs.Save();
     }
 }

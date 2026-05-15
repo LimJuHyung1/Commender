@@ -186,6 +186,9 @@ public class Chaser : AgentController
         if (isResultAnimationLocked)
             return;
 
+        if (!CanReceivePlayerSkillCommand(true))
+            return;
+
         string skill = skillName.Trim().ToLower();
 
         Debug.Log($"[Chaser {AgentID}] 스킬 요청: {skillName}, 위치: {targetPos}");

@@ -205,6 +205,9 @@ public class Engineer : AgentController
         if (isResultAnimationLocked || isHitReactionLocked || isBarricadeDeployLocked || isStopSignalDeployLocked)
             return;
 
+        if (!CanReceivePlayerSkillCommand(true))
+            return;
+
         string skill = skillName.Trim().ToLower();
 
         Debug.Log($"[Engineer {AgentID}] 스킬 요청: {skillName}, 위치: {targetPos}");

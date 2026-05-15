@@ -66,6 +66,7 @@ public abstract class AgentController : MonoBehaviour
     protected bool isManualMoving = false;
 
     private readonly Dictionary<string, float> skillGaugeByKey = new Dictionary<string, float>();
+    private readonly HashSet<object> skillCommandBlockers = new HashSet<object>();
 
     private Vector3 lastSkillGaugePosition;
     private float skillGaugeChargeBlockedUntil = -1f;
@@ -104,6 +105,8 @@ public abstract class AgentController : MonoBehaviour
     public LayerMask TargetLayer => targetLayer;
     public AgentStatsSO Stats => stats;
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
+    public VisionSensor VisionSensor => visionSensor;
+    public bool IsSkillCommandBlocked => skillCommandBlockers.Count > 0;
 
     public float SkillGauge => GetLargestCurrentSkillGauge();
     public float SkillGaugeCapacity => GetCurrentSkillGaugeCapacity();
@@ -115,6 +118,62 @@ public abstract class AgentController : MonoBehaviour
     public bool IsFollowingSharedTargetPosition => isFollowingSharedTargetPosition;
 
     public abstract void ExecuteSkill(string skillName, Vector3 targetPos);
+
+    public virtual void AddSkillCommandBlocker(object source)
+    {
+        if (source == null)
+            return;
+
+        bool added = skillCommandBlockers.Add(source);
+
+        if (!added)
+            return;
+
+        UpdateStateIcon();
+
+        Debug.Log($"[Agent {AgentID}] 스킬 명령 차단 상태가 적용되었습니다.");
+    }
+
+    public virtual void RemoveSkillCommandBlocker(object source)
+    {
+        if (source == null)
+            return;
+
+        bool removed = skillCommandBlockers.Remove(source);
+
+        if (!removed)
+            return;
+
+        UpdateStateIcon();
+
+        Debug.Log($"[Agent {AgentID}] 스킬 명령 차단 상태가 해제되었습니다.");
+    }
+
+    public virtual void ClearSkillCommandBlockers(bool updateIcon = true)
+    {
+        if (skillCommandBlockers.Count <= 0)
+            return;
+
+        skillCommandBlockers.Clear();
+
+        if (updateIcon)
+            UpdateStateIcon();
+    }
+
+    public virtual bool CanReceivePlayerSkillCommand(bool showWarning = false)
+    {
+        if (!IsSkillCommandBlocked)
+            return true;
+
+        if (showWarning)
+        {
+            Debug.LogWarning(
+                $"[Agent {AgentID}] 그래피티 교란 구역 안에 있어 스킬 명령을 받을 수 없습니다."
+            );
+        }
+
+        return false;
+    }
 
     protected void RequestSkillCamera(SkillCameraFocusMode mode)
     {
@@ -189,6 +248,7 @@ public abstract class AgentController : MonoBehaviour
 
         StopLookAroundInternal(false);
         ClearSharedTargetPosition();
+        ClearSkillCommandBlockers(false);
         UpdateStateIcon();
     }
 
@@ -592,8 +652,8 @@ public abstract class AgentController : MonoBehaviour
         {
             return new[]
             {
-            SkillGaugeDefaultKey
-        };
+                SkillGaugeDefaultKey
+            };
         }
 
         switch (stats.role)
@@ -601,41 +661,41 @@ public abstract class AgentController : MonoBehaviour
             case AgentRole.Chaser:
                 return new[]
                 {
-                SkillAccessControlKey
-            };
+                    SkillAccessControlKey
+                };
 
             case AgentRole.Observer:
                 return new[]
                 {
-                SkillDroneKey
-            };
+                    SkillDroneKey
+                };
 
             case AgentRole.Engineer:
                 return new[]
                 {
-                SkillBarricadeKey,
-                SkillStopSignalKey
-            };
+                    SkillBarricadeKey,
+                    SkillStopSignalKey
+                };
 
             case AgentRole.Trickster:
                 return new[]
                 {
-                SkillFakeBoxKey,
-                SkillJokerCardKey
-            };
+                    SkillFakeBoxKey,
+                    SkillJokerCardKey
+                };
 
             default:
                 return new[]
                 {
-                SkillAccessControlKey,
-                SkillDroneKey,
-                SkillBarricadeKey,
-                SkillStopSignalKey,
-                SkillFakeBoxKey,
-                SkillJokerCardKey,
-                SkillNoisemakerKey,
-                SkillHologramKey
-            };
+                    SkillAccessControlKey,
+                    SkillDroneKey,
+                    SkillBarricadeKey,
+                    SkillStopSignalKey,
+                    SkillFakeBoxKey,
+                    SkillJokerCardKey,
+                    SkillNoisemakerKey,
+                    SkillHologramKey
+                };
         }
     }
 
@@ -754,38 +814,60 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent.pathStatus == NavMeshPathStatus.PathInvalid ||
             navAgent.pathStatus == NavMeshPathStatus.PathPartial)
         {
-            isManualMoving = false;
-            navAgent.ResetPath();
-
-            UpdateAnimationState(true);
-            UpdateStateIcon();
-
+            CompleteManualMove(false);
             Debug.LogWarning($"[Agent {AgentID}] Manual move failed. Path is not complete.");
             return;
         }
 
         if (!navAgent.hasPath)
+        {
+            if (GetPlanarDistanceToNavDestination() <= navAgent.stoppingDistance + 0.2f)
+                CompleteManualMove(true);
+
+            return;
+        }
+
+        if (float.IsInfinity(navAgent.remainingDistance))
             return;
 
-        if (navAgent.remainingDistance <= navAgent.stoppingDistance)
-        {
-            if (navAgent.velocity.sqrMagnitude <= 0.01f)
-            {
-                float realDistance = Vector3.Distance(transform.position, navAgent.destination);
+        if (navAgent.remainingDistance > navAgent.stoppingDistance + 0.15f)
+            return;
 
-                if (realDistance <= navAgent.stoppingDistance + 0.15f)
-                {
-                    isManualMoving = false;
-                    navAgent.ResetPath();
+        if (navAgent.velocity.sqrMagnitude > 0.01f)
+            return;
 
-                    UpdateAnimationState(true);
-                    UpdateStateIcon();
-
-                    Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
-                }
-            }
-        }
+        CompleteManualMove(true);
     }
+
+    private void CompleteManualMove(bool reached)
+    {
+        isManualMoving = false;
+
+        if (navAgent != null)
+            navAgent.ResetPath();
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+
+        if (reached)
+            Debug.Log($"[Agent {AgentID}] Reached manual destination. Switched to idle state.");
+    }
+
+    private float GetPlanarDistanceToNavDestination()
+    {
+        if (navAgent == null)
+            return 0f;
+
+        Vector3 current = transform.position;
+        Vector3 destination = navAgent.destination;
+
+        current.y = 0f;
+        destination.y = 0f;
+
+        return Vector3.Distance(current, destination);
+    }
+
+
 
     public void SetAgentID(int id)
     {
@@ -1059,6 +1141,8 @@ public abstract class AgentController : MonoBehaviour
         cachedAnimationIsMoving = false;
         lastAnimationMovingTime = -999f;
 
+        ClearSkillCommandBlockers(false);
+
         if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
         {
             navAgent.isStopped = true;
@@ -1298,6 +1382,12 @@ public abstract class AgentController : MonoBehaviour
             return;
         }
 
+        if (IsSkillCommandBlocked)
+        {
+            stateIconController.SetState(AgentStateController.AgentAwarenessState.SkillCommandBlocked);
+            return;
+        }
+
         if (currentTarget != null)
         {
             stateIconController.SetState(AgentStateController.AgentAwarenessState.ChasingTarget);
@@ -1325,7 +1415,6 @@ public abstract class AgentController : MonoBehaviour
             transform
         );
     }
-
 
     public virtual void PlayHitReaction(Vector3 hitSourcePosition)
     {

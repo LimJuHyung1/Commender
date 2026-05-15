@@ -1,11 +1,22 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UnityEngine;
 
 public class CommanderCommandProcessor : MonoBehaviour
 {
+    private static readonly Regex CoordinateRegex =
+        new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
+
+    private static readonly Regex DelaySecondsRegex =
+        new Regex(
+            @"(?:(\d+(?:\.\d+)?)\s*초\s*(?:후|뒤|이후)?|after\s+(\d+(?:\.\d+)?)\s+seconds?|in\s+(\d+(?:\.\d+)?)\s+seconds?)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase
+        );
+
     [Header("Auto Bind")]
     [SerializeField] private bool autoBindAgentsFromScene = true;
     [SerializeField] private bool sortAgentsById = true;
@@ -16,6 +27,10 @@ public class CommanderCommandProcessor : MonoBehaviour
     [SerializeField] private float coordinateMatchTolerance = 0.2f;
     [SerializeField] private float groundProbeHeight = 50f;
     [SerializeField] private float groundProbeDistance = 200f;
+
+    [Header("Waypoint Move")]
+    [SerializeField] private float waypointReachDistance = 0.45f;
+    [SerializeField] private float waypointStartGraceSeconds = 0.25f;
 
     private readonly List<AgentController> agents = new List<AgentController>();
     private readonly Dictionary<int, AgentController> agentById = new Dictionary<int, AgentController>();
@@ -60,6 +75,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         public int AgentId;
         public AgentController Agent;
         public Vector3 Destination;
+        public List<Vector3> Waypoints = new List<Vector3>();
         public string Skill;
         public float DelaySeconds;
         public bool IsValid;
@@ -158,7 +174,7 @@ public class CommanderCommandProcessor : MonoBehaviour
                 continue;
             }
 
-            ScheduleCommand(plan.Agent, plan.Destination, plan.Skill, plan.DelaySeconds);
+            ScheduleCommand(plan.Agent, plan.Destination, plan.Waypoints, plan.Skill, plan.DelaySeconds);
             result.SucceededAgentIds.Add(plan.AgentId);
         }
 
@@ -179,6 +195,18 @@ public class CommanderCommandProcessor : MonoBehaviour
         EnsureHelpers();
 
         if (targetAgent == null)
+            return failedPlan;
+
+        if (TryBuildMultiCoordinateMovePlan(
+                targetAgent,
+                instruction,
+                out PendingCommandPlan multiCoordinatePlan,
+                out bool handledMultiCoordinateInstruction))
+        {
+            return multiCoordinatePlan;
+        }
+
+        if (handledMultiCoordinateInstruction)
             return failedPlan;
 
         ChatServiceOpenAI chatService = targetAgent.CommandChatService;
@@ -310,6 +338,11 @@ public class CommanderCommandProcessor : MonoBehaviour
             }
 
             Vector3 dest = ResolveDestination(targetAgent, cmd, originalInstruction, validatedSkill);
+            List<Vector3> waypoints = BuildMovementWaypointsFromInstruction(targetAgent, originalInstruction, validatedSkill);
+
+            if (waypoints.Count > 0)
+                dest = waypoints[waypoints.Count - 1];
+
             float validatedDelaySeconds = Mathf.Max(0f, cmd.delaySeconds);
 
             plan = new PendingCommandPlan
@@ -317,6 +350,7 @@ public class CommanderCommandProcessor : MonoBehaviour
                 AgentId = targetAgent.AgentID,
                 Agent = targetAgent,
                 Destination = dest,
+                Waypoints = waypoints,
                 Skill = validatedSkill,
                 DelaySeconds = validatedDelaySeconds,
                 IsValid = true
@@ -484,6 +518,335 @@ public class CommanderCommandProcessor : MonoBehaviour
         return commandValidator.IsBarricadeInstruction(source);
     }
 
+    private bool TryBuildMultiCoordinateMovePlan(
+        AgentController targetAgent,
+        string instruction,
+        out PendingCommandPlan plan,
+        out bool handledMultiCoordinateInstruction)
+    {
+        plan = null;
+        handledMultiCoordinateInstruction = false;
+
+        if (targetAgent == null)
+            return false;
+
+        if (!TryExtractCoordinates(instruction, out List<Vector2> coordinates))
+            return false;
+
+        if (coordinates.Count < 2)
+            return false;
+
+        handledMultiCoordinateInstruction = true;
+
+        if (ContainsSkillKeywordInMultiCoordinateInstruction(instruction))
+        {
+            Debug.LogWarning(
+                $"[Commander] 두 개 이상의 좌표가 포함된 명령에는 스킬을 함께 사용할 수 없습니다. " +
+                $"해당 명령을 무효 처리합니다. 원문: {instruction}"
+            );
+
+            return false;
+        }
+
+        List<Vector3> waypoints = new List<Vector3>();
+
+        for (int i = 0; i < coordinates.Count; i++)
+        {
+            Vector2 coordinate = coordinates[i];
+            Vector3 worldPoint = ResolveWorldPointFromCoordinate(targetAgent, coordinate.x, coordinate.y);
+            waypoints.Add(worldPoint);
+        }
+
+        if (waypoints.Count < 2)
+        {
+            Debug.LogWarning($"[Commander] 경유 이동 좌표 생성에 실패했습니다. 원문: {instruction}");
+            return false;
+        }
+
+        float delaySeconds = ExtractDelaySeconds(instruction);
+
+        plan = new PendingCommandPlan
+        {
+            AgentId = targetAgent.AgentID,
+            Agent = targetAgent,
+            Destination = waypoints[waypoints.Count - 1],
+            Waypoints = waypoints,
+            Skill = "",
+            DelaySeconds = delaySeconds,
+            IsValid = true
+        };
+
+        Debug.Log(
+            $"[Commander] Agent {targetAgent.AgentID} 두 좌표 이상 경유 이동 직접 처리. " +
+            $"경유지 수: {waypoints.Count}, delay: {delaySeconds:0.##}"
+        );
+
+        return true;
+    }
+
+    private float ExtractDelaySeconds(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return 0f;
+
+        Match match = DelaySecondsRegex.Match(source);
+
+        if (!match.Success)
+            return 0f;
+
+        for (int i = 1; i < match.Groups.Count; i++)
+        {
+            Group group = match.Groups[i];
+
+            if (group == null || !group.Success)
+                continue;
+
+            if (float.TryParse(
+                    group.Value,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out float seconds))
+            {
+                return Mathf.Max(0f, seconds);
+            }
+        }
+
+        return 0f;
+    }
+
+    private bool ContainsSkillKeywordInMultiCoordinateInstruction(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        if (commandValidator.IsLookAroundInstruction(source))
+            return true;
+
+        if (commandValidator.IsBarricadeInstruction(source))
+            return true;
+
+        if (commandValidator.IsStopSignalInstruction(source))
+            return true;
+
+        if (commandValidator.IsFakeBoxInstruction(source))
+            return true;
+
+        if (commandValidator.IsJokerCardInstruction(source))
+            return true;
+
+        string normalized = source.Trim().ToLower();
+
+        return ContainsAnyKeyword(
+            normalized,
+
+            "accesscontrol",
+            "access control",
+            "control zone",
+            "security zone",
+            "restricted zone",
+            "출입 통제",
+            "출입통제",
+            "통제 구역",
+            "통제구역",
+            "접근 금지",
+            "접근금지",
+            "제한 구역",
+            "제한구역",
+            "금지 구역",
+            "금지구역",
+
+            "escapeblock",
+            "escape block",
+            "escape skill block",
+            "escape blocking",
+            "block escape",
+            "도주 제지",
+            "도주제지",
+            "도주 스킬 차단",
+            "도주스킬차단",
+            "도주 차단",
+            "도주차단",
+            "탈출 차단",
+            "탈출차단",
+
+            "drone",
+            "uav",
+            "드론",
+
+            "positionshare",
+            "position share",
+            "target position share",
+            "share target position",
+            "위치 공유",
+            "위치공유",
+            "타겟 위치 공유",
+            "타겟위치공유",
+            "타겟 위치 알려",
+            "발견하면 알려",
+            "보이면 알려",
+
+            "barricade",
+            "바리케이드",
+            "봉쇄",
+            "장애물",
+            "장애물 설치",
+            "길막",
+            "길 막",
+            "막아",
+            "막기",
+
+            "stopsignal",
+            "stop signal",
+            "stop sign",
+            "stop signal device",
+            "slowtrap",
+            "slow trap",
+            "snaretrap",
+            "정지 신호",
+            "정지신호",
+            "정지 표지",
+            "정지표지",
+            "정지 장치",
+            "정지장치",
+            "신호 설치",
+            "신호설치",
+            "통제 신호",
+            "통제신호",
+            "멈춤 신호",
+            "멈춤신호",
+            "감속 함정",
+            "감속함정",
+            "구속 함정",
+            "구속함정",
+            "함정",
+
+            "fakebox",
+            "fake box",
+            "magicbox",
+            "magic box",
+            "페이크 박스",
+            "페이크박스",
+            "마술 상자",
+            "마술상자",
+            "가짜 상자",
+            "가짜상자",
+
+            "jokercard",
+            "joker card",
+            "조커 카드",
+            "조커카드",
+
+            "look around",
+            "check around",
+            "around",
+            "scan",
+            "observe",
+            "주변",
+            "주위",
+            "주변 확인",
+            "주위 확인",
+            "주변 둘러",
+            "주위 둘러",
+            "주변 살펴",
+            "주위 살펴"
+        );
+    }
+
+    private bool ContainsAnyKeyword(string source, params string[] keywords)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        for (int i = 0; i < keywords.Length; i++)
+        {
+            string keyword = keywords[i];
+
+            if (string.IsNullOrWhiteSpace(keyword))
+                continue;
+
+            if (source.Contains(keyword))
+                return true;
+        }
+
+        return false;
+    }
+
+    private List<Vector3> BuildMovementWaypointsFromInstruction(
+        AgentController targetAgent,
+        string originalInstruction,
+        string validatedSkill)
+    {
+        List<Vector3> waypoints = new List<Vector3>();
+
+        if (targetAgent == null)
+            return waypoints;
+
+        if (!string.IsNullOrWhiteSpace(validatedSkill))
+            return waypoints;
+
+        if (!TryExtractCoordinates(originalInstruction, out List<Vector2> coordinates))
+            return waypoints;
+
+        if (coordinates.Count < 2)
+            return waypoints;
+
+        if (ContainsSkillKeywordInMultiCoordinateInstruction(originalInstruction))
+            return waypoints;
+
+        for (int i = 0; i < coordinates.Count; i++)
+        {
+            Vector2 coordinate = coordinates[i];
+            Vector3 worldPoint = ResolveWorldPointFromCoordinate(targetAgent, coordinate.x, coordinate.y);
+            waypoints.Add(worldPoint);
+        }
+
+        Debug.Log($"[Commander] Agent {targetAgent.AgentID} 경유 이동 좌표 {waypoints.Count}개 생성");
+
+        return waypoints;
+    }
+
+    private bool TryExtractCoordinates(string source, out List<Vector2> coordinates)
+    {
+        coordinates = new List<Vector2>();
+
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        MatchCollection matches = CoordinateRegex.Matches(source);
+
+        if (matches == null || matches.Count == 0)
+            return false;
+
+        for (int i = 0; i < matches.Count; i++)
+        {
+            Match match = matches[i];
+
+            if (match == null || !match.Success)
+                continue;
+
+            bool parsedX = float.TryParse(
+                match.Groups[1].Value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out float x
+            );
+
+            bool parsedZ = float.TryParse(
+                match.Groups[2].Value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out float z
+            );
+
+            if (!parsedX || !parsedZ)
+                continue;
+
+            coordinates.Add(new Vector2(x, z));
+        }
+
+        return coordinates.Count > 0;
+    }
+
     private Vector3 ResolveDestination(
         AgentController targetAgent,
         MoveCommand cmd,
@@ -640,6 +1003,7 @@ public class CommanderCommandProcessor : MonoBehaviour
     private void ScheduleCommand(
         AgentController targetAgent,
         Vector3 dest,
+        List<Vector3> waypoints,
         string validatedSkill,
         float delaySeconds)
     {
@@ -651,7 +1015,7 @@ public class CommanderCommandProcessor : MonoBehaviour
         CancelScheduledCommand(agentId, true);
 
         Coroutine routine = StartCoroutine(
-            ExecuteScheduledCommandCoroutine(targetAgent, dest, validatedSkill, delaySeconds)
+            ExecuteScheduledCommandCoroutine(targetAgent, dest, waypoints, validatedSkill, delaySeconds)
         );
 
         scheduledCommandByAgentId[agentId] = routine;
@@ -659,7 +1023,11 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (delaySeconds <= 0f)
             return;
 
-        if (validatedSkill == "lookaround")
+        if (IsWaypointMoveCommand(validatedSkill, waypoints))
+        {
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 경유지 {waypoints.Count}개 순차 이동");
+        }
+        else if (validatedSkill == "lookaround")
         {
             Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 주변 둘러보기");
         }
@@ -680,6 +1048,7 @@ public class CommanderCommandProcessor : MonoBehaviour
     private IEnumerator ExecuteScheduledCommandCoroutine(
         AgentController targetAgent,
         Vector3 dest,
+        List<Vector3> waypoints,
         string validatedSkill,
         float delaySeconds)
     {
@@ -698,8 +1067,115 @@ public class CommanderCommandProcessor : MonoBehaviour
             yield break;
         }
 
+        if (IsWaypointMoveCommand(validatedSkill, waypoints))
+        {
+            yield return ExecuteWaypointMoveCoroutine(targetAgent, waypoints);
+            scheduledCommandByAgentId.Remove(agentId);
+            yield break;
+        }
+
         commandExecutor.Execute(targetAgent, dest, validatedSkill);
         scheduledCommandByAgentId.Remove(agentId);
+    }
+
+    private IEnumerator ExecuteWaypointMoveCoroutine(
+        AgentController targetAgent,
+        List<Vector3> waypoints)
+    {
+        if (targetAgent == null || waypoints == null || waypoints.Count == 0)
+            yield break;
+
+        int agentId = targetAgent.AgentID;
+
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            if (targetAgent == null)
+                yield break;
+
+            if (targetAgent.IsChasing)
+            {
+                Debug.LogWarning($"[Commander] Agent {agentId} 경유 이동이 취소되었습니다. 현재 추격 중입니다.");
+                yield break;
+            }
+
+            Vector3 waypoint = waypoints[i];
+
+            Debug.Log($"[Commander] Agent {agentId} 경유 이동 {i + 1}/{waypoints.Count}: {waypoint}");
+
+            commandExecutor.Execute(targetAgent, waypoint, "");
+
+            float waitUntil = Time.time + waypointStartGraceSeconds;
+
+            while (targetAgent != null &&
+                   !targetAgent.IsManualMoving &&
+                   !targetAgent.IsChasing &&
+                   Time.time < waitUntil)
+            {
+                yield return null;
+            }
+
+            if (targetAgent == null)
+                yield break;
+
+            if (targetAgent.IsChasing)
+            {
+                Debug.LogWarning($"[Commander] Agent {agentId} 경유 이동이 취소되었습니다. 이동 중 추격 상태로 전환되었습니다.");
+                yield break;
+            }
+
+            if (!targetAgent.IsManualMoving &&
+                GetPlanarDistance(targetAgent.transform.position, waypoint) > GetWaypointArrivalDistance())
+            {
+                Debug.LogWarning($"[Commander] Agent {agentId} 경유지 이동을 시작하지 못했습니다. 경유 이동을 중단합니다. waypoint={waypoint}");
+                yield break;
+            }
+
+            while (targetAgent != null && !targetAgent.IsChasing)
+            {
+                float distance = GetPlanarDistance(targetAgent.transform.position, waypoint);
+
+                if (distance <= GetWaypointArrivalDistance())
+                    break;
+
+                if (!targetAgent.IsManualMoving)
+                    break;
+
+                yield return null;
+            }
+
+            if (targetAgent == null)
+                yield break;
+
+            if (targetAgent.IsChasing)
+            {
+                Debug.LogWarning($"[Commander] Agent {agentId} 경유 이동이 취소되었습니다. 이동 중 추격 상태로 전환되었습니다.");
+                yield break;
+            }
+
+            Debug.Log($"[Commander] Agent {agentId} 경유지 {i + 1}/{waypoints.Count} 도착 처리");
+        }
+
+        Debug.Log($"[Commander] Agent {agentId} 경유 이동 완료");
+    }
+
+    private float GetWaypointArrivalDistance()
+    {
+        return Mathf.Max(waypointReachDistance, 0.8f);
+    }
+
+    private float GetPlanarDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+
+        return Vector3.Distance(a, b);
+    }
+
+    private bool IsWaypointMoveCommand(string validatedSkill, List<Vector3> waypoints)
+    {
+        return string.IsNullOrWhiteSpace(validatedSkill) &&
+               waypoints != null &&
+               waypoints.Count > 1;
     }
 
     private void CancelScheduledCommand(int agentId, bool logMessage)

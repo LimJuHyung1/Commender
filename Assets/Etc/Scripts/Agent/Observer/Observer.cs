@@ -171,6 +171,9 @@ public class Observer : AgentController
         if (isResultAnimationLocked || isHitReactionLocked || isDroneDeployLocked)
             return;
 
+        if (!CanReceivePlayerSkillCommand(true))
+            return;
+
         string skill = skillName.Trim().ToLower();
 
         Debug.Log($"[Observer {AgentID}] Skill request: {skillName}, Position: {targetPos}");
