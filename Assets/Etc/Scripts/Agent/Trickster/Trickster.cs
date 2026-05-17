@@ -371,8 +371,6 @@ public class Trickster : AgentController
 
         currentFakeBox.SetOwner(this);
 
-        RequestInstalledObjectCamera(currentFakeBox.transform);
-
         Debug.Log($"[Trickster {AgentID}] Fake Box deployed: {spawnPos}");
     }
 

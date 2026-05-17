@@ -18,6 +18,7 @@ public class StageMapManager : MonoBehaviour
 
     [Header("Unit Prefabs")]
     [SerializeField] private GameObject targetPrefab;
+    [SerializeField] private GameObject[] targetPrefabs;
     [SerializeField] private GameObject[] debugTargetPrefabs;
     [SerializeField] private GameObject[] agentPrefabs;
 
@@ -36,6 +37,7 @@ public class StageMapManager : MonoBehaviour
     private int currentStageIndex = 0;
 
     public int CurrentStageIndex => currentStageIndex;
+    public int CurrentStageNumber => currentStageIndex + 1;
     public int StageCount => stages != null ? stages.Length : 0;
     public string CurrentStageDisplayName => GetStageDisplayName(currentStageIndex);
 
@@ -220,8 +222,11 @@ public class StageMapManager : MonoBehaviour
         if (buildNavMeshOnSpawn)
             BuildNavMesh();
 
+        TryApplyTargetMilestoneUpgrades();
+
         SpawnTarget();
         SpawnAgents();
+        ApplyAgentUpgradesToCurrentAgents();
         RegisterAgentsToTarget();
         RefreshCommanderAgents();
 
@@ -337,6 +342,17 @@ public class StageMapManager : MonoBehaviour
         }
     }
 
+    private void TryApplyTargetMilestoneUpgrades()
+    {
+        if (IsDebugStageMode())
+            return;
+
+        if (UpgradeManager.Instance == null)
+            return;
+
+        UpgradeManager.Instance.TryApplyTargetMilestoneUpgrades(CurrentStageNumber);
+    }
+
     private void SpawnTarget()
     {
         GameObject selectedTargetPrefab = GetSelectedTargetPrefab();
@@ -357,6 +373,7 @@ public class StageMapManager : MonoBehaviour
         currentTarget = Instantiate(selectedTargetPrefab, spawnPoint.position, spawnPoint.rotation);
 
         ApplyTargetLevelToCurrentTarget();
+        ApplyTargetUpgradesToCurrentTarget();
 
         Debug.Log($"[StageMapManager] 타겟 생성 완료: Prefab={selectedTargetPrefab.name}, SpawnPoint={spawnPoint.name}");
     }
@@ -378,6 +395,28 @@ public class StageMapManager : MonoBehaviour
             Debug.LogWarning($"[StageMapManager] 디버그 타겟 인덱스가 유효하지 않습니다. TargetPrefabIndex={targetPrefabIndex}");
         }
 
+        return GetRandomNormalTargetPrefab();
+    }
+
+    private GameObject GetRandomNormalTargetPrefab()
+    {
+        if (targetPrefabs != null && targetPrefabs.Length > 0)
+        {
+            List<GameObject> validPrefabs = new List<GameObject>();
+
+            for (int i = 0; i < targetPrefabs.Length; i++)
+            {
+                if (targetPrefabs[i] != null)
+                    validPrefabs.Add(targetPrefabs[i]);
+            }
+
+            if (validPrefabs.Count > 0)
+            {
+                int randomIndex = Random.Range(0, validPrefabs.Count);
+                return validPrefabs[randomIndex];
+            }
+        }
+
         return targetPrefab;
     }
 
@@ -397,10 +436,60 @@ public class StageMapManager : MonoBehaviour
             return;
         }
 
-        int stageNumber = currentStageIndex + 1;
-        statApplier.ApplyFromStageNumber(stageNumber);
+        statApplier.ApplyFromStageNumber(CurrentStageNumber);
 
-        Debug.Log($"[StageMapManager] Target Level 적용 완료: Stage={stageNumber}, TargetLevel={statApplier.TargetLevel}");
+        Debug.Log($"[StageMapManager] Target Level 적용 완료: Stage={CurrentStageNumber}, TargetLevel={statApplier.TargetLevel}");
+    }
+
+    private void ApplyTargetUpgradesToCurrentTarget()
+    {
+        if (IsDebugStageMode())
+            return;
+
+        if (currentTarget == null)
+            return;
+
+        if (UpgradeManager.Instance == null)
+            return;
+
+        if (!TryGetTargetType(currentTarget, out CommanderTargetType targetType))
+        {
+            Debug.LogWarning("[StageMapManager] 현재 타겟 타입을 확인하지 못해 타겟 강화를 적용할 수 없습니다.");
+            return;
+        }
+
+        List<UpgradeDefinition> upgrades = UpgradeManager.Instance.GetTargetUpgrades(targetType);
+        ApplyUpgradesToHierarchy(currentTarget, upgrades);
+
+        Debug.Log($"[StageMapManager] 타겟 강화 적용 완료: TargetType={targetType}, Count={upgrades.Count}");
+    }
+
+    private bool TryGetTargetType(GameObject targetObject, out CommanderTargetType targetType)
+    {
+        targetType = CommanderTargetType.None;
+
+        if (targetObject == null)
+            return false;
+
+        if (targetObject.GetComponentInChildren<InformationBroker>(true) != null)
+        {
+            targetType = CommanderTargetType.InformationBroker;
+            return true;
+        }
+
+        if (targetObject.GetComponentInChildren<ConstructionWorker>(true) != null)
+        {
+            targetType = CommanderTargetType.ConstructionWorker;
+            return true;
+        }
+
+        if (targetObject.GetComponentInChildren<GraffitiArtist>(true) != null)
+        {
+            targetType = CommanderTargetType.GraffitiArtist;
+            return true;
+        }
+
+        return false;
     }
 
     private Transform GetRandomTargetSpawnPoint()
@@ -412,6 +501,7 @@ public class StageMapManager : MonoBehaviour
             for (int i = 0; i < targetSpawnPointsRoot.childCount; i++)
             {
                 Transform child = targetSpawnPointsRoot.GetChild(i);
+
                 if (child != null)
                     validSpawnPoints.Add(child);
             }
@@ -458,6 +548,64 @@ public class StageMapManager : MonoBehaviour
         }
     }
 
+    private void ApplyAgentUpgradesToCurrentAgents()
+    {
+        if (IsDebugStageMode())
+            return;
+
+        if (UpgradeManager.Instance == null)
+            return;
+
+        List<UpgradeDefinition> upgrades = UpgradeManager.Instance.GetSelectedAgentUpgrades();
+
+        if (upgrades == null || upgrades.Count <= 0)
+            return;
+
+        for (int i = 0; i < currentAgents.Count; i++)
+        {
+            GameObject agent = currentAgents[i];
+
+            if (agent == null)
+                continue;
+
+            ApplyUpgradesToHierarchy(agent, upgrades);
+        }
+
+        Debug.Log($"[StageMapManager] 에이전트 강화 적용 완료: UpgradeCount={upgrades.Count}");
+    }
+
+    private void ApplyUpgradesToHierarchy(GameObject rootObject, IReadOnlyList<UpgradeDefinition> upgrades)
+    {
+        if (rootObject == null)
+            return;
+
+        if (upgrades == null || upgrades.Count <= 0)
+            return;
+
+        MonoBehaviour[] behaviours = rootObject.GetComponentsInChildren<MonoBehaviour>(true);
+
+        for (int i = 0; i < behaviours.Length; i++)
+        {
+            IUpgradeReceiver receiver = behaviours[i] as IUpgradeReceiver;
+
+            if (receiver == null)
+                continue;
+
+            for (int j = 0; j < upgrades.Count; j++)
+            {
+                UpgradeDefinition upgrade = upgrades[j];
+
+                if (upgrade == null)
+                    continue;
+
+                if (!receiver.CanApplyUpgrade(upgrade))
+                    continue;
+
+                receiver.ApplyUpgrade(upgrade);
+            }
+        }
+    }
+
     private void RegisterAgentsToTarget()
     {
         if (currentTarget == null)
@@ -480,10 +628,12 @@ public class StageMapManager : MonoBehaviour
         for (int i = 0; i < currentAgents.Count; i++)
         {
             GameObject agent = currentAgents[i];
+
             if (agent == null)
                 continue;
 
             VisionSensor[] sensors = agent.GetComponentsInChildren<VisionSensor>(true);
+
             if (sensors == null || sensors.Length == 0)
             {
                 Debug.LogWarning($"[StageMapManager] {agent.name} 에 VisionSensor가 없습니다.");
@@ -501,6 +651,7 @@ public class StageMapManager : MonoBehaviour
     private void RefreshCommanderAgents()
     {
         CommanderManager commanderManager = FindFirstObjectByType<CommanderManager>();
+
         if (commanderManager == null)
             return;
 
@@ -570,6 +721,7 @@ public class StageMapManager : MonoBehaviour
     public void ClearStage()
     {
         FloorViewController floorViewController = FindFirstObjectByType<FloorViewController>(FindObjectsInactive.Include);
+
         if (floorViewController != null)
         {
             floorViewController.SetSystemEnabled(false);
@@ -611,6 +763,7 @@ public class StageMapManager : MonoBehaviour
             return $"Stage {stageIndex + 1}";
 
         StageEntry entry = stages[stageIndex];
+
         if (entry != null && !string.IsNullOrWhiteSpace(entry.stageName))
             return entry.stageName;
 

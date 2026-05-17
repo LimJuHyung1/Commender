@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
@@ -11,6 +12,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private UIController uiController;
     [SerializeField] private StageMapManager stageMapManager;
     [SerializeField] private SkillCameraDirector skillCameraDirector;
+    [SerializeField] private UpgradeRewardUI upgradeRewardUI;
 
     [Header("Stage Settings")]
     [SerializeField] private string missionDescription = "제한 시간 안에 타겟을 체포하세요.";
@@ -22,6 +24,10 @@ public class GameManager : MonoBehaviour
     [SerializeField] private bool autoReturnToLobbyOnFinalWin = true;
     [SerializeField] private bool autoReturnToLobbyOnFail = false;
     [SerializeField] private float returnDelaySeconds = 2.0f;
+
+    [Header("Upgrade Reward")]
+    [SerializeField] private bool showUpgradeRewardOnStageClear = true;
+    [SerializeField] private bool skipUpgradeRewardInDebugStage = true;
 
     [Header("시간 배속")]
     [SerializeField] private float winTimeScale = 0.5f;
@@ -44,6 +50,8 @@ public class GameManager : MonoBehaviour
 
     public bool IsTargetDebugRevealEnabled { get; private set; }
     public bool IsStageFinished => stageFinished;
+
+    private const string DebugStageEnabledKey = "DebugStageEnabled";
 
     private void Awake()
     {
@@ -106,6 +114,9 @@ public class GameManager : MonoBehaviour
 
         if (skillCameraDirector == null)
             skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
+
+        if (upgradeRewardUI == null)
+            upgradeRewardUI = FindFirstObjectByType<UpgradeRewardUI>(FindObjectsInactive.Include);
     }
 
     private void SetupStage()
@@ -126,6 +137,9 @@ public class GameManager : MonoBehaviour
             uiController.SetTimerText(remainingTime);
             uiController.SetTimerVisible(true);
         }
+
+        if (upgradeRewardUI != null)
+            upgradeRewardUI.HideImmediate();
 
         Debug.Log($"[GameManager] 스테이지 시작: mission={missionDescription}, timeLimit={timeLimitSeconds}");
     }
@@ -219,14 +233,119 @@ public class GameManager : MonoBehaviour
         if (autoLoadNextStageOnWin)
         {
             if (HasNextStage())
-                StartCoroutine(LoadNextStageAfterDelay());
+            {
+                StartCoroutine(HandleNextStageAfterWin());
+            }
             else if (autoReturnToLobbyOnFinalWin)
+            {
                 StartCoroutine(ReturnToLobbyAfterDelay());
+            }
         }
         else if (autoReturnToLobbyOnFinalWin)
         {
             StartCoroutine(ReturnToLobbyAfterDelay());
         }
+    }
+
+    private IEnumerator HandleNextStageAfterWin()
+    {
+        yield return new WaitForSecondsRealtime(returnDelaySeconds);
+
+        if (ShouldShowUpgradeReward())
+        {
+            ShowUpgradeRewardThenLoadNextStage();
+            yield break;
+        }
+
+        LoadNextStageNow();
+    }
+
+    private bool ShouldShowUpgradeReward()
+    {
+        if (!showUpgradeRewardOnStageClear)
+            return false;
+
+        if (!autoLoadNextStageOnWin)
+            return false;
+
+        if (!HasNextStage())
+            return false;
+
+        if (skipUpgradeRewardInDebugStage && IsDebugStageMode())
+            return false;
+
+        if (UpgradeManager.Instance == null)
+            return false;
+
+        if (upgradeRewardUI == null)
+            return false;
+
+        return true;
+    }
+
+    private void ShowUpgradeRewardThenLoadNextStage()
+    {
+        ResolveReferences();
+
+        if (UpgradeManager.Instance == null || upgradeRewardUI == null)
+        {
+            LoadNextStageNow();
+            return;
+        }
+
+        if (uiController != null)
+        {
+            uiController.HideResultPanel();
+            uiController.SetStageHudVisible(false);
+            uiController.SetOptionButtonVisible(false);
+        }
+
+        int rewardStageNumber = GetNextStageNumber();
+
+        List<UpgradeDefinition> choices =
+            UpgradeManager.Instance.BuildAgentRewardChoices(rewardStageNumber);
+
+        if (choices == null || choices.Count <= 0)
+        {
+            LoadNextStageNow();
+            return;
+        }
+
+        upgradeRewardUI.ShowChoices(choices, selectedUpgrade =>
+        {
+            LoadNextStageNow();
+        });
+    }
+
+    private int GetNextStageNumber()
+    {
+        ResolveReferences();
+
+        if (stageMapManager == null)
+            return 1;
+
+        return stageMapManager.CurrentStageNumber + 1;
+    }
+
+    private bool IsDebugStageMode()
+    {
+        return PlayerPrefs.GetInt(DebugStageEnabledKey, 0) == 1;
+    }
+
+    private void LoadNextStageNow()
+    {
+        ResolveReferences();
+
+        if (stageMapManager == null)
+        {
+            ReturnToLobby();
+            return;
+        }
+
+        stageMapManager.SelectNextStage();
+
+        Time.timeScale = 1.0f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     public void FailStage(string message)
@@ -465,19 +584,7 @@ public class GameManager : MonoBehaviour
     private IEnumerator LoadNextStageAfterDelay()
     {
         yield return new WaitForSecondsRealtime(returnDelaySeconds);
-
-        ResolveReferences();
-
-        if (stageMapManager == null)
-        {
-            ReturnToLobby();
-            yield break;
-        }
-
-        stageMapManager.SelectNextStage();
-
-        Time.timeScale = 1.0f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        LoadNextStageNow();
     }
 
     private IEnumerator ReturnToLobbyAfterDelay()

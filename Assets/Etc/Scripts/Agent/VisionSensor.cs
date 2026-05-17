@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
@@ -50,6 +51,8 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     private float smokeDebuffEndTime = -1f;
     private float smokeDebuffRadius = -1f;
 
+    private readonly Dictionary<object, float> externalViewRadiusMultipliers = new();
+
     public bool IsSeeingTarget => isSeeingTarget;
     public bool IsWallSightEnabled => wallSightEnabled;
     public Transform CurrentSeenTarget => currentSeenTarget;
@@ -95,6 +98,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         UpdateLoseSightGrace();
 
         checkTimer -= Time.deltaTime;
+
         if (checkTimer > 0f)
             return;
 
@@ -144,6 +148,39 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         }
     }
 
+    public void SetExternalViewRadiusMultiplier(object source, float multiplier)
+    {
+        if (source == null)
+            return;
+
+        externalViewRadiusMultipliers[source] = Mathf.Max(0.01f, multiplier);
+
+        RefreshCurrentViewRadius();
+        ForceEvaluateVision();
+
+        if (debugLog)
+        {
+            Debug.Log($"[{name}] External view radius multiplier set. source={source}, multiplier={multiplier:F2}, currentRadius={currentViewRadius:F2}");
+        }
+    }
+
+    public void RemoveExternalViewRadiusMultiplier(object source)
+    {
+        if (source == null)
+            return;
+
+        if (!externalViewRadiusMultipliers.Remove(source))
+            return;
+
+        RefreshCurrentViewRadius();
+        ForceEvaluateVision();
+
+        if (debugLog)
+        {
+            Debug.Log($"[{name}] External view radius multiplier removed. source={source}, currentRadius={currentViewRadius:F2}");
+        }
+    }
+
     public void ForceEvaluateVision()
     {
         EvaluateVision();
@@ -177,6 +214,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             return false;
 
         Vector3 forward = eyePoint != null ? eyePoint.forward : transform.forward;
+
         if (useHorizontalOnly)
             forward.y = 0f;
 
@@ -186,6 +224,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         forward.Normalize();
 
         Vector3 directionForAngle = toTarget;
+
         if (useHorizontalOnly)
             directionForAngle.y = 0f;
 
@@ -193,6 +232,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             return true;
 
         float angleToTarget = Vector3.Angle(forward, directionForAngle.normalized);
+
         if (angleToTarget > CurrentViewAngle * 0.5f)
             return false;
 
@@ -221,6 +261,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         {
             smokeDebuffEndTime = -1f;
             smokeDebuffRadius = -1f;
+
             RefreshCurrentViewRadius();
             ForceEvaluateVision();
 
@@ -234,11 +275,25 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     private void RefreshCurrentViewRadius()
     {
         float baseRadius = Mathf.Max(minimumViewRadius, viewRadius);
+        float externalMultiplier = CalculateExternalViewRadiusMultiplier();
+        float boostedBaseRadius = baseRadius * externalMultiplier;
 
         if (IsSmokeDebuffed && smokeDebuffRadius > 0f)
-            currentViewRadius = Mathf.Clamp(smokeDebuffRadius, minimumViewRadius, baseRadius);
+            currentViewRadius = Mathf.Clamp(smokeDebuffRadius, minimumViewRadius, boostedBaseRadius);
         else
-            currentViewRadius = baseRadius;
+            currentViewRadius = boostedBaseRadius;
+    }
+
+    private float CalculateExternalViewRadiusMultiplier()
+    {
+        float multiplier = 1f;
+
+        foreach (KeyValuePair<object, float> pair in externalViewRadiusMultipliers)
+        {
+            multiplier *= pair.Value;
+        }
+
+        return multiplier;
     }
 
     private void UpdateLoseSightGrace()
@@ -329,6 +384,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         float bestTargetHologramSqrDistance = float.MaxValue;
 
         Vector3 forward = eyePoint.forward;
+
         if (useHorizontalOnly)
             forward.y = 0f;
 
@@ -354,6 +410,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             float sqrDistance = toTarget.sqrMagnitude;
 
             Vector3 directionForAngle = toTarget;
+
             if (useHorizontalOnly)
                 directionForAngle.y = 0f;
 
@@ -361,6 +418,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
                 continue;
 
             float angleToTarget = Vector3.Angle(forward, directionForAngle.normalized);
+
             if (angleToTarget > angle * 0.5f)
                 continue;
 
@@ -516,42 +574,5 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
             owner.ClearChaseTarget(previousTarget);
 
         OnVisionChanged?.Invoke(this, false, null);
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        Transform drawPoint = eyePoint != null ? eyePoint : transform;
-        float gizmoRadius = Application.isPlaying ? CurrentViewRadius : Mathf.Max(minimumViewRadius, viewRadius);
-
-        Gizmos.color = wallSightEnabled ? Color.magenta : Color.yellow;
-        Gizmos.DrawWireSphere(drawPoint.position, gizmoRadius);
-
-        Vector3 leftDir = GetDirectionFromAngle(-viewAngle * 0.5f, drawPoint);
-        Vector3 rightDir = GetDirectionFromAngle(viewAngle * 0.5f, drawPoint);
-
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawLine(drawPoint.position, drawPoint.position + leftDir * gizmoRadius);
-        Gizmos.DrawLine(drawPoint.position, drawPoint.position + rightDir * gizmoRadius);
-
-        if (Application.isPlaying && currentSeenTarget != null)
-        {
-            Gizmos.color = isSeeingTarget ? Color.green : Color.red;
-            Gizmos.DrawLine(drawPoint.position, currentSeenTarget.position + Vector3.up * targetEyeHeight);
-        }
-    }
-
-    private Vector3 GetDirectionFromAngle(float angleOffset, Transform basis)
-    {
-        Vector3 forward = basis.forward;
-        forward.y = 0f;
-
-        if (forward.sqrMagnitude <= 0.0001f)
-            forward = Vector3.forward;
-
-        float baseAngle = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
-        float finalAngle = baseAngle + angleOffset;
-
-        float rad = finalAngle * Mathf.Deg2Rad;
-        return new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad)).normalized;
     }
 }

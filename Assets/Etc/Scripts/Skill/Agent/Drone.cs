@@ -29,6 +29,9 @@ public class Drone : MonoBehaviour
     private SphereCollider zoneCollider;
 
     private Vector3 observationCenterPosition;
+    private TargetController trackedTarget;
+    private bool followTargetAfterDetection;
+    private float droneVisualHeightOffset;
 
     private float finishTime;
     private float checkTimer;
@@ -49,6 +52,7 @@ public class Drone : MonoBehaviour
     public float Radius => radius;
     public float Duration => duration;
     public Vector3 ObservationCenterPosition => observationCenterPosition;
+    public bool IsFollowingTarget => trackedTarget != null;
 
     private void Awake()
     {
@@ -89,6 +93,7 @@ public class Drone : MonoBehaviour
             return;
         }
 
+        UpdateTrackedTargetFollow();
         UpdateObservationAreaVisual();
         UpdateDetection();
         UpdateOwnerNotify();
@@ -96,6 +101,7 @@ public class Drone : MonoBehaviour
 
     private void OnDisable()
     {
+        trackedTarget = null;
         ClearAllReveals();
         HideObservationArea();
     }
@@ -117,12 +123,16 @@ public class Drone : MonoBehaviour
         Vector3 droneVisualPosition,
         LayerMask observationTargetLayer,
         float observationRadius,
-        float observationDuration)
+        float observationDuration,
+        bool enableTargetFollowAfterDetection = false)
     {
         owner = observer;
 
         observationCenterPosition = observationCenter;
         transform.position = droneVisualPosition;
+        trackedTarget = null;
+        followTargetAfterDetection = enableTargetFollowAfterDetection;
+        droneVisualHeightOffset = droneVisualPosition.y - observationCenter.y;
 
         targetLayer = observationTargetLayer;
         radius = Mathf.Max(0f, observationRadius);
@@ -145,7 +155,8 @@ public class Drone : MonoBehaviour
                 $"[Drone] Initialized. " +
                 $"Drone Position: {transform.position}, " +
                 $"Observation Center: {observationCenterPosition}, " +
-                $"Radius: {radius}, Duration: {duration}"
+                $"Radius: {radius}, Duration: {duration}, " +
+                $"Follow Target: {followTargetAfterDetection}"
             );
         }
     }
@@ -294,6 +305,49 @@ public class Drone : MonoBehaviour
         DetectTargets();
     }
 
+    private void UpdateTrackedTargetFollow()
+    {
+        if (!followTargetAfterDetection)
+            return;
+
+        if (trackedTarget == null || !trackedTarget.gameObject.activeInHierarchy)
+        {
+            trackedTarget = null;
+            return;
+        }
+
+        observationCenterPosition = trackedTarget.transform.position;
+        transform.position = GetDroneVisualPosition(observationCenterPosition);
+
+        ApplyColliderSettings();
+    }
+
+    private void TryStartTargetFollow(TargetController target)
+    {
+        if (!followTargetAfterDetection)
+            return;
+
+        if (trackedTarget != null)
+            return;
+
+        if (target == null)
+            return;
+
+        trackedTarget = target;
+
+        if (debugLog)
+            Debug.Log($"[Drone] Target tracking started: {target.name}");
+    }
+
+    private Vector3 GetDroneVisualPosition(Vector3 centerPosition)
+    {
+        return new Vector3(
+            centerPosition.x,
+            centerPosition.y + droneVisualHeightOffset,
+            centerPosition.z
+        );
+    }
+
     private void DetectTargets()
     {
         currentTargets.Clear();
@@ -322,6 +376,7 @@ public class Drone : MonoBehaviour
                 continue;
 
             currentTargets.Add(target);
+            TryStartTargetFollow(target);
 
             if (revealedTargets.Add(target))
             {

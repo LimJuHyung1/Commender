@@ -83,6 +83,8 @@ public abstract class AgentController : MonoBehaviour
     private float sharedTargetPositionExpireTime = -1f;
     private float sharedTargetRepathTimer;
     private AgentController sharedTargetReporter;
+    private float sharedTargetMoveSpeedMultiplier = 1f;
+    private bool sharedTargetMoveSpeedApplied;
 
     private int isMovingParameterHash;
     private int moveSpeedParameterHash;
@@ -212,6 +214,14 @@ public abstract class AgentController : MonoBehaviour
     protected void RequestStrongSkillCamera()
     {
         RequestSkillCamera(SkillCameraFocusMode.StrongTargetEvent);
+    }
+
+    protected void RequestFollowUserSkillCamera()
+    {
+        SkillCameraEventBus.Request(
+            SkillCameraFocusMode.FollowUser,
+            transform
+        );
     }
 
     protected virtual void Awake()
@@ -470,10 +480,21 @@ public abstract class AgentController : MonoBehaviour
 
     private float GetCurrentSkillGaugeCapacity()
     {
-        if (stats == null)
-            return DefaultSkillGaugeMax;
+        string[] gaugeKeys = GetCurrentAgentGaugeKeys();
+        float largestCapacity = 0f;
 
-        return Mathf.Max(0f, stats.GetLargestSkillGaugeMax());
+        for (int i = 0; i < gaugeKeys.Length; i++)
+        {
+            float requiredGauge = GetSkillGaugeRequiredForSkill(gaugeKeys[i]);
+
+            if (requiredGauge > largestCapacity)
+                largestCapacity = requiredGauge;
+        }
+
+        if (largestCapacity <= 0f)
+            return stats != null ? Mathf.Max(0f, stats.GetLargestSkillGaugeMax()) : DefaultSkillGaugeMax;
+
+        return largestCapacity;
     }
 
     public virtual float GetSkillGaugeMaxForSkill(string skillName)
@@ -485,9 +506,14 @@ public abstract class AgentController : MonoBehaviour
         return Mathf.Max(0f, stats.GetSkillGaugeMax(key));
     }
 
+    public virtual float GetSkillGaugeRequiredForSkill(string skillName)
+    {
+        return GetSkillGaugeMaxForSkill(skillName);
+    }
+
     public virtual float GetSkillGaugeCurrentForSkill(string skillName)
     {
-        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+        float requiredGauge = GetSkillGaugeRequiredForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return 0f;
@@ -498,7 +524,7 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual float GetSkillGaugeNormalizedForSkill(string skillName)
     {
-        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+        float requiredGauge = GetSkillGaugeRequiredForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return 1f;
@@ -508,19 +534,20 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
     {
-        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+        float requiredGauge = GetSkillGaugeRequiredForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return true;
 
-        float currentGauge = GetSkillGaugeCurrentForSkill(skillName);
-        bool canUse = currentGauge >= requiredGauge - SkillGaugeFullEpsilon;
+        string key = GetSkillGaugeKey(skillName);
+        float rawCurrentGauge = GetSkillGaugeValue(key);
+        bool canUse = rawCurrentGauge >= requiredGauge - SkillGaugeFullEpsilon;
 
         if (!canUse && showWarning)
         {
             Debug.LogWarning(
                 $"[Agent {AgentID}] '{skillName}' 스킬을 사용할 수 없습니다. " +
-                $"현재 게이지: {currentGauge:0.#} / 필요 게이지: {requiredGauge:0.#}"
+                $"현재 게이지: {rawCurrentGauge:0.#} / 필요 게이지: {requiredGauge:0.#}"
             );
         }
 
@@ -529,7 +556,7 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual bool TryConsumeSkillGaugeForSkill(string skillName, float chargeBlockSeconds = 0f)
     {
-        float requiredGauge = GetSkillGaugeMaxForSkill(skillName);
+        float requiredGauge = GetSkillGaugeRequiredForSkill(skillName);
 
         if (requiredGauge <= 0f)
             return true;
@@ -538,14 +565,20 @@ public abstract class AgentController : MonoBehaviour
             return false;
 
         string key = GetSkillGaugeKey(skillName);
+        float currentGauge = GetSkillGaugeValue(key);
+        float nextGauge = Mathf.Max(0f, currentGauge - requiredGauge);
 
-        SetSkillGaugeValue(key, 0f);
+        SetSkillGaugeValue(key, nextGauge);
         lastSkillGaugePosition = transform.position;
 
         if (chargeBlockSeconds > 0f)
             BlockSkillGaugeCharge(chargeBlockSeconds);
 
-        Debug.Log($"[Agent {AgentID}] '{skillName}' 스킬 사용. 해당 스킬 게이지만 소모했습니다.");
+        Debug.Log(
+            $"[Agent {AgentID}] '{skillName}' 스킬 사용. " +
+            $"소모 게이지: {requiredGauge:0.#}, 남은 게이지: {nextGauge:0.#}"
+        );
+
         return true;
     }
 
@@ -694,7 +727,9 @@ public abstract class AgentController : MonoBehaviour
                     SkillFakeBoxKey,
                     SkillJokerCardKey,
                     SkillNoisemakerKey,
-                    SkillHologramKey
+                    SkillHologramKey,
+                    SkillDashKey,
+                    SkillSmokeKey
                 };
         }
     }
@@ -867,8 +902,6 @@ public abstract class AgentController : MonoBehaviour
         return Vector3.Distance(current, destination);
     }
 
-
-
     public void SetAgentID(int id)
     {
         agentID = id;
@@ -889,6 +922,8 @@ public abstract class AgentController : MonoBehaviour
             Debug.Log($"[Agent {AgentID}] 현재 추적 중이므로 MoveTo를 무시합니다.");
             return;
         }
+
+        RestoreSharedTargetMoveSpeed();
 
         currentTarget = null;
         isManualMoving = false;
@@ -946,6 +981,8 @@ public abstract class AgentController : MonoBehaviour
             Debug.LogWarning($"[Agent {AgentID}] 현재 이동 중이므로 주변 둘러보기를 시작할 수 없습니다.");
             return false;
         }
+
+        RestoreSharedTargetMoveSpeed();
 
         StopLookAroundInternal(false);
         lookAroundRoutine = StartCoroutine(LookAroundCoroutine());
@@ -1068,6 +1105,8 @@ public abstract class AgentController : MonoBehaviour
         if (isLookingAround)
             StopLookAroundInternal(false);
 
+        RestoreSharedTargetMoveSpeed();
+
         currentTarget = target;
         isManualMoving = false;
         isFollowingSharedTargetPosition = false;
@@ -1125,6 +1164,8 @@ public abstract class AgentController : MonoBehaviour
         if (isLookingAround)
             StopLookAroundInternal(false);
 
+        RestoreSharedTargetMoveSpeed();
+
         currentTarget = null;
         isManualMoving = false;
 
@@ -1136,6 +1177,7 @@ public abstract class AgentController : MonoBehaviour
         sharedTargetReporter = null;
         sharedTargetPositionExpireTime = -1f;
         sharedTargetRepathTimer = 0f;
+        sharedTargetMoveSpeedMultiplier = 1f;
         hasLastSharedTargetDestination = false;
 
         cachedAnimationIsMoving = false;
@@ -1170,6 +1212,14 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual void ReceiveSharedTargetPosition(Vector3 position, AgentController reporter)
     {
+        ReceiveSharedTargetPosition(position, reporter, 1f);
+    }
+
+    public virtual void ReceiveSharedTargetPosition(
+        Vector3 position,
+        AgentController reporter,
+        float moveSpeedMultiplier)
+    {
         if (!isActiveAndEnabled)
             return;
 
@@ -1183,6 +1233,7 @@ public abstract class AgentController : MonoBehaviour
         sharedTargetPosition = position;
         sharedTargetReporter = reporter;
         sharedTargetPositionExpireTime = Time.time + SharedTargetPositionMemoryDuration;
+        sharedTargetMoveSpeedMultiplier = Mathf.Max(0.01f, moveSpeedMultiplier);
     }
 
     public virtual void ClearSharedTargetPosition(AgentController reporter = null)
@@ -1190,11 +1241,14 @@ public abstract class AgentController : MonoBehaviour
         if (reporter != null && sharedTargetReporter != null && sharedTargetReporter != reporter)
             return;
 
+        RestoreSharedTargetMoveSpeed();
+
         hasSharedTargetPosition = false;
         isFollowingSharedTargetPosition = false;
         sharedTargetReporter = null;
         sharedTargetPositionExpireTime = -1f;
         sharedTargetRepathTimer = 0f;
+        sharedTargetMoveSpeedMultiplier = 1f;
         hasLastSharedTargetDestination = false;
 
         if (currentTarget == null && !isManualMoving && !isLookingAround && navAgent != null)
@@ -1209,6 +1263,7 @@ public abstract class AgentController : MonoBehaviour
         if (!hasSharedTargetPosition)
         {
             isFollowingSharedTargetPosition = false;
+            RestoreSharedTargetMoveSpeed();
             return;
         }
 
@@ -1241,6 +1296,8 @@ public abstract class AgentController : MonoBehaviour
         if (!pathFound || path.status != NavMeshPathStatus.PathComplete)
             return;
 
+        ApplySharedTargetMoveSpeed();
+
         navAgent.isStopped = false;
         navAgent.SetDestination(hit.position);
 
@@ -1248,6 +1305,30 @@ public abstract class AgentController : MonoBehaviour
         hasLastSharedTargetDestination = true;
         isFollowingSharedTargetPosition = true;
         sharedTargetRepathTimer = SharedTargetRepathInterval;
+    }
+
+    private void ApplySharedTargetMoveSpeed()
+    {
+        if (navAgent == null || stats == null)
+            return;
+
+        if (sharedTargetMoveSpeedMultiplier <= 1.0001f)
+        {
+            RestoreSharedTargetMoveSpeed();
+            return;
+        }
+
+        navAgent.speed = stats.moveSpeed * sharedTargetMoveSpeedMultiplier;
+        sharedTargetMoveSpeedApplied = true;
+    }
+
+    private void RestoreSharedTargetMoveSpeed()
+    {
+        if (!sharedTargetMoveSpeedApplied)
+            return;
+
+        ApplyNavAgentStats();
+        sharedTargetMoveSpeedApplied = false;
     }
 
     public virtual void ReapplyStats()
@@ -1406,14 +1487,6 @@ public abstract class AgentController : MonoBehaviour
         moveSpeedParameterHash = string.IsNullOrWhiteSpace(moveSpeedParameter)
             ? Animator.StringToHash("MoveSpeed")
             : Animator.StringToHash(moveSpeedParameter);
-    }
-
-    protected void RequestFollowUserSkillCamera()
-    {
-        SkillCameraEventBus.Request(
-            SkillCameraFocusMode.FollowUser,
-            transform
-        );
     }
 
     public virtual void PlayHitReaction(Vector3 hitSourcePosition)

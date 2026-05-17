@@ -384,7 +384,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return $"{GetSkillDisplayName(normalizedSkillName)}: {stateText}";
         }
 
-        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
+        float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
             return $"{GetSkillDisplayName(normalizedSkillName)}: 게이지 필요 없음";
@@ -734,7 +734,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (TryUpdateToggleSkillGaugeImage(image, normalizedSkillName))
             return;
 
-        float requiredGauge = targetAgent.GetSkillGaugeMaxForSkill(normalizedSkillName);
+        float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
         {
@@ -782,6 +782,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         string skill = skillName.Trim().ToLower();
 
+        if (IsAccessControlSkill(skill))
+            return SkillAccessControl;
+
+        if (IsEscapeBlockSkill(skill))
+            return SkillEscapeBlock;
+
         if (IsPositionShareSkill(skill))
             return SkillPositionShare;
 
@@ -800,7 +806,57 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (IsJokerCardSkill(skill))
             return SkillJokerCard;
 
+        if (IsStopSignalSkill(skill))
+            return SkillStopSignal;
+
+        if (IsDroneSkill(skill))
+            return SkillDrone;
+
         return skill;
+    }
+
+    private bool IsAccessControlSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillAccessControl ||
+               skill == "access_control" ||
+               skill.Contains("access control") ||
+               skill.Contains("control zone") ||
+               skill.Contains("출입통제") ||
+               skill.Contains("출입 통제") ||
+               skill.Contains("통제구역") ||
+               skill.Contains("통제 구역");
+    }
+
+    private bool IsEscapeBlockSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillEscapeBlock ||
+               skill == "escape_block" ||
+               skill.Contains("escape block") ||
+               skill.Contains("도주제지") ||
+               skill.Contains("도주 제지");
+    }
+
+    private bool IsDroneSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillDrone ||
+               skill.Contains("drone") ||
+               skill.Contains("uav") ||
+               skill.Contains("드론");
     }
 
     private bool IsPositionShareSkill(string skillName)
@@ -813,11 +869,28 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return skill == SkillPositionShare ||
                skill == SkillPositionShareOn ||
                skill == SkillPositionShareOff ||
+               skill == "share_position" ||
+               skill == "position_share" ||
                skill.Contains("position share") ||
                skill.Contains("target position share") ||
                skill.Contains("share position") ||
                skill.Contains("위치공유") ||
                skill.Contains("위치 공유");
+    }
+
+    private bool IsStopSignalSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillStopSignal ||
+               skill == "stop_signal" ||
+               skill.Contains("stop signal") ||
+               skill.Contains("stop sign") ||
+               skill.Contains("정지신호") ||
+               skill.Contains("정지 신호");
     }
 
     private bool IsLegacySlowTrapSkill(string skillName)
@@ -859,6 +932,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         string skill = skillName.Trim().ToLower();
 
         return skill == LegacySkillHologram ||
+               skill.Contains("hologram") ||
                skill.Contains("홀로그램");
     }
 
@@ -870,6 +944,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillFakeBox ||
+               skill == "fake_box" ||
                skill.Contains("fake box") ||
                skill.Contains("magicbox") ||
                skill.Contains("magic box") ||
@@ -889,6 +964,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillJokerCard ||
+               skill == "joker_card" ||
                skill.Contains("joker card") ||
                skill.Contains("조커카드") ||
                skill.Contains("조커 카드");

@@ -1,7 +1,8 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-public class Observer : AgentController
+public class Observer : AgentController, IUpgradeReceiver
 {
     private enum ObserverMoveMode
     {
@@ -14,6 +15,11 @@ public class Observer : AgentController
     private const string SkillDrone = "drone";
     private const string SkillPositionShare = "positionshare";
 
+    private const string UpgradeDroneTrackingWatch = "observer_drone_tracking_watch";
+    private const string UpgradeDroneHighPowerBattery = "observer_drone_high_power_battery";
+    private const string UpgradePositionShareQuickResponse = "observer_position_share_quick_response";
+    private const string UpgradePositionShareLinkedSurveillance = "observer_position_share_linked_surveillance";
+
     private const string MoveModeParameter = "MoveMode";
     private const string HitReactionTriggerName = "HitReaction";
     private const string VictoryTriggerName = "Victory";
@@ -22,6 +28,7 @@ public class Observer : AgentController
 
     private const float AnimationMovingThreshold = 0.05f;
     private const float DestinationBuffer = 0.2f;
+    private const float LinkedSurveillanceShareInterval = 0.15f;
 
     [Header("Drone")]
     [SerializeField] private Drone dronePrefab;
@@ -38,6 +45,11 @@ public class Observer : AgentController
     [SerializeField] private float agentCacheRefreshInterval = 0.5f;
     [SerializeField] private bool debugPositionShareTargets = false;
 
+    [Header("Upgrade - Observer")]
+    [SerializeField] private float trackingWatchDurationMultiplier = 0.5f;
+    [SerializeField] private float highPowerBatteryGaugeRequirementMultiplier = 0.5f;
+    [SerializeField] private float quickResponseMoveSpeedMultiplier = 1.5f;
+
     [Header("Observer Animation")]
     [SerializeField] private float droneDeployLockSeconds = 0.8f;
     [SerializeField] private float droneSpawnDelay = 0.35f;
@@ -50,6 +62,15 @@ public class Observer : AgentController
 
     private bool isTargetPositionSharing;
     private float lastTargetPositionShareTime = -999f;
+
+    private bool droneTrackingWatchEnabled;
+    private bool highPowerBatteryEnabled;
+    private bool quickResponseEnabled;
+    private bool linkedSurveillanceNetworkEnabled;
+
+    private readonly HashSet<VisionSensor> linkedSurveillanceSensors = new HashSet<VisionSensor>();
+    private readonly List<VisionSensor> linkedSurveillanceSensorsToRemove = new List<VisionSensor>();
+    private float nextLinkedSurveillanceShareTime;
 
     private int moveModeHash;
     private int hitReactionHash;
@@ -94,6 +115,7 @@ public class Observer : AgentController
     private void Start()
     {
         RefreshCachedAgents();
+        UpdateLinkedSurveillanceSubscriptions(true);
     }
 
     protected override void OnValidate()
@@ -110,6 +132,10 @@ public class Observer : AgentController
 
         agentCacheRefreshInterval = Mathf.Max(0.05f, agentCacheRefreshInterval);
 
+        trackingWatchDurationMultiplier = Mathf.Clamp(trackingWatchDurationMultiplier, 0.01f, 1f);
+        highPowerBatteryGaugeRequirementMultiplier = Mathf.Clamp(highPowerBatteryGaugeRequirementMultiplier, 0.01f, 1f);
+        quickResponseMoveSpeedMultiplier = Mathf.Max(1f, quickResponseMoveSpeedMultiplier);
+
         CacheObserverAnimationHashes();
     }
 
@@ -117,6 +143,7 @@ public class Observer : AgentController
     {
         DestroyCurrentDrone();
         ClearSharedTargetPositionFromThisObserver();
+        ClearLinkedSurveillanceSubscriptions();
 
         StopDroneDeployRoutine();
         StopHitReactionRoutine();
@@ -161,6 +188,94 @@ public class Observer : AgentController
 
         UpdateTargetPositionShareFromVision();
         UpdateTargetPositionShareState();
+        UpdateLinkedSurveillanceSubscriptions(false);
+        UpdateLinkedSurveillanceCurrentVision();
+    }
+
+    public bool CanApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Observer);
+    }
+
+    public void ApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        if (!CanApplyUpgrade(upgrade))
+            return;
+
+        switch (upgrade.UpgradeId)
+        {
+            case UpgradeDroneTrackingWatch:
+                ApplyDroneTrackingWatchUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeDroneHighPowerBattery:
+                ApplyHighPowerBatteryUpgrade(upgrade.Value);
+                break;
+
+            case UpgradePositionShareQuickResponse:
+                ApplyQuickResponseUpgrade(upgrade.Value);
+                break;
+
+            case UpgradePositionShareLinkedSurveillance:
+                linkedSurveillanceNetworkEnabled = true;
+                UpdateLinkedSurveillanceSubscriptions(true);
+                Debug.Log($"[Observer {AgentID}] 연계 감시망 강화 적용");
+                break;
+
+            default:
+                Debug.LogWarning($"[Observer {AgentID}] 알 수 없는 강화 ID입니다: {upgrade.UpgradeId}");
+                break;
+        }
+    }
+
+    public override float GetSkillGaugeRequiredForSkill(string skillName)
+    {
+        if (IsDroneSkillName(skillName) && highPowerBatteryEnabled)
+        {
+            float maxGauge = GetSkillGaugeMaxForSkill(skillName);
+            return maxGauge * highPowerBatteryGaugeRequirementMultiplier;
+        }
+
+        return base.GetSkillGaugeRequiredForSkill(skillName);
+    }
+
+    private void ApplyDroneTrackingWatchUpgrade(float value)
+    {
+        droneTrackingWatchEnabled = true;
+
+        if (value > 0f)
+            trackingWatchDurationMultiplier = Mathf.Clamp(value, 0.01f, 1f);
+
+        Debug.Log(
+            $"[Observer {AgentID}] 추적 감시 강화 적용. " +
+            $"DroneDurationMultiplier={trackingWatchDurationMultiplier:F2}"
+        );
+    }
+
+    private void ApplyHighPowerBatteryUpgrade(float value)
+    {
+        highPowerBatteryEnabled = true;
+
+        if (value > 0f)
+            highPowerBatteryGaugeRequirementMultiplier = Mathf.Clamp(value, 0.01f, 1f);
+
+        Debug.Log(
+            $"[Observer {AgentID}] 고출력 배터리 강화 적용. " +
+            $"DroneGaugeRequirement={highPowerBatteryGaugeRequirementMultiplier * 100f:0.#}%"
+        );
+    }
+
+    private void ApplyQuickResponseUpgrade(float value)
+    {
+        quickResponseEnabled = true;
+
+        if (value > 0f)
+            quickResponseMoveSpeedMultiplier = Mathf.Max(1f, value);
+
+        Debug.Log(
+            $"[Observer {AgentID}] 신속 대응 강화 적용. " +
+            $"SharedMoveSpeedMultiplier={quickResponseMoveSpeedMultiplier:F2}"
+        );
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -222,6 +337,10 @@ public class Observer : AgentController
         {
             isTargetPositionSharing = false;
             ClearSharedTargetPositionFromThisObserver();
+        }
+        else
+        {
+            UpdateLinkedSurveillanceSubscriptions(true);
         }
 
         Debug.Log($"[Observer {AgentID}] Position share {(targetPositionShareEnabled ? "on" : "off")}");
@@ -356,6 +475,7 @@ public class Observer : AgentController
 
         Vector3 observationCenter = targetPos;
         Vector3 droneVisualPosition = GetDroneVisualPosition(observationCenter);
+        float finalDroneDuration = GetCurrentDroneDuration();
 
         Drone drone = CreateDrone(droneVisualPosition);
 
@@ -371,7 +491,8 @@ public class Observer : AgentController
             droneVisualPosition,
             targetLayer,
             droneRadius,
-            droneDuration
+            finalDroneDuration,
+            droneTrackingWatchEnabled
         );
 
         currentDrone = drone;
@@ -382,8 +503,17 @@ public class Observer : AgentController
             $"[Observer {AgentID}] Drone deployed. " +
             $"Observation Center: {observationCenter}, " +
             $"Drone Position: {droneVisualPosition}, " +
-            $"Radius: {droneRadius}, Duration: {droneDuration}"
+            $"Radius: {droneRadius}, Duration: {finalDroneDuration}, " +
+            $"TrackingWatch={droneTrackingWatchEnabled}"
         );
+    }
+
+    private float GetCurrentDroneDuration()
+    {
+        if (!droneTrackingWatchEnabled)
+            return droneDuration;
+
+        return droneDuration * trackingWatchDurationMultiplier;
     }
 
     private Vector3 GetDroneVisualPosition(Vector3 observationCenter)
@@ -462,10 +592,17 @@ public class Observer : AgentController
 
     private void ShareTargetPosition(Vector3 targetPosition)
     {
+        ShareTargetPosition(targetPosition, false);
+    }
+
+    private void ShareTargetPosition(Vector3 targetPosition, bool includeObserverSelf)
+    {
         EnsureAgentCache(false);
 
         if (cachedAgents == null)
             return;
+
+        float moveSpeedMultiplier = quickResponseEnabled ? quickResponseMoveSpeedMultiplier : 1f;
 
         for (int i = 0; i < cachedAgents.Length; i++)
         {
@@ -477,10 +614,12 @@ public class Observer : AgentController
             if (!agent.isActiveAndEnabled)
                 continue;
 
-            if (!includeSelfInTargetPositionShare && agent == this)
+            bool isSelf = agent == this;
+
+            if (isSelf && !includeObserverSelf && !includeSelfInTargetPositionShare)
                 continue;
 
-            agent.ReceiveSharedTargetPosition(targetPosition, this);
+            agent.ReceiveSharedTargetPosition(targetPosition, this, moveSpeedMultiplier);
 
             if (debugPositionShareTargets)
             {
@@ -546,6 +685,126 @@ public class Observer : AgentController
         }
 
         return false;
+    }
+
+    private void UpdateLinkedSurveillanceSubscriptions(bool forceRefresh)
+    {
+        if (!linkedSurveillanceNetworkEnabled)
+        {
+            ClearLinkedSurveillanceSubscriptions();
+            return;
+        }
+
+        EnsureAgentCache(forceRefresh);
+        RemoveInvalidLinkedSurveillanceSubscriptions();
+
+        if (cachedAgents == null)
+            return;
+
+        for (int i = 0; i < cachedAgents.Length; i++)
+        {
+            AgentController agent = cachedAgents[i];
+
+            if (agent == null || agent == this)
+                continue;
+
+            VisionSensor sensor = agent.VisionSensor;
+
+            if (sensor == null)
+                continue;
+
+            if (linkedSurveillanceSensors.Add(sensor))
+                sensor.OnVisionChanged += HandleLinkedSurveillanceVisionChanged;
+        }
+    }
+
+    private void RemoveInvalidLinkedSurveillanceSubscriptions()
+    {
+        if (linkedSurveillanceSensors.Count == 0)
+            return;
+
+        linkedSurveillanceSensorsToRemove.Clear();
+
+        foreach (VisionSensor sensor in linkedSurveillanceSensors)
+        {
+            if (sensor == null || !sensor.isActiveAndEnabled || sensor.owner == this)
+                linkedSurveillanceSensorsToRemove.Add(sensor);
+        }
+
+        for (int i = 0; i < linkedSurveillanceSensorsToRemove.Count; i++)
+        {
+            VisionSensor sensor = linkedSurveillanceSensorsToRemove[i];
+
+            if (sensor != null)
+                sensor.OnVisionChanged -= HandleLinkedSurveillanceVisionChanged;
+
+            linkedSurveillanceSensors.Remove(sensor);
+        }
+
+        linkedSurveillanceSensorsToRemove.Clear();
+    }
+
+    private void ClearLinkedSurveillanceSubscriptions()
+    {
+        if (linkedSurveillanceSensors.Count == 0)
+            return;
+
+        foreach (VisionSensor sensor in linkedSurveillanceSensors)
+        {
+            if (sensor != null)
+                sensor.OnVisionChanged -= HandleLinkedSurveillanceVisionChanged;
+        }
+
+        linkedSurveillanceSensors.Clear();
+        linkedSurveillanceSensorsToRemove.Clear();
+    }
+
+    private void UpdateLinkedSurveillanceCurrentVision()
+    {
+        if (!linkedSurveillanceNetworkEnabled || !targetPositionShareEnabled)
+            return;
+
+        if (Time.time < nextLinkedSurveillanceShareTime)
+            return;
+
+        nextLinkedSurveillanceShareTime = Time.time + LinkedSurveillanceShareInterval;
+
+        foreach (VisionSensor sensor in linkedSurveillanceSensors)
+        {
+            if (sensor == null || sensor.owner == this)
+                continue;
+
+            if (!sensor.IsSeeingTarget)
+                continue;
+
+            Transform seenTarget = sensor.CurrentSeenTarget;
+
+            if (seenTarget == null)
+                continue;
+
+            ShareTargetPosition(seenTarget.position, true);
+            lastTargetPositionShareTime = Time.time;
+            isTargetPositionSharing = true;
+        }
+    }
+
+    private void HandleLinkedSurveillanceVisionChanged(VisionSensor sensor, bool isSeeingTarget, Transform target)
+    {
+        if (!linkedSurveillanceNetworkEnabled)
+            return;
+
+        if (!targetPositionShareEnabled)
+            return;
+
+        if (!isSeeingTarget || target == null)
+            return;
+
+        if (sensor == null || sensor.owner == this)
+            return;
+
+        ShareTargetPosition(target.position, true);
+        lastTargetPositionShareTime = Time.time;
+        isTargetPositionSharing = true;
     }
 
     private void ForceStopForSkill()
@@ -817,6 +1076,14 @@ public class Observer : AgentController
 
         Debug.LogWarning($"[Observer {AgentID}] Animator parameter is missing: {parameterName} ({parameterType})");
         return false;
+    }
+
+    private bool IsDroneSkillName(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        return IsDroneSkill(skillName.Trim().ToLower());
     }
 
     private bool IsDroneSkill(string skill)

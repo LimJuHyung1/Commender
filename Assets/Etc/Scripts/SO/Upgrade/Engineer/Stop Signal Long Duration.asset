@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Stop Signal Long Duration
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: engineer_stop_signal_long_duration
+  displayName: "\uC7A5\uC2DC\uAC04 \uC815\uC9C0 \uC2E0\uD638"
+  description: "\uC815\uC9C0 \uC2E0\uD638\uAC00 \uB354 \uC624\uB798 \uC720\uC9C0\uB418\uACE0,
+    \uAC78\uB9B0 \uD0C0\uAC9F\uC744 \uB354 \uC624\uB798 \uBA48\uCDB0 \uC138\uC6C1\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: 9e0c8917b7e2a0644b4c6886c094f340, type: 3}
+  ownerType: 0
+  agentType: 3
+  targetType: 0
+  skillId: stop_signal
+  effectType: 10
+  value: 2
+  minStage: 1
+  stackable: 0
+  maxStack: 1

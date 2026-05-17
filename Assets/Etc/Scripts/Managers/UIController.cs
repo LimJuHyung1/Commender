@@ -482,4 +482,23 @@ public class UIController : MonoBehaviour
 
         GameManager.Instance.ToggleTargetDebugReveal();
     }
+
+
+
+    public void SetStageHudVisible(bool visible)
+    {
+        if (missionText != null)
+            missionText.gameObject.SetActive(visible);
+
+        if (timerText != null)
+            timerText.gameObject.SetActive(visible);
+    }
+
+    public void SetOptionButtonVisible(bool visible)
+    {
+        if (optionButton == null)
+            return;
+
+        optionButton.gameObject.SetActive(visible);
+    }
 }

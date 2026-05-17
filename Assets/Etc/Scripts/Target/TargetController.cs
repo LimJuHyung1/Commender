@@ -629,4 +629,26 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
         recoveryAmountTotal = Mathf.Max(0f, recoveryAmountTotal);
         recoveryDuration = Mathf.Max(0.01f, recoveryDuration);
     }
+
+    public void ApplyFleeHealthDrainMultiplier(float multiplier, float deltaTime)
+    {
+        if (isCaught)
+            return;
+
+        if (healthSystem == null || healthSystem.IsDead())
+            return;
+
+        if (multiplier <= 1f)
+            return;
+
+        if (deltaTime <= 0f)
+            return;
+
+        float extraDamage = fleeHealthDrainPerSecond * (multiplier - 1f) * deltaTime;
+
+        if (extraDamage <= 0f)
+            return;
+
+        healthSystem.Damage(extraDamage);
+    }
 }

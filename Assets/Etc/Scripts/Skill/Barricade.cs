@@ -26,6 +26,7 @@ public class Barricade : MonoBehaviour
 
     private float dropStartY;
     private float landingY;
+    private float scaleMultiplier = 1f;
 
     private void Awake()
     {
@@ -35,6 +36,15 @@ public class Barricade : MonoBehaviour
         PrepareImpactEffectImmediate();
     }
 
+    private void OnValidate()
+    {
+        dropHeight = Mathf.Max(0f, dropHeight);
+        groundProbeHeight = Mathf.Max(0f, groundProbeHeight);
+        groundProbeDistance = Mathf.Max(0f, groundProbeDistance);
+        fallingStartScale = Mathf.Max(0.01f, fallingStartScale);
+        landedScale = Mathf.Max(0.01f, landedScale);
+    }
+
     private void Update()
     {
         UpdateDroppingScale();
@@ -42,6 +52,16 @@ public class Barricade : MonoBehaviour
 
     public void Deploy(Vector3 desiredGroundPosition, Quaternion rotation)
     {
+        Deploy(desiredGroundPosition, rotation, 1f);
+    }
+
+    public void Deploy(
+        Vector3 desiredGroundPosition,
+        Quaternion rotation,
+        float barricadeScaleMultiplier)
+    {
+        scaleMultiplier = Mathf.Max(0.01f, barricadeScaleMultiplier);
+
         Vector3 landingPosition = ResolveLandingPosition(desiredGroundPosition);
         Vector3 startPosition = landingPosition + Vector3.up * dropHeight;
 
@@ -52,7 +72,7 @@ public class Barricade : MonoBehaviour
         dropStartY = startPosition.y;
         landingY = landingPosition.y;
 
-        ApplyUniformScale(fallingStartScale);
+        ApplyUniformScale(fallingStartScale * scaleMultiplier);
 
         isDropping = true;
         hasLanded = false;
@@ -91,17 +111,23 @@ public class Barricade : MonoBehaviour
             return;
 
         float totalDropDistance = dropStartY - landingY;
+
         if (totalDropDistance <= 0.001f)
         {
-            ApplyUniformScale(landedScale);
+            ApplyUniformScale(landedScale * scaleMultiplier);
             return;
         }
 
         float currentY = transform.position.y;
         float normalized = 1f - Mathf.InverseLerp(landingY, dropStartY, currentY);
-        float currentScale = Mathf.Lerp(fallingStartScale, landedScale, normalized);
 
-        ApplyUniformScale(currentScale);
+        float currentScale = Mathf.Lerp(
+            fallingStartScale,
+            landedScale,
+            normalized
+        );
+
+        ApplyUniformScale(currentScale * scaleMultiplier);
     }
 
     private void CacheParticleSystems()
@@ -151,7 +177,7 @@ public class Barricade : MonoBehaviour
         hasLanded = true;
         isDropping = false;
 
-        ApplyUniformScale(landedScale);
+        ApplyUniformScale(landedScale * scaleMultiplier);
 
         if (rb != null && freezeAfterLanding)
         {

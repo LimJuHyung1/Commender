@@ -1,8 +1,10 @@
+using DG.Tweening;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
-public class Engineer : AgentController
+public class Engineer : AgentController, IUpgradeReceiver
 {
     private enum EngineerMoveMode
     {
@@ -14,6 +16,11 @@ public class Engineer : AgentController
 
     private const string SkillBarricade = "barricade";
     private const string SkillStopSignal = "stopsignal";
+
+    private const string UpgradeBarricadeLarge = "engineer_barricade_large";
+    private const string UpgradeBarricadeMulti = "engineer_barricade_multi";
+    private const string UpgradeStopSignalWideArea = "engineer_stop_signal_wide_area";
+    private const string UpgradeStopSignalLongDuration = "engineer_stop_signal_long_duration";
 
     private const string IsMovingParameter = "IsMoving";
     private const string MoveSpeedParameter = "MoveSpeed";
@@ -50,6 +57,13 @@ public class Engineer : AgentController
     [SerializeField] private float stopSignalDuration = 2f;
     [SerializeField] private float stopSignalLifeTime = 12f;
 
+    [Header("Upgrade - Engineer")]
+    [SerializeField] private float largeBarricadeScaleMultiplier = 3f;
+    [SerializeField] private int multiBarricadeCount = 3;
+    [SerializeField] private float multiBarricadeSpacing = 2.25f;
+    [SerializeField] private float wideStopSignalRadiusMultiplier = 2f;
+    [SerializeField] private float longStopSignalDurationMultiplier = 2f;
+
     [Header("안전 관리자 애니메이션")]
     [SerializeField] private float animationMovingThreshold = 0.05f;
     [SerializeField] private float destinationBuffer = 0.2f;
@@ -66,8 +80,14 @@ public class Engineer : AgentController
     [SerializeField] private float hitReactionLockSeconds = 0.45f;
     [SerializeField] private bool faceAwayFromHitSource = true;
 
-    private GameObject currentBarricade;
+    private readonly List<GameObject> currentBarricades = new List<GameObject>();
     private GameObject currentStopSignal;
+
+    private float currentBarricadeScaleMultiplier = 1f;
+    private int currentBarricadeSpawnCount = 1;
+    private float currentStopSignalRadiusMultiplier = 1f;
+    private float currentStopSignalDurationMultiplier = 1f;
+    private float currentStopSignalLifeTimeMultiplier = 1f;
 
     private Transform skillCameraFocusAnchor;
 
@@ -130,6 +150,12 @@ public class Engineer : AgentController
         stopSignalRadius = Mathf.Max(0f, stopSignalRadius);
         stopSignalDuration = Mathf.Max(0f, stopSignalDuration);
         stopSignalLifeTime = Mathf.Max(0f, stopSignalLifeTime);
+
+        largeBarricadeScaleMultiplier = Mathf.Max(1f, largeBarricadeScaleMultiplier);
+        multiBarricadeCount = Mathf.Max(1, multiBarricadeCount);
+        multiBarricadeSpacing = Mathf.Max(0f, multiBarricadeSpacing);
+        wideStopSignalRadiusMultiplier = Mathf.Max(1f, wideStopSignalRadiusMultiplier);
+        longStopSignalDurationMultiplier = Mathf.Max(1f, longStopSignalDurationMultiplier);
 
         animationMovingThreshold = Mathf.Max(0f, animationMovingThreshold);
         destinationBuffer = Mathf.Max(0f, destinationBuffer);
@@ -195,6 +221,92 @@ public class Engineer : AgentController
             SkillBarricade,
             SkillStopSignal
         };
+    }
+
+    public bool CanApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Engineer);
+    }
+
+    public void ApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        if (!CanApplyUpgrade(upgrade))
+            return;
+
+        switch (upgrade.UpgradeId)
+        {
+            case UpgradeBarricadeLarge:
+                ApplyLargeBarricadeUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeBarricadeMulti:
+                ApplyMultiBarricadeUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeStopSignalWideArea:
+                ApplyWideStopSignalUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeStopSignalLongDuration:
+                ApplyLongStopSignalUpgrade(upgrade.Value);
+                break;
+
+            default:
+                Debug.LogWarning($"[Engineer {AgentID}] 알 수 없는 강화 ID입니다: {upgrade.UpgradeId}");
+                break;
+        }
+    }
+
+    private void ApplyLargeBarricadeUpgrade(float value)
+    {
+        currentBarricadeScaleMultiplier = value > 0f
+            ? Mathf.Max(1f, value)
+            : largeBarricadeScaleMultiplier;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 대형 바리케이드 강화 적용. " +
+            $"ScaleMultiplier={currentBarricadeScaleMultiplier:F2}"
+        );
+    }
+
+    private void ApplyMultiBarricadeUpgrade(float value)
+    {
+        currentBarricadeSpawnCount = value > 0f
+            ? Mathf.Max(1, Mathf.RoundToInt(value))
+            : multiBarricadeCount;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 다중 바리케이드 강화 적용. " +
+            $"SpawnCount={currentBarricadeSpawnCount}"
+        );
+    }
+
+    private void ApplyWideStopSignalUpgrade(float value)
+    {
+        currentStopSignalRadiusMultiplier = value > 0f
+            ? Mathf.Max(1f, value)
+            : wideStopSignalRadiusMultiplier;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 광역 정지 신호 강화 적용. " +
+            $"RadiusMultiplier={currentStopSignalRadiusMultiplier:F2}"
+        );
+    }
+
+    private void ApplyLongStopSignalUpgrade(float value)
+    {
+        float multiplier = value > 0f
+            ? Mathf.Max(1f, value)
+            : longStopSignalDurationMultiplier;
+
+        currentStopSignalDurationMultiplier = multiplier;
+        currentStopSignalLifeTimeMultiplier = multiplier;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 장시간 정지 신호 강화 적용. " +
+            $"LifeTimeMultiplier={currentStopSignalLifeTimeMultiplier:F2}, " +
+            $"StopDurationMultiplier={currentStopSignalDurationMultiplier:F2}"
+        );
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -322,6 +434,7 @@ public class Engineer : AgentController
 
         return skill.Contains(SkillStopSignal) ||
                skill.Contains("stop signal") ||
+               skill.Contains("stop_signal") ||
                skill.Contains("정지 신호") ||
                skill.Contains("정지신호");
     }
@@ -503,34 +616,57 @@ public class Engineer : AgentController
 
     private void DeployBarricade(Vector3 targetPos)
     {
-        Vector3 spawnPos = BuildSpawnPosition(targetPos);
-        Quaternion spawnRotation = BuildPlacementRotationTowardTarget(spawnPos, barricadeYawOffset);
+        Vector3 centerSpawnPos = BuildSpawnPosition(targetPos);
+        Quaternion spawnRotation = BuildPlacementRotationTowardTarget(centerSpawnPos, barricadeYawOffset);
 
-        if (replaceExistingBarricade && currentBarricade != null)
+        if (replaceExistingBarricade)
+            ClearCurrentBarricades();
+
+        int spawnCount = Mathf.Max(1, currentBarricadeSpawnCount);
+
+        for (int i = 0; i < spawnCount; i++)
         {
-            Destroy(currentBarricade);
-            currentBarricade = null;
+            Vector3 spawnPos = GetBarricadeSpawnPosition(
+                centerSpawnPos,
+                spawnRotation,
+                i,
+                spawnCount
+            );
+
+            spawnPos = BuildSpawnPosition(spawnPos);
+
+            GameObject spawnedBarricade = Instantiate(
+                barricadePrefab,
+                Vector3.zero,
+                spawnRotation,
+                deployParent != null ? deployParent : null
+            );
+
+            Barricade barricade = spawnedBarricade.GetComponent<Barricade>();
+
+            if (barricade != null)
+            {
+                barricade.Deploy(
+                    spawnPos,
+                    spawnRotation,
+                    currentBarricadeScaleMultiplier
+                );
+            }
+            else
+            {
+                spawnedBarricade.transform.SetPositionAndRotation(spawnPos, spawnRotation);
+                spawnedBarricade.transform.localScale *= currentBarricadeScaleMultiplier;
+            }
+
+            currentBarricades.Add(spawnedBarricade);
         }
 
-        GameObject spawnedBarricade = Instantiate(
-            barricadePrefab,
-            Vector3.zero,
-            spawnRotation,
-            deployParent != null ? deployParent : null
+        RequestInstalledObjectCameraAtPosition(centerSpawnPos);
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 바리케이드 설치 완료. " +
+            $"Center={centerSpawnPos}, Count={spawnCount}, ScaleMultiplier={currentBarricadeScaleMultiplier:F2}"
         );
-
-        Barricade barricade = spawnedBarricade.GetComponent<Barricade>();
-
-        if (barricade != null)
-            barricade.Deploy(spawnPos, spawnRotation);
-        else
-            spawnedBarricade.transform.SetPositionAndRotation(spawnPos, spawnRotation);
-
-        currentBarricade = spawnedBarricade;
-
-        RequestInstalledObjectCameraAtPosition(spawnPos);
-
-        Debug.Log($"[Engineer {AgentID}] 바리케이드 설치 완료: {spawnPos}");
     }
 
     private void DeployStopSignal(Vector3 targetPos)
@@ -556,10 +692,14 @@ public class Engineer : AgentController
         if (stopSignal == null)
             stopSignal = spawnedStopSignal.AddComponent<StopSignal>();
 
+        float finalRadius = GetCurrentStopSignalRadius();
+        float finalStopDuration = GetCurrentStopSignalDuration();
+        float finalLifeTime = GetCurrentStopSignalLifeTime();
+
         stopSignal.Configure(
-            stopSignalRadius,
-            stopSignalDuration,
-            stopSignalLifeTime,
+            finalRadius,
+            finalStopDuration,
+            finalLifeTime,
             targetLayer
         );
 
@@ -568,9 +708,54 @@ public class Engineer : AgentController
         RequestInstalledObjectCamera(spawnedStopSignal.transform);
 
         Debug.Log(
-            $"[Engineer {AgentID}] 정지 신호 설치 완료: {spawnPos}, " +
-            $"범위: {stopSignalRadius}, 정지 시간: {stopSignalDuration}초"
+            $"[Engineer {AgentID}] 정지 신호 설치 완료. " +
+            $"Position={spawnPos}, Radius={finalRadius}, StopDuration={finalStopDuration}, LifeTime={finalLifeTime}"
         );
+    }
+
+    private Vector3 GetBarricadeSpawnPosition(
+        Vector3 centerPosition,
+        Quaternion rotation,
+        int index,
+        int count)
+    {
+        if (count <= 1)
+            return centerPosition;
+
+        float centerOffset = (count - 1) * 0.5f;
+        float offsetIndex = index - centerOffset;
+
+        Vector3 right = rotation * Vector3.right;
+        return centerPosition + right * offsetIndex * multiBarricadeSpacing;
+    }
+
+    private void ClearCurrentBarricades()
+    {
+        if (currentBarricades.Count <= 0)
+            return;
+
+        for (int i = 0; i < currentBarricades.Count; i++)
+        {
+            if (currentBarricades[i] != null)
+                Destroy(currentBarricades[i]);
+        }
+
+        currentBarricades.Clear();
+    }
+
+    private float GetCurrentStopSignalRadius()
+    {
+        return stopSignalRadius * currentStopSignalRadiusMultiplier;
+    }
+
+    private float GetCurrentStopSignalDuration()
+    {
+        return stopSignalDuration * currentStopSignalDurationMultiplier;
+    }
+
+    private float GetCurrentStopSignalLifeTime()
+    {
+        return stopSignalLifeTime * currentStopSignalLifeTimeMultiplier;
     }
 
     private void RequestInstalledObjectCameraAtPosition(Vector3 focusPosition)

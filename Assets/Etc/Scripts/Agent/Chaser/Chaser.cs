@@ -2,7 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
-public class Chaser : AgentController
+public class Chaser : AgentController, IUpgradeReceiver
 {
     private enum ChaserMoveMode
     {
@@ -14,6 +14,11 @@ public class Chaser : AgentController
 
     private const string SkillAccessControl = "accesscontrol";
     private const string SkillEscapeBlock = "escapeblock";
+
+    private const string UpgradeAccessControlZoneMobility = "chaser_access_control_zone_mobility";
+    private const string UpgradeAccessControlRadiusX2 = "chaser_access_control_radius_x2";
+    private const string UpgradeEscapeBlockGaugeX2 = "chaser_escape_block_gauge_x2";
+    private const string UpgradeEscapeBlockPressureVision = "chaser_escape_block_pressure_vision";
 
     private const string IsMovingParameter = "IsMoving";
     private const string MoveSpeedParameter = "MoveSpeed";
@@ -32,10 +37,18 @@ public class Chaser : AgentController
     [SerializeField] private AccessControlZone accessControlZonePrefab;
     [SerializeField] private float accessControlRadius = 10f;
     [SerializeField] private float accessControlDuration = 20f;
-    [SerializeField] private float targetSpeedMultiplierInAccessControl = 0.8f;
-    [SerializeField] private float targetAngularSpeedMultiplierInAccessControl = 0.7f;
-    [SerializeField] private float chaserSpeedMultiplierInAccessControl = 1.2f;
-    [SerializeField] private float chaserAngularSpeedMultiplierInAccessControl = 1.3f;
+    [SerializeField]
+    [Tooltip("출입 통제 구역 내 타겟 이동 속도 배율")]
+    private float targetSpeedMultiplierInAccessControl = 0.5f;
+    [SerializeField]
+    [Tooltip("출입 통제 구역 내 타겟 회전 속도 배율")]
+    private float targetAngularSpeedMultiplierInAccessControl = 0.5f;
+    [SerializeField]
+    [Tooltip("출입 통제 구역 내 보안 요원 이동 속도 배율")]
+    private float chaserSpeedMultiplierInAccessControl = 1.5f;
+    [SerializeField]
+    [Tooltip("출입 통제 구역 내 보안 요원 회전 속도 배율")]
+    private float chaserAngularSpeedMultiplierInAccessControl = 1.5f;
     [SerializeField] private bool replacePreviousAccessControlZone = true;
 
     [Header("Access Control Visual")]
@@ -51,6 +64,10 @@ public class Chaser : AgentController
     [SerializeField] private float escapeBlockReleaseDelay = 0.5f;
     [SerializeField] private bool escapeBlockDebugLog = false;
 
+    [Header("Upgrade - Escape Block")]
+    [SerializeField] private float pressureVisionRadiusMultiplier = 1.5f;
+    [SerializeField] private float pressureVisionHealthDrainMultiplier = 2f;
+
     [Header("Chaser Animation")]
     [SerializeField] private float chaserMovingThreshold = 0.03f;
     [SerializeField] private float chaserAnimationStopDelay = 0.2f;
@@ -60,6 +77,9 @@ public class Chaser : AgentController
     [SerializeField] private bool faceAwayFromHitSource = true;
 
     private AccessControlZone currentAccessControlZone;
+
+    private bool pressureVisionEnabled;
+    private bool pressureVisionActive;
 
     private Transform escapeBlockCandidateTarget;
     private Transform escapeBlockBlockedTarget;
@@ -130,11 +150,19 @@ public class Chaser : AgentController
         accessControlRadius = Mathf.Max(0f, accessControlRadius);
         accessControlDuration = Mathf.Max(0f, accessControlDuration);
 
+        targetSpeedMultiplierInAccessControl = Mathf.Max(0.01f, targetSpeedMultiplierInAccessControl);
+        targetAngularSpeedMultiplierInAccessControl = Mathf.Max(0.01f, targetAngularSpeedMultiplierInAccessControl);
+        chaserSpeedMultiplierInAccessControl = Mathf.Max(0.01f, chaserSpeedMultiplierInAccessControl);
+        chaserAngularSpeedMultiplierInAccessControl = Mathf.Max(0.01f, chaserAngularSpeedMultiplierInAccessControl);
+
         escapeBlockGaugeMax = Mathf.Max(0f, escapeBlockGaugeMax);
         escapeBlockGaugeDrainPerSecond = Mathf.Max(0f, escapeBlockGaugeDrainPerSecond);
         escapeBlockMaxDistance = Mathf.Max(0f, escapeBlockMaxDistance);
         escapeBlockRequiredSightTime = Mathf.Max(0f, escapeBlockRequiredSightTime);
         escapeBlockReleaseDelay = Mathf.Max(0f, escapeBlockReleaseDelay);
+
+        pressureVisionRadiusMultiplier = Mathf.Max(1f, pressureVisionRadiusMultiplier);
+        pressureVisionHealthDrainMultiplier = Mathf.Max(1f, pressureVisionHealthDrainMultiplier);
 
         chaserMovingThreshold = Mathf.Max(0f, chaserMovingThreshold);
         chaserAnimationStopDelay = Mathf.Max(0f, chaserAnimationStopDelay);
@@ -162,10 +190,12 @@ public class Chaser : AgentController
 
         base.Update();
         UpdateEscapeBlock();
+        UpdatePressureVisionUpgrade();
     }
 
     protected override void OnDisable()
     {
+        SetPressureVisionActive(false);
         ReleaseEscapeBlock();
         DestroyCurrentAccessControlZone();
         StopHitReactionRoutine();
@@ -176,6 +206,82 @@ public class Chaser : AgentController
         lastChaserAnimationMovingTime = -999f;
 
         base.OnDisable();
+    }
+
+    public bool CanApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Chaser);
+    }
+
+    public void ApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        if (!CanApplyUpgrade(upgrade))
+            return;
+
+        switch (upgrade.UpgradeId)
+        {
+            case UpgradeAccessControlZoneMobility:
+                ApplyAccessControlZoneMobilityUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeAccessControlRadiusX2:
+                ApplyAccessControlRadiusUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeEscapeBlockGaugeX2:
+                ApplyEscapeBlockGaugeUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeEscapeBlockPressureVision:
+                pressureVisionEnabled = true;
+                break;
+        }
+    }
+
+    private void ApplyAccessControlZoneMobilityUpgrade(float multiplier)
+    {
+        if (multiplier <= 0f)
+            multiplier = 2f;
+
+        float baseMultiplier = 1f;
+        float currentBonus = Mathf.Max(0f, chaserSpeedMultiplierInAccessControl - baseMultiplier);
+
+        chaserSpeedMultiplierInAccessControl = baseMultiplier + currentBonus * multiplier;
+
+        Debug.Log(
+            $"[Chaser {AgentID}] 출입 통제 기동 강화 적용. " +
+            $"ChaserSpeedMultiplier={chaserSpeedMultiplierInAccessControl:F2}"
+        );
+    }
+
+    private void ApplyAccessControlRadiusUpgrade(float multiplier)
+    {
+        if (multiplier <= 0f)
+            multiplier = 2f;
+
+        accessControlRadius *= multiplier;
+
+        Debug.Log(
+            $"[Chaser {AgentID}] 광역 통제 강화 적용. " +
+            $"AccessControlRadius={accessControlRadius:F2}"
+        );
+    }
+
+    private void ApplyEscapeBlockGaugeUpgrade(float multiplier)
+    {
+        if (multiplier <= 0f)
+            multiplier = 2f;
+
+        float previousMax = Mathf.Max(0.01f, escapeBlockGaugeMax);
+        float currentRatio = Mathf.Clamp01(escapeBlockGauge / previousMax);
+
+        escapeBlockGaugeMax *= multiplier;
+        escapeBlockGauge = escapeBlockGaugeMax * currentRatio;
+
+        Debug.Log(
+            $"[Chaser {AgentID}] 예비 제지 게이지 강화 적용. " +
+            $"EscapeBlockGaugeMax={escapeBlockGaugeMax:F2}"
+        );
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -549,6 +655,8 @@ public class Chaser : AgentController
 
     private void ReleaseEscapeBlock()
     {
+        SetPressureVisionActive(false);
+
         if (escapeBlockBlockedReceiver != null)
         {
             escapeBlockBlockedReceiver.SetEscapeSkillBlocked(this, false);
@@ -563,6 +671,62 @@ public class Chaser : AgentController
 
         escapeBlockSightTimer = 0f;
         escapeBlockReleaseTimer = 0f;
+    }
+
+    private void UpdatePressureVisionUpgrade()
+    {
+        bool shouldActivate =
+            pressureVisionEnabled &&
+            HasEscapeBlockGauge() &&
+            escapeBlockBlockedReceiver != null &&
+            escapeBlockBlockedTarget != null;
+
+        SetPressureVisionActive(shouldActivate);
+
+        if (!shouldActivate)
+            return;
+
+        if (visionSensor == null)
+            return;
+
+        if (!visionSensor.CanDirectlySeeTransform(escapeBlockBlockedTarget))
+            return;
+
+        TargetController targetController = escapeBlockBlockedTarget.GetComponentInParent<TargetController>();
+
+        if (targetController == null)
+            targetController = escapeBlockBlockedTarget.GetComponentInChildren<TargetController>();
+
+        if (targetController == null)
+            return;
+
+        targetController.ApplyFleeHealthDrainMultiplier(
+            pressureVisionHealthDrainMultiplier,
+            Time.deltaTime
+        );
+    }
+
+    private void SetPressureVisionActive(bool active)
+    {
+        if (pressureVisionActive == active)
+            return;
+
+        pressureVisionActive = active;
+
+        if (visionSensor == null)
+            return;
+
+        if (pressureVisionActive)
+        {
+            visionSensor.SetExternalViewRadiusMultiplier(
+                this,
+                pressureVisionRadiusMultiplier
+            );
+        }
+        else
+        {
+            visionSensor.RemoveExternalViewRadiusMultiplier(this);
+        }
     }
 
     private ITargetEscapeSkillBlockReceiver FindEscapeSkillBlockReceiver(Transform target)
@@ -627,7 +791,8 @@ public class Chaser : AgentController
 
         Debug.Log(
             $"[Chaser {AgentID}] 출입 통제 구역 생성 및 이동 시작. " +
-            $"Center={centerPosition}, Radius={accessControlRadius}, Duration={accessControlDuration}"
+            $"Center={centerPosition}, Radius={accessControlRadius}, Duration={accessControlDuration}, " +
+            $"ChaserSpeedMultiplier={chaserSpeedMultiplierInAccessControl:F2}"
         );
     }
 

@@ -70,6 +70,7 @@ public class AccessControlZone : MonoBehaviour
         modifierKey = $"ChaserAccessControl_{GetInstanceID()}";
         targetHits = new Collider[Mathf.Max(1, maxTargetHits)];
 
+        circleSegments = Mathf.Max(8, circleSegments);
         lineRenderer = GetComponent<LineRenderer>();
 
         SetupLineRenderer(lineMaterial, lineColor);
@@ -112,7 +113,13 @@ public class AccessControlZone : MonoBehaviour
         if (owner == null)
             return;
 
-        float sqrDistance = (owner.transform.position - transform.position).sqrMagnitude;
+        Vector3 ownerPosition = owner.transform.position;
+        Vector3 zonePosition = transform.position;
+
+        ownerPosition.y = 0f;
+        zonePosition.y = 0f;
+
+        float sqrDistance = (ownerPosition - zonePosition).sqrMagnitude;
 
         if (sqrDistance > radius * radius)
             return;
