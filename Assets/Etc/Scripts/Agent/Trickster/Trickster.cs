@@ -1,8 +1,9 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 
-public class Trickster : AgentController
+public class Trickster : AgentController, IUpgradeReceiver
 {
     private enum TricksterMoveMode
     {
@@ -13,6 +14,11 @@ public class Trickster : AgentController
 
     private const string SkillFakeBox = "fakebox";
     private const string SkillJokerCard = "jokercard";
+
+    private const string UpgradeFakeBoxMultiTrick = "trickster_fake_box_multi_trick";
+    private const string UpgradeFakeBoxReverseRoute = "trickster_fake_box_reverse_route";
+    private const string UpgradeJokerCardWildJoker = "trickster_joker_card_wild_joker";
+    private const string UpgradeJokerCardStageControl = "trickster_joker_card_stage_control";
 
     private const string IsMovingParameter = "IsMoving";
     private const string MoveSpeedParameter = "MoveSpeed";
@@ -34,6 +40,12 @@ public class Trickster : AgentController
     [SerializeField] private float deployYOffset = 0f;
     [SerializeField] private bool replaceExistingFakeBox = true;
 
+    [Header("Upgrade - Trickster")]
+    [SerializeField] private float multiFakeBoxGaugeCostMultiplier = 0.5f;
+    [SerializeField] private int multiFakeBoxMaxActiveCount = 3;
+    [SerializeField] private float wildJokerDurationMultiplier = 2f;
+    [SerializeField] private float wildJokerBuffEffectMultiplier = 1.5f;
+
     [Header("Joker Card Effect")]
     [SerializeField] private JokerCard jokerCardEffectInstance;
     [SerializeField] private JokerCard jokerCardEffectPrefab;
@@ -51,12 +63,22 @@ public class Trickster : AgentController
     [SerializeField] private float hitReactionLockSeconds = 0.45f;
     [SerializeField] private bool faceAwayFromHitSource = true;
 
+    private readonly List<FakeBox> currentFakeBoxes = new List<FakeBox>();
+
     private FakeBox currentFakeBox;
     private Coroutine jokerCardRoutine;
     private JokerCard currentJokerCardEffect;
 
     private bool isJokerCardActive;
     private bool hasCachedJokerCardValues;
+
+    private float currentFakeBoxGaugeCostMultiplier = 1f;
+    private bool currentAllowMultipleFakeBoxes;
+    private int currentMaxActiveFakeBoxCount = 1;
+    private bool currentFakeBoxReverseRouteEnabled;
+    private float currentJokerCardDurationMultiplier = 1f;
+    private float currentJokerCardBuffEffectMultiplier = 1f;
+    private bool currentJokerCardDebuffImmunity;
 
     private float originalMoveSpeed;
     private float originalSpotLightRange;
@@ -92,6 +114,11 @@ public class Trickster : AgentController
     private Coroutine hitReactionRoutine;
 
     public bool IsResultAnimationLocked => isResultAnimationLocked;
+    public bool IsJokerCardIgnoringDebuffs => IsJokerCardDebuffImmunityActive;
+
+    protected override bool ShouldIgnoreDebuffStateIcon => IsJokerCardDebuffImmunityActive;
+
+    private bool IsJokerCardDebuffImmunityActive => isJokerCardActive && currentJokerCardDebuffImmunity;
 
     protected override void Awake()
     {
@@ -119,17 +146,20 @@ public class Trickster : AgentController
         {
             KeepStoppedForLockedAnimation();
             UpdateAnimationState();
+            MaintainJokerCardDebuffImmunity();
             return;
         }
 
         if (isHitReactionLocked || isSkillAnimationLocked)
         {
             UpdateAnimationState();
+            MaintainJokerCardDebuffImmunity();
             return;
         }
 
         base.Update();
         TryAutoUseJokerCard();
+        MaintainJokerCardDebuffImmunity();
     }
 
     protected override void OnDisable()
@@ -152,6 +182,10 @@ public class Trickster : AgentController
         base.OnValidate();
 
         deployYOffset = Mathf.Max(0f, deployYOffset);
+        multiFakeBoxGaugeCostMultiplier = Mathf.Clamp(multiFakeBoxGaugeCostMultiplier, 0.01f, 1f);
+        multiFakeBoxMaxActiveCount = Mathf.Max(2, multiFakeBoxMaxActiveCount);
+        wildJokerDurationMultiplier = Mathf.Max(1f, wildJokerDurationMultiplier);
+        wildJokerBuffEffectMultiplier = Mathf.Max(1f, wildJokerBuffEffectMultiplier);
 
         tricksterMovingThreshold = Mathf.Max(0f, tricksterMovingThreshold);
         animationStopDelay = Mathf.Max(0f, animationStopDelay);
@@ -276,6 +310,12 @@ public class Trickster : AgentController
         if (isResultAnimationLocked)
             return;
 
+        if (IsJokerCardDebuffImmunityActive)
+        {
+            Debug.Log($"[Trickster {AgentID}] 조커 카드 효과로 피격 방해 효과를 무효화했습니다.");
+            return;
+        }
+
         if (hitReactionRoutine != null)
             StopCoroutine(hitReactionRoutine);
 
@@ -305,6 +345,146 @@ public class Trickster : AgentController
             navAgent.isStopped = false;
 
         UpdateAnimationState(true);
+    }
+
+    public override float GetSkillGaugeRequiredForSkill(string skillName)
+    {
+        float requiredGauge = base.GetSkillGaugeRequiredForSkill(skillName);
+
+        if (IsFakeBoxSkill(skillName))
+            requiredGauge *= currentFakeBoxGaugeCostMultiplier;
+
+        return Mathf.Max(0f, requiredGauge);
+    }
+
+    protected override string[] GetCurrentAgentGaugeKeys()
+    {
+        return new[]
+        {
+            SkillFakeBox,
+            SkillJokerCard
+        };
+    }
+
+    public override void AddSkillCommandBlocker(object source)
+    {
+        if (IsJokerCardDebuffImmunityActive)
+        {
+            Debug.Log($"[Trickster {AgentID}] 조커 카드 효과로 스킬 차단 디버프를 무효화했습니다.");
+            return;
+        }
+
+        base.AddSkillCommandBlocker(source);
+    }
+
+    public override bool CanReceivePlayerSkillCommand(bool showWarning = false)
+    {
+        if (IsJokerCardDebuffImmunityActive)
+            return true;
+
+        return base.CanReceivePlayerSkillCommand(showWarning);
+    }
+
+    public bool CanApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Trickster);
+    }
+
+    public void ApplyUpgrade(UpgradeDefinition upgrade)
+    {
+        if (!CanApplyUpgrade(upgrade))
+            return;
+
+        switch (upgrade.UpgradeId)
+        {
+            case UpgradeFakeBoxMultiTrick:
+                ApplyMultiTrickUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeFakeBoxReverseRoute:
+                ApplyReverseRouteUpgrade();
+                break;
+
+            case UpgradeJokerCardWildJoker:
+                ApplyWildJokerUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeJokerCardStageControl:
+                ApplyStageControlUpgrade(upgrade);
+                break;
+
+            default:
+                Debug.LogWarning($"[Trickster {AgentID}] 알 수 없는 강화 ID입니다: {upgrade.UpgradeId}");
+                break;
+        }
+    }
+
+    private void ApplyMultiTrickUpgrade(float value)
+    {
+        currentFakeBoxGaugeCostMultiplier = value > 0f
+            ? Mathf.Clamp(value, 0.01f, 1f)
+            : multiFakeBoxGaugeCostMultiplier;
+
+        currentAllowMultipleFakeBoxes = true;
+        currentMaxActiveFakeBoxCount = Mathf.Max(2, multiFakeBoxMaxActiveCount);
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 다중 속임수 강화 적용. " +
+            $"GaugeCostMultiplier={currentFakeBoxGaugeCostMultiplier:F2}, " +
+            $"MaxActiveFakeBoxCount={currentMaxActiveFakeBoxCount}"
+        );
+    }
+
+    private void ApplyReverseRouteUpgrade()
+    {
+        currentFakeBoxReverseRouteEnabled = true;
+
+        Debug.Log($"[Trickster {AgentID}] 반전된 경로 강화 적용.");
+    }
+
+    private void ApplyWildJokerUpgrade(float value)
+    {
+        currentJokerCardDurationMultiplier = value > 0f
+            ? Mathf.Max(1f, value)
+            : wildJokerDurationMultiplier;
+
+        currentJokerCardBuffEffectMultiplier = wildJokerBuffEffectMultiplier;
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 와일드 조커 강화 적용. " +
+            $"DurationMultiplier={currentJokerCardDurationMultiplier:F2}, " +
+            $"BuffEffectMultiplier={currentJokerCardBuffEffectMultiplier:F2}"
+        );
+    }
+
+    private void ApplyStageControlUpgrade(UpgradeDefinition upgrade)
+    {
+        if (upgrade == null)
+            return;
+
+        if (upgrade.EffectType != UpgradeEffectType.BoolEnable)
+        {
+            Debug.LogWarning(
+                $"[Trickster {AgentID}] 무대 장악 강화의 Effect Type은 BoolEnable을 권장합니다. " +
+                $"CurrentType={upgrade.EffectType}"
+            );
+        }
+
+        if (upgrade.Value <= 0f)
+        {
+            Debug.LogWarning(
+                $"[Trickster {AgentID}] 무대 장악 강화의 Value가 0 이하입니다. " +
+                "BoolEnable 강화는 Value를 1로 설정하세요."
+            );
+            return;
+        }
+
+        currentJokerCardDebuffImmunity = true;
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 무대 장악 강화 적용. " +
+            "조커 카드 지속시간 동안 디버프를 무효화합니다."
+        );
     }
 
     private void ExecuteFakeBox(Vector3 targetPos)
@@ -356,11 +536,14 @@ public class Trickster : AgentController
     {
         Vector3 spawnPos = BuildSpawnPosition(targetPos);
 
-        if (replaceExistingFakeBox && currentFakeBox != null)
-        {
-            Destroy(currentFakeBox.gameObject);
-            currentFakeBox = null;
-        }
+        CleanupNullFakeBoxes();
+
+        bool shouldReplaceExisting = replaceExistingFakeBox && !currentAllowMultipleFakeBoxes;
+
+        if (shouldReplaceExisting)
+            DestroyAllFakeBoxes();
+        else if (currentAllowMultipleFakeBoxes)
+            TrimFakeBoxesBeforeDeploy();
 
         currentFakeBox = Instantiate(
             fakeBoxPrefab,
@@ -370,8 +553,69 @@ public class Trickster : AgentController
         );
 
         currentFakeBox.SetOwner(this);
+        currentFakeBox.SetReverseRouteEnabled(currentFakeBoxReverseRouteEnabled);
 
-        Debug.Log($"[Trickster {AgentID}] Fake Box deployed: {spawnPos}");
+        currentFakeBoxes.Add(currentFakeBox);
+
+        Debug.Log(
+            $"[Trickster {AgentID}] Fake Box deployed: {spawnPos}, " +
+            $"GaugeCostMultiplier={currentFakeBoxGaugeCostMultiplier:F2}, " +
+            $"Multiple={currentAllowMultipleFakeBoxes}, " +
+            $"ReverseRoute={currentFakeBoxReverseRouteEnabled}, " +
+            $"ActiveCount={currentFakeBoxes.Count}"
+        );
+    }
+
+    private void CleanupNullFakeBoxes()
+    {
+        for (int i = currentFakeBoxes.Count - 1; i >= 0; i--)
+        {
+            if (currentFakeBoxes[i] == null)
+                currentFakeBoxes.RemoveAt(i);
+        }
+
+        if (currentFakeBox == null && currentFakeBoxes.Count > 0)
+            currentFakeBox = currentFakeBoxes[currentFakeBoxes.Count - 1];
+    }
+
+    private void DestroyAllFakeBoxes()
+    {
+        for (int i = currentFakeBoxes.Count - 1; i >= 0; i--)
+        {
+            if (currentFakeBoxes[i] != null)
+                Destroy(currentFakeBoxes[i].gameObject);
+        }
+
+        currentFakeBoxes.Clear();
+
+        if (currentFakeBox != null)
+        {
+            Destroy(currentFakeBox.gameObject);
+            currentFakeBox = null;
+        }
+    }
+
+    private void TrimFakeBoxesBeforeDeploy()
+    {
+        int maxCount = Mathf.Max(1, currentMaxActiveFakeBoxCount);
+
+        while (currentFakeBoxes.Count >= maxCount)
+        {
+            FakeBox oldestFakeBox = currentFakeBoxes[0];
+            currentFakeBoxes.RemoveAt(0);
+
+            if (oldestFakeBox != null)
+                Destroy(oldestFakeBox.gameObject);
+        }
+    }
+
+    private void MaintainJokerCardDebuffImmunity()
+    {
+        if (!IsJokerCardDebuffImmunityActive)
+            return;
+
+        ClearSkillCommandBlockers(false);
+        UpdateStateIcon();
     }
 
     private void TryAutoUseJokerCard()
@@ -395,6 +639,12 @@ public class Trickster : AgentController
     {
         isJokerCardActive = true;
 
+        if (currentJokerCardDebuffImmunity)
+        {
+            ClearSkillCommandBlockers(false);
+            UpdateStateIcon();
+        }
+
         CacheJokerCardOriginalValues();
         ApplyJokerCardBuff();
         PlayJokerCardEffect();
@@ -402,8 +652,15 @@ public class Trickster : AgentController
         RequestFollowUserSkillCamera();
 
         float duration = stats != null ? stats.jokerCardDuration : 6f;
+        duration *= currentJokerCardDurationMultiplier;
 
-        Debug.Log($"[Trickster {AgentID}] Joker Card activated. Duration: {duration:0.##}");
+        Debug.Log(
+            $"[Trickster {AgentID}] Joker Card activated. " +
+            $"Duration={duration:0.##}, " +
+            $"DurationMultiplier={currentJokerCardDurationMultiplier:F2}, " +
+            $"BuffEffectMultiplier={currentJokerCardBuffEffectMultiplier:F2}, " +
+            $"DebuffImmunity={currentJokerCardDebuffImmunity}"
+        );
 
         if (duration > 0f)
             yield return new WaitForSeconds(duration);
@@ -437,6 +694,10 @@ public class Trickster : AgentController
         float viewRadiusMultiplier = stats != null ? stats.jokerCardViewRadiusMultiplier : 1.2f;
         float viewAngleBonus = stats != null ? stats.jokerCardViewAngleBonus : 15f;
 
+        moveSpeedMultiplier = ApplyJokerBuffEffectMultiplier(moveSpeedMultiplier);
+        viewRadiusMultiplier = ApplyJokerBuffEffectMultiplier(viewRadiusMultiplier);
+        viewAngleBonus *= currentJokerCardBuffEffectMultiplier;
+
         moveSpeedMultiplier = Mathf.Max(0f, moveSpeedMultiplier);
         viewRadiusMultiplier = Mathf.Max(0f, viewRadiusMultiplier);
 
@@ -454,6 +715,15 @@ public class Trickster : AgentController
             spotLight.range = originalSpotLightRange * viewRadiusMultiplier;
             spotLight.spotAngle = Mathf.Clamp(originalSpotLightOuterAngle + viewAngleBonus, 1f, 179f);
         }
+    }
+
+    private float ApplyJokerBuffEffectMultiplier(float baseMultiplier)
+    {
+        if (currentJokerCardBuffEffectMultiplier <= 1f)
+            return baseMultiplier;
+
+        float bonus = baseMultiplier - 1f;
+        return 1f + bonus * currentJokerCardBuffEffectMultiplier;
     }
 
     private void StopJokerCard(bool immediate)
@@ -739,7 +1009,7 @@ public class Trickster : AgentController
         if (!isMoving)
             return TricksterMoveMode.IdleAlert;
 
-        if (IsSmokeDebuffed)
+        if (!IsJokerCardDebuffImmunityActive && IsSmokeDebuffed)
             return TricksterMoveMode.DebuffedRun;
 
         return TricksterMoveMode.CommandRun;

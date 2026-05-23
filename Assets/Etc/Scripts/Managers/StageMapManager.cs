@@ -6,15 +6,18 @@ using Unity.AI.Navigation;
 public class StageMapManager : MonoBehaviour
 {
     [System.Serializable]
-    public class StageEntry
+    public class StageMapGroup
     {
-        public string stageName;
-        public GameObject mapPrefab;
+        public string groupName;
+        public int minStageNumber = 1;
+        public int maxStageNumber = 1;
+        public GameObject[] mapPrefabs;
         public bool useFloorViewController = false;
     }
 
     [Header("Stages")]
-    [SerializeField] private StageEntry[] stages;
+    [SerializeField] private int totalStageCount = 10;
+    [SerializeField] private StageMapGroup[] stageMapGroups;
 
     [Header("Unit Prefabs")]
     [SerializeField] private GameObject targetPrefab;
@@ -24,6 +27,11 @@ public class StageMapManager : MonoBehaviour
 
     [Header("Options")]
     [SerializeField] private bool buildNavMeshOnSpawn = false;
+    [SerializeField] private Vector3 mapSpawnEuler = new Vector3(0f, 90f, 0f);
+
+    [Header("Debug Map")]
+    [SerializeField] private bool useFixedMapIndexForDebug = false;
+    [SerializeField] private int debugMapIndex = 0;
 
     private GameObject currentMap;
     private GameObject currentTarget;
@@ -35,11 +43,15 @@ public class StageMapManager : MonoBehaviour
     private Transform fallbackTargetSpawnPoint;
 
     private int currentStageIndex = 0;
+    private StageMapGroup currentStageMapGroup;
+    private int currentStageMapGroupIndex = -1;
+    private int currentMapIndex = -1;
 
     public int CurrentStageIndex => currentStageIndex;
     public int CurrentStageNumber => currentStageIndex + 1;
-    public int StageCount => stages != null ? stages.Length : 0;
+    public int StageCount => Mathf.Max(1, totalStageCount);
     public string CurrentStageDisplayName => GetStageDisplayName(currentStageIndex);
+    public int CurrentMapIndex => currentMapIndex;
 
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string UnlockedStageCountKey = "UnlockedStageCount";
@@ -50,6 +62,9 @@ public class StageMapManager : MonoBehaviour
     private const string DebugTargetIndexKey = "DebugTargetIndex";
     private const string DebugTargetClearKeyPrefix = "DebugTargetClear";
 
+    private const string PlayedMapHistoryKeyPrefix = "PlayedMapHistory";
+    private const int MaxStoredMapGroupCount = 64;
+
     private void Start()
     {
         GenerateStageFromSelection();
@@ -58,6 +73,7 @@ public class StageMapManager : MonoBehaviour
     public static void LoadNormalGameScene(string gameSceneName)
     {
         ClearDebugStageSelection();
+        ClearPlayedMapHistory();
 
         PlayerPrefs.SetInt(SelectedStageKey, 0);
         PlayerPrefs.Save();
@@ -170,9 +186,26 @@ public class StageMapManager : MonoBehaviour
         PlayerPrefs.Save();
     }
 
+    public static void ClearPlayedMapHistory()
+    {
+        for (int i = 0; i < MaxStoredMapGroupCount; i++)
+        {
+            PlayerPrefs.DeleteKey(GetPlayedMapHistoryKey(i));
+        }
+
+        PlayerPrefs.Save();
+
+        Debug.Log("[StageMapManager] 플레이된 맵 기록 초기화");
+    }
+
     private static string GetDebugTargetClearKey(int stageIndex, int targetPrefabIndex)
     {
         return $"{DebugTargetClearKeyPrefix}_{stageIndex}_{targetPrefabIndex}";
+    }
+
+    private static string GetPlayedMapHistoryKey(int groupIndex)
+    {
+        return $"{PlayedMapHistoryKeyPrefix}_{groupIndex}";
     }
 
     private static bool CanUseDebugStage()
@@ -191,25 +224,33 @@ public class StageMapManager : MonoBehaviour
         ClearStage();
 
         currentStageIndex = GetStartStageIndex();
+        currentStageIndex = Mathf.Clamp(currentStageIndex, 0, StageCount - 1);
 
-        if (stages == null || stages.Length == 0)
+        int currentStageNumber = CurrentStageNumber;
+
+        currentStageMapGroup = GetStageMapGroup(currentStageNumber, out currentStageMapGroupIndex);
+        if (currentStageMapGroup == null)
         {
-            Debug.LogError("[StageMapManager] stages가 비어 있습니다.");
+            Debug.LogError($"[StageMapManager] Stage {currentStageNumber}에 맞는 StageMapGroup을 찾지 못했습니다.");
             return;
         }
 
-        currentStageIndex = Mathf.Clamp(currentStageIndex, 0, stages.Length - 1);
-
-        StageEntry selectedStageEntry = GetStageEntry(currentStageIndex);
-        if (selectedStageEntry == null || selectedStageEntry.mapPrefab == null)
+        GameObject selectedMapPrefab = GetSelectedMapPrefab(currentStageMapGroup, currentStageMapGroupIndex, out currentMapIndex);
+        if (selectedMapPrefab == null)
         {
-            Debug.LogError("[StageMapManager] 선택된 스테이지에 맞는 맵 프리팹이 없습니다.");
+            Debug.LogError($"[StageMapManager] Stage {currentStageNumber}에 사용할 수 있는 맵 프리팹이 없습니다.");
             return;
         }
 
-        currentMap = Instantiate(selectedStageEntry.mapPrefab, Vector3.zero, Quaternion.identity);
+        currentMap = Instantiate(
+            selectedMapPrefab,
+            Vector3.zero,
+            Quaternion.Euler(mapSpawnEuler)
+        );
 
-        ConfigureFloorViewController(selectedStageEntry);
+        SavePlayedMapIndexIfNeeded(currentStageMapGroupIndex, currentMapIndex);
+
+        ConfigureFloorViewController(currentStageMapGroup);
 
         if (!CacheMapPoints())
         {
@@ -234,8 +275,14 @@ public class StageMapManager : MonoBehaviour
             $"[StageMapManager] 맵 생성 완료: " +
             $"Stage={CurrentStageDisplayName}, " +
             $"StageIndex={currentStageIndex}, " +
+            $"StageNumber={currentStageNumber}, " +
+            $"Group={currentStageMapGroup.groupName}, " +
+            $"GroupIndex={currentStageMapGroupIndex}, " +
+            $"MapPrefab={selectedMapPrefab.name}, " +
+            $"MapIndex={currentMapIndex}, " +
+            $"MapRotation={mapSpawnEuler}, " +
             $"DebugMode={IsDebugStageMode()}, " +
-            $"UseFloorView={selectedStageEntry.useFloorViewController}"
+            $"UseFloorView={currentStageMapGroup.useFloorViewController}"
         );
     }
 
@@ -257,22 +304,199 @@ public class StageMapManager : MonoBehaviour
         return PlayerPrefs.GetInt(DebugStageEnabledKey, 0) == 1;
     }
 
-    private StageEntry GetStageEntry(int stageIndex)
+    private StageMapGroup GetStageMapGroup(int stageNumber, out int groupIndex)
     {
-        if (stages == null || stageIndex < 0 || stageIndex >= stages.Length)
+        groupIndex = -1;
+
+        if (stageMapGroups == null || stageMapGroups.Length == 0)
             return null;
 
-        return stages[stageIndex];
+        for (int i = 0; i < stageMapGroups.Length; i++)
+        {
+            StageMapGroup group = stageMapGroups[i];
+
+            if (group == null)
+                continue;
+
+            int minStage = Mathf.Min(group.minStageNumber, group.maxStageNumber);
+            int maxStage = Mathf.Max(group.minStageNumber, group.maxStageNumber);
+
+            if (stageNumber >= minStage && stageNumber <= maxStage)
+            {
+                groupIndex = i;
+                return group;
+            }
+        }
+
+        return null;
     }
 
-    private void ConfigureFloorViewController(StageEntry selectedStageEntry)
+    private StageMapGroup GetStageMapGroup(int stageNumber)
+    {
+        return GetStageMapGroup(stageNumber, out _);
+    }
+
+    private GameObject GetSelectedMapPrefab(StageMapGroup group, int groupIndex, out int selectedMapIndex)
+    {
+        selectedMapIndex = -1;
+
+        if (group == null || group.mapPrefabs == null || group.mapPrefabs.Length == 0)
+            return null;
+
+        List<int> validMapIndexes = GetValidMapIndexes(group);
+
+        if (validMapIndexes.Count == 0)
+            return null;
+
+        if (IsDebugStageMode() && useFixedMapIndexForDebug)
+        {
+            int clampedDebugMapIndex = Mathf.Clamp(debugMapIndex, 0, group.mapPrefabs.Length - 1);
+
+            if (group.mapPrefabs[clampedDebugMapIndex] != null)
+            {
+                selectedMapIndex = clampedDebugMapIndex;
+                return group.mapPrefabs[selectedMapIndex];
+            }
+
+            Debug.LogWarning($"[StageMapManager] Debug Map Index {clampedDebugMapIndex}의 맵 프리팹이 비어 있습니다. 이전 맵 제외 랜덤 선택으로 대체합니다.");
+        }
+
+        List<int> candidateMapIndexes = GetUnplayedMapIndexes(group, groupIndex, validMapIndexes);
+
+        if (candidateMapIndexes.Count == 0)
+        {
+            ClearPlayedMapHistoryForGroup(groupIndex);
+
+            candidateMapIndexes = new List<int>(validMapIndexes);
+
+            Debug.Log(
+                $"[StageMapManager] GroupIndex={groupIndex}의 모든 맵을 이미 플레이했습니다. " +
+                "해당 그룹의 맵 기록을 초기화하고 다시 랜덤 선택합니다."
+            );
+        }
+
+        int randomListIndex = Random.Range(0, candidateMapIndexes.Count);
+        selectedMapIndex = candidateMapIndexes[randomListIndex];
+
+        return group.mapPrefabs[selectedMapIndex];
+    }
+
+    private List<int> GetValidMapIndexes(StageMapGroup group)
+    {
+        List<int> validMapIndexes = new List<int>();
+
+        if (group == null || group.mapPrefabs == null)
+            return validMapIndexes;
+
+        for (int i = 0; i < group.mapPrefabs.Length; i++)
+        {
+            if (group.mapPrefabs[i] != null)
+                validMapIndexes.Add(i);
+        }
+
+        return validMapIndexes;
+    }
+
+    private List<int> GetUnplayedMapIndexes(StageMapGroup group, int groupIndex, List<int> validMapIndexes)
+    {
+        List<int> candidateMapIndexes = new List<int>();
+
+        if (group == null || validMapIndexes == null)
+            return candidateMapIndexes;
+
+        HashSet<int> playedMapIndexes = LoadPlayedMapIndexes(groupIndex);
+
+        for (int i = 0; i < validMapIndexes.Count; i++)
+        {
+            int mapIndex = validMapIndexes[i];
+
+            if (!playedMapIndexes.Contains(mapIndex))
+                candidateMapIndexes.Add(mapIndex);
+        }
+
+        return candidateMapIndexes;
+    }
+
+    private void SavePlayedMapIndexIfNeeded(int groupIndex, int mapIndex)
+    {
+        if (groupIndex < 0 || mapIndex < 0)
+            return;
+
+        if (IsDebugStageMode() && useFixedMapIndexForDebug)
+            return;
+
+        HashSet<int> playedMapIndexes = LoadPlayedMapIndexes(groupIndex);
+
+        if (playedMapIndexes.Contains(mapIndex))
+            return;
+
+        playedMapIndexes.Add(mapIndex);
+        SavePlayedMapIndexes(groupIndex, playedMapIndexes);
+    }
+
+    private HashSet<int> LoadPlayedMapIndexes(int groupIndex)
+    {
+        HashSet<int> playedMapIndexes = new HashSet<int>();
+
+        if (groupIndex < 0)
+            return playedMapIndexes;
+
+        string key = GetPlayedMapHistoryKey(groupIndex);
+        string savedValue = PlayerPrefs.GetString(key, string.Empty);
+
+        if (string.IsNullOrWhiteSpace(savedValue))
+            return playedMapIndexes;
+
+        string[] splitValues = savedValue.Split(',');
+
+        for (int i = 0; i < splitValues.Length; i++)
+        {
+            if (int.TryParse(splitValues[i], out int mapIndex))
+                playedMapIndexes.Add(mapIndex);
+        }
+
+        return playedMapIndexes;
+    }
+
+    private void SavePlayedMapIndexes(int groupIndex, HashSet<int> playedMapIndexes)
+    {
+        if (groupIndex < 0)
+            return;
+
+        string key = GetPlayedMapHistoryKey(groupIndex);
+
+        if (playedMapIndexes == null || playedMapIndexes.Count == 0)
+        {
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return;
+        }
+
+        List<int> sortedIndexes = new List<int>(playedMapIndexes);
+        sortedIndexes.Sort();
+
+        string savedValue = string.Join(",", sortedIndexes);
+        PlayerPrefs.SetString(key, savedValue);
+        PlayerPrefs.Save();
+    }
+
+    private void ClearPlayedMapHistoryForGroup(int groupIndex)
+    {
+        if (groupIndex < 0)
+            return;
+
+        PlayerPrefs.DeleteKey(GetPlayedMapHistoryKey(groupIndex));
+        PlayerPrefs.Save();
+    }
+
+    private void ConfigureFloorViewController(StageMapGroup selectedStageMapGroup)
     {
         FloorViewController floorViewController = FindFloorViewController();
         if (floorViewController == null)
             return;
 
         floorViewController.SetSearchRoot(currentMap != null ? currentMap.transform : null);
-        floorViewController.SetSystemEnabled(selectedStageEntry != null && selectedStageEntry.useFloorViewController);
+        floorViewController.SetSystemEnabled(selectedStageMapGroup != null && selectedStageMapGroup.useFloorViewController);
     }
 
     private FloorViewController FindFloorViewController()
@@ -671,7 +895,7 @@ public class StageMapManager : MonoBehaviour
         int nextStageIndex = currentStageIndex + 1;
         int nextUnlockedStageCount = Mathf.Max(PlayerPrefs.GetInt(UnlockedStageCountKey, 1), nextStageIndex + 1);
 
-        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Clamp(nextUnlockedStageCount, 1, Mathf.Max(1, StageCount)));
+        PlayerPrefs.SetInt(UnlockedStageCountKey, Mathf.Clamp(nextUnlockedStageCount, 1, StageCount));
         PlayerPrefs.Save();
     }
 
@@ -701,7 +925,7 @@ public class StageMapManager : MonoBehaviour
 
     public void SelectNextStage()
     {
-        int nextStageIndex = Mathf.Clamp(currentStageIndex + 1, 0, Mathf.Max(0, StageCount - 1));
+        int nextStageIndex = Mathf.Clamp(currentStageIndex + 1, 0, StageCount - 1);
 
         PlayerPrefs.SetInt(SelectedStageKey, nextStageIndex);
 
@@ -715,6 +939,7 @@ public class StageMapManager : MonoBehaviour
     {
         PlayerPrefs.SetInt(SelectedStageKey, 0);
         ClearDebugStageSelection();
+        ClearPlayedMapHistory();
         PlayerPrefs.Save();
     }
 
@@ -748,6 +973,10 @@ public class StageMapManager : MonoBehaviour
             currentMap = null;
         }
 
+        currentStageMapGroup = null;
+        currentStageMapGroupIndex = -1;
+        currentMapIndex = -1;
+
         groundRoot = null;
         agentSpawnPointsRoot = null;
         targetSpawnPointsRoot = null;
@@ -756,17 +985,12 @@ public class StageMapManager : MonoBehaviour
 
     public string GetStageDisplayName(int stageIndex)
     {
-        if (stages == null || stages.Length == 0)
-            return $"Stage {stageIndex + 1}";
+        int stageNumber = stageIndex + 1;
+        StageMapGroup group = GetStageMapGroup(stageNumber);
 
-        if (stageIndex < 0 || stageIndex >= stages.Length)
-            return $"Stage {stageIndex + 1}";
+        if (group != null && !string.IsNullOrWhiteSpace(group.groupName))
+            return $"Stage {stageNumber} - {group.groupName}";
 
-        StageEntry entry = stages[stageIndex];
-
-        if (entry != null && !string.IsNullOrWhiteSpace(entry.stageName))
-            return entry.stageName;
-
-        return $"Stage {stageIndex + 1}";
+        return $"Stage {stageNumber}";
     }
 }

@@ -113,6 +113,8 @@ public sealed class CommandExecutor
 
         Debug.Log($"[Action] Agent {agentId} : {finalDest}로 dash 이동");
 
+        RequestAgentSkillCutscene(targetAgent, SkillDash);
+
         targetAgent.MoveTo(finalDest);
         targetAgent.ExecuteSkill(SkillDash, finalDest);
     }
@@ -125,6 +127,8 @@ public sealed class CommandExecutor
         Vector3 currentPosition = targetAgent.transform.position;
 
         Debug.Log($"[Action] Agent {agentId} : 현재 위치 {currentPosition}에 hologram 스킬 사용");
+
+        RequestAgentSkillCutscene(targetAgent, SkillHologram);
 
         targetAgent.ExecuteSkill(SkillHologram, currentPosition);
     }
@@ -140,6 +144,8 @@ public sealed class CommandExecutor
         Vector3 currentPosition = targetAgent.transform.position;
 
         Debug.Log($"[Action] Agent {agentId} : {validatedSkill} 스킬 사용");
+
+        RequestAgentSkillCutscene(targetAgent, validatedSkill);
 
         targetAgent.ExecuteSkill(validatedSkill, currentPosition);
     }
@@ -157,6 +163,8 @@ public sealed class CommandExecutor
 
         Debug.Log($"[Action] Agent {agentId} : {finalDest} 위치에 {validatedSkill} 스킬 사용");
 
+        RequestAgentSkillCutscene(targetAgent, validatedSkill);
+
         targetAgent.ExecuteSkill(validatedSkill, finalDest);
     }
 
@@ -173,6 +181,17 @@ public sealed class CommandExecutor
         Debug.Log($"[Action] Agent {agentId} : {finalDest}로 이동 명령");
 
         targetAgent.MoveTo(finalDest);
+    }
+
+    private void RequestAgentSkillCutscene(AgentController targetAgent, string skillKey)
+    {
+        if (targetAgent == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(skillKey))
+            return;
+
+        SkillCutsceneEventBus.RequestAgentSkillCutscene(targetAgent, skillKey);
     }
 
     private Vector3 ResolveCommandPosition(Vector3 originalPosition, string commandName, int agentId)

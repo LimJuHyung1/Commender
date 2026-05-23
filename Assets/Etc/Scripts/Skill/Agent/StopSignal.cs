@@ -7,23 +7,34 @@ using UnityEngine.AI;
 public class StopSignal : MonoBehaviour
 {
     private const string DefaultRangeIndicatorName = "Quad";
+    private const float MinimumRadius = 0.1f;
+    private const float MinimumScale = 0.001f;
+    private const float AxisEpsilon = 0.0001f;
 
     [Header("Trigger")]
-    [SerializeField] private bool destroyAfterTriggered = true;
+    [SerializeField] private bool oneShotTrigger = true;
+    [SerializeField] private bool destroyAfterTriggered = false;
     [SerializeField] private float destroyDelayAfterTriggered = 0.2f;
+    [SerializeField] private bool disableColliderAfterTriggered = false;
     [SerializeField] private GameObject triggerEffectObject;
 
     [Header("Range Visual")]
     [SerializeField] private Transform rangeIndicatorQuad;
     [SerializeField] private float rangeIndicatorYOffset = 0.03f;
-    [SerializeField] private bool hideRangeIndicatorAfterTriggered = true;
+    [SerializeField] private bool hideRangeIndicatorAfterTriggered = false;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugLog = false;
 
     private SphereCollider triggerCollider;
     private Rigidbody rigidBody;
     private LayerMask targetLayerMask;
 
     private float stopDuration = 2f;
+    private float configuredRadius = 2f;
+    private float configuredLifeTime;
     private bool hasTriggered;
+    private bool isConfigured;
 
     private void Awake()
     {
@@ -31,17 +42,26 @@ public class StopSignal : MonoBehaviour
         SetupTriggerCollider();
         SetupRigidbody();
         SetupTriggerEffect();
-        ApplyRangeIndicatorRadius(triggerCollider.radius);
+
+        if (triggerCollider != null)
+        {
+            configuredRadius = Mathf.Max(MinimumRadius, triggerCollider.radius);
+            ApplyRangeIndicatorRadius(configuredRadius);
+        }
     }
 
     private void OnValidate()
     {
+        destroyDelayAfterTriggered = Mathf.Max(0.05f, destroyDelayAfterTriggered);
+        rangeIndicatorYOffset = Mathf.Max(0f, rangeIndicatorYOffset);
+
         CacheComponents();
 
         if (triggerCollider != null)
         {
             triggerCollider.isTrigger = true;
-            ApplyRangeIndicatorRadius(triggerCollider.radius);
+            configuredRadius = Mathf.Max(MinimumRadius, triggerCollider.radius);
+            ApplyRangeIndicatorRadius(configuredRadius);
         }
 
         if (rigidBody != null)
@@ -60,24 +80,39 @@ public class StopSignal : MonoBehaviour
         CacheComponents();
         SetupTriggerCollider();
         SetupRigidbody();
+        SetupTriggerEffect();
 
-        float safeRadius = Mathf.Max(0.1f, triggerRadius);
+        float safeRadius = Mathf.Max(MinimumRadius, triggerRadius);
 
-        triggerCollider.radius = safeRadius;
-
+        configuredRadius = safeRadius;
         stopDuration = Mathf.Max(0.1f, targetStopDuration);
+        configuredLifeTime = Mathf.Max(0f, lifeTime);
         targetLayerMask = targetLayer;
         hasTriggered = false;
+        isConfigured = true;
+
+        if (triggerCollider != null)
+        {
+            triggerCollider.radius = safeRadius;
+            triggerCollider.enabled = true;
+        }
 
         ApplyRangeIndicatorRadius(safeRadius);
+        ShowRangeIndicator();
 
-        if (rangeIndicatorQuad != null)
-            rangeIndicatorQuad.gameObject.SetActive(true);
-
-        if (lifeTime > 0f)
-            Destroy(gameObject, lifeTime);
+        if (configuredLifeTime > 0f)
+            Destroy(gameObject, configuredLifeTime);
 
         StartCoroutine(CheckOverlappingTargetsNextFrame());
+
+        if (debugLog)
+        {
+            Debug.Log(
+                $"[StopSignal] Configured. " +
+                $"Radius={safeRadius}, StopDuration={stopDuration}, LifeTime={configuredLifeTime}, " +
+                $"QuadWorldSize={GetRangeIndicatorWorldFootprint()}"
+            );
+        }
     }
 
     private void CacheComponents()
@@ -98,6 +133,7 @@ public class StopSignal : MonoBehaviour
             return;
 
         triggerCollider.isTrigger = true;
+        triggerCollider.enabled = true;
     }
 
     private void SetupRigidbody()
@@ -120,11 +156,14 @@ public class StopSignal : MonoBehaviour
         if (rangeIndicatorQuad == null)
             return;
 
-        float diameter = Mathf.Max(0.1f, radius * 2f);
+        float diameter = Mathf.Max(MinimumRadius, radius * 2f);
+
+        int firstAxis = GetMostHorizontalLocalAxis(-1);
+        int secondAxis = GetMostHorizontalLocalAxis(firstAxis);
 
         Vector3 localScale = rangeIndicatorQuad.localScale;
-        localScale.x = diameter;
-        localScale.y = diameter;
+        SetAxisValue(ref localScale, firstAxis, CalculateLocalScaleForWorldDiameter(firstAxis, diameter));
+        SetAxisValue(ref localScale, secondAxis, CalculateLocalScaleForWorldDiameter(secondAxis, diameter));
         rangeIndicatorQuad.localScale = localScale;
 
         Vector3 localPosition = rangeIndicatorQuad.localPosition;
@@ -132,11 +171,167 @@ public class StopSignal : MonoBehaviour
         rangeIndicatorQuad.localPosition = localPosition;
     }
 
+    private int GetMostHorizontalLocalAxis(int ignoredAxis)
+    {
+        int bestAxis = 0;
+        float bestScore = -1f;
+
+        for (int i = 0; i < 3; i++)
+        {
+            if (i == ignoredAxis)
+                continue;
+
+            float score = GetHorizontalAxisScore(i);
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestAxis = i;
+            }
+        }
+
+        return bestAxis;
+    }
+
+    private float GetHorizontalAxisScore(int axisIndex)
+    {
+        Vector3 worldDirection = rangeIndicatorQuad.TransformDirection(GetLocalAxisVector(axisIndex));
+        worldDirection.y = 0f;
+        return worldDirection.sqrMagnitude;
+    }
+
+    private float CalculateLocalScaleForWorldDiameter(int axisIndex, float diameter)
+    {
+        float meshAxisSize = GetMeshAxisSize(axisIndex);
+        float worldFootprintPerLocalUnit = GetWorldFootprintPerLocalUnit(axisIndex);
+        float denominator = meshAxisSize * worldFootprintPerLocalUnit;
+
+        if (denominator <= AxisEpsilon)
+            return Mathf.Max(MinimumScale, diameter);
+
+        float currentScale = GetAxisValue(rangeIndicatorQuad.localScale, axisIndex);
+        float sign = currentScale < 0f ? -1f : 1f;
+        float scale = diameter / denominator;
+
+        return Mathf.Max(MinimumScale, scale) * sign;
+    }
+
+    private float GetMeshAxisSize(int axisIndex)
+    {
+        MeshFilter meshFilter = rangeIndicatorQuad.GetComponent<MeshFilter>();
+
+        if (meshFilter == null || meshFilter.sharedMesh == null)
+            return 1f;
+
+        float size = GetAxisValue(meshFilter.sharedMesh.bounds.size, axisIndex);
+
+        if (size <= AxisEpsilon)
+            return 1f;
+
+        return size;
+    }
+
+    private float GetWorldFootprintPerLocalUnit(int axisIndex)
+    {
+        Vector3 localAxis = GetLocalAxisVector(axisIndex);
+        Vector3 parentSpaceAxis = rangeIndicatorQuad.localRotation * localAxis;
+        Vector3 worldAxis = rangeIndicatorQuad.parent != null
+            ? rangeIndicatorQuad.parent.TransformVector(parentSpaceAxis)
+            : parentSpaceAxis;
+
+        worldAxis.y = 0f;
+
+        float footprint = worldAxis.magnitude;
+
+        if (footprint <= AxisEpsilon)
+            return 1f;
+
+        return footprint;
+    }
+
+    private Vector2 GetRangeIndicatorWorldFootprint()
+    {
+        if (rangeIndicatorQuad == null)
+            return Vector2.zero;
+
+        Renderer indicatorRenderer = rangeIndicatorQuad.GetComponentInChildren<Renderer>();
+
+        if (indicatorRenderer == null)
+            return Vector2.zero;
+
+        Bounds bounds = indicatorRenderer.bounds;
+        return new Vector2(bounds.size.x, bounds.size.z);
+    }
+
+    private Vector3 GetLocalAxisVector(int axisIndex)
+    {
+        switch (axisIndex)
+        {
+            case 0:
+                return Vector3.right;
+            case 1:
+                return Vector3.up;
+            default:
+                return Vector3.forward;
+        }
+    }
+
+    private float GetAxisValue(Vector3 vector, int axisIndex)
+    {
+        switch (axisIndex)
+        {
+            case 0:
+                return vector.x;
+            case 1:
+                return vector.y;
+            default:
+                return vector.z;
+        }
+    }
+
+    private void SetAxisValue(ref Vector3 vector, int axisIndex, float value)
+    {
+        switch (axisIndex)
+        {
+            case 0:
+                vector.x = value;
+                break;
+            case 1:
+                vector.y = value;
+                break;
+            default:
+                vector.z = value;
+                break;
+        }
+    }
+
+    private void ShowRangeIndicator()
+    {
+        if (rangeIndicatorQuad == null)
+            return;
+
+        rangeIndicatorQuad.gameObject.SetActive(true);
+    }
+
+    private void HideRangeIndicator()
+    {
+        if (rangeIndicatorQuad == null)
+            return;
+
+        rangeIndicatorQuad.gameObject.SetActive(false);
+    }
+
     private IEnumerator CheckOverlappingTargetsNextFrame()
     {
         yield return null;
 
-        if (hasTriggered || triggerCollider == null)
+        if (!isConfigured)
+            yield break;
+
+        if (triggerCollider == null)
+            yield break;
+
+        if (oneShotTrigger && hasTriggered)
             yield break;
 
         Vector3 center = transform.TransformPoint(triggerCollider.center);
@@ -155,7 +350,7 @@ public class StopSignal : MonoBehaviour
 
         for (int i = 0; i < overlaps.Length; i++)
         {
-            if (TryTriggerStop(overlaps[i]))
+            if (TryTriggerStop(overlaps[i]) && oneShotTrigger)
                 yield break;
         }
     }
@@ -172,7 +367,10 @@ public class StopSignal : MonoBehaviour
 
     private bool TryTriggerStop(Collider other)
     {
-        if (hasTriggered)
+        if (!isConfigured)
+            return false;
+
+        if (oneShotTrigger && hasTriggered)
             return false;
 
         if (other == null)
@@ -190,21 +388,36 @@ public class StopSignal : MonoBehaviour
 
         hasTriggered = true;
 
-        if (triggerEffectObject != null)
-            triggerEffectObject.SetActive(true);
+        PlayTriggerEffect();
 
-        if (hideRangeIndicatorAfterTriggered && rangeIndicatorQuad != null)
-            rangeIndicatorQuad.gameObject.SetActive(false);
+        if (hideRangeIndicatorAfterTriggered)
+            HideRangeIndicator();
 
-        if (triggerCollider != null)
+        if (disableColliderAfterTriggered && triggerCollider != null)
             triggerCollider.enabled = false;
 
-        Debug.Log($"[StopSignal] Triggered target stop. Target: {target.name}, Duration: {stopDuration:0.##}");
-
         if (destroyAfterTriggered)
-            Destroy(gameObject, Mathf.Max(0.05f, destroyDelayAfterTriggered));
+            Destroy(gameObject, destroyDelayAfterTriggered);
+
+        if (debugLog)
+        {
+            Debug.Log(
+                $"[StopSignal] Triggered target stop. " +
+                $"Target={target.name}, Duration={stopDuration:0.##}, " +
+                $"DestroyAfterTriggered={destroyAfterTriggered}"
+            );
+        }
 
         return true;
+    }
+
+    private void PlayTriggerEffect()
+    {
+        if (triggerEffectObject == null)
+            return;
+
+        triggerEffectObject.SetActive(false);
+        triggerEffectObject.SetActive(true);
     }
 
     private bool TryGetTargetController(Collider other, out TargetController target)
@@ -236,7 +449,7 @@ public class StopSignal : MonoBehaviour
     private float GetWorldTriggerRadius()
     {
         if (triggerCollider == null)
-            return 0.1f;
+            return MinimumRadius;
 
         Vector3 scale = transform.lossyScale;
         float maxScale = Mathf.Max(scale.x, scale.y, scale.z);
@@ -264,6 +477,20 @@ public class StopSignal : MonoBehaviour
 
         return null;
     }
+
+#if UNITY_EDITOR
+    private void OnDrawGizmosSelected()
+    {
+        CacheComponents();
+
+        if (triggerCollider == null)
+            return;
+
+        Gizmos.color = Color.cyan;
+        Vector3 center = transform.TransformPoint(triggerCollider.center);
+        Gizmos.DrawWireSphere(center, GetWorldTriggerRadius());
+    }
+#endif
 }
 
 public class TargetStopEffectReceiver : MonoBehaviour

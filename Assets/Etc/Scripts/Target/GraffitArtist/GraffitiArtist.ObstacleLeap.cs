@@ -74,12 +74,13 @@ public partial class GraffitiArtist
         }
 
         EndObstacleLeapMovementMode(leapDestination, true);
-        EndObstacleLeapPresentation();
-
-        isLeaping = false;
 
         if (obstacleLeapLandingDelay > 0f)
             yield return new WaitForSeconds(obstacleLeapLandingDelay);
+
+        EndObstacleLeapPresentation();
+
+        isLeaping = false;
 
         if (EscapeMotor != null)
             EscapeMotor.TryFleeFromThreats(true);
@@ -99,13 +100,36 @@ public partial class GraffitiArtist
             }
         }
 
-        if (useObstacleLeapSkillCamera)
+        PlayObstacleLeapSkillCamera();
+    }
+
+    private void PlayObstacleLeapSkillCamera()
+    {
+        if (!useObstacleLeapSkillCamera)
+            return;
+
+        if (obstacleLeapCameraMode == SkillCameraFocusMode.None)
+            return;
+
+        if (skillCameraDirector == null)
+            skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
+
+        if (forcePlayObstacleLeapSkillCamera && skillCameraDirector != null)
         {
-            SkillCameraEventBus.Request(
-                obstacleLeapCameraMode,
-                transform
+            skillCameraDirector.StartCoroutine(
+                skillCameraDirector.ForcePlaySkillCameraAndWait(
+                    obstacleLeapCameraMode,
+                    transform
+                )
             );
+
+            return;
         }
+
+        SkillCameraEventBus.Request(
+            obstacleLeapCameraMode,
+            transform
+        );
     }
 
     private void EndObstacleLeapPresentation()

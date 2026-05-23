@@ -36,8 +36,10 @@ public partial class GraffitiArtist : TargetSkillController
     [Header("Obstacle Leap Presentation")]
     [SerializeField] private bool forceShowDuringObstacleLeap = true;
     [SerializeField] private bool useObstacleLeapSkillCamera = true;
+    [SerializeField] private bool forcePlayObstacleLeapSkillCamera = true;
     [SerializeField] private SkillCameraFocusMode obstacleLeapCameraMode = SkillCameraFocusMode.FollowUser;
     [SerializeField] private TargetVisibilityController targetVisibilityController;
+    [SerializeField] private SkillCameraDirector skillCameraDirector;
 
     [Header("Graffiti")]
     [FormerlySerializedAs("sprayPaintZonePrefab")]
@@ -529,6 +531,9 @@ public partial class GraffitiArtist : TargetSkillController
 
         if (targetVisibilityController == null)
             targetVisibilityController = GetComponent<TargetVisibilityController>();
+
+        if (skillCameraDirector == null)
+            skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
 
         if (targetAnimator != null && forceDisableAnimatorRootMotion)
             targetAnimator.applyRootMotion = false;

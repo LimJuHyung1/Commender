@@ -1,4 +1,3 @@
-using DG.Tweening;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -53,7 +52,7 @@ public class Engineer : AgentController, IUpgradeReceiver
 
     [Header("정지 신호 설정")]
     [SerializeField] private bool replaceExistingStopSignal = true;
-    [SerializeField] private float stopSignalRadius = 2f;
+    [SerializeField] private float stopSignalRadius = 3f;
     [SerializeField] private float stopSignalDuration = 2f;
     [SerializeField] private float stopSignalLifeTime = 12f;
 

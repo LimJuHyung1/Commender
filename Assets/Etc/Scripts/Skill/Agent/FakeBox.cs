@@ -25,6 +25,7 @@ public class FakeBox : MonoBehaviour
 
     [Header("Route Interference")]
     [SerializeField] private int reducedRouteCandidateCount = 2;
+    [SerializeField] private bool reverseRouteEnabled = false;
 
     [Header("Destroy")]
     [SerializeField] private float destroyDelayAfterTriggered = 5f;
@@ -76,6 +77,11 @@ public class FakeBox : MonoBehaviour
         owner = newOwner;
     }
 
+    public void SetReverseRouteEnabled(bool enabled)
+    {
+        reverseRouteEnabled = enabled;
+    }
+
     private void OnTriggerEnter(Collider other)
     {
         if (other == null)
@@ -96,7 +102,7 @@ public class FakeBox : MonoBehaviour
         SpawnTriggerEffect();
         ApplyRouteInterference(other);
 
-        Debug.Log($"[FakeBox] Triggered by {other.name}. Reduced route candidate count: {reducedRouteCandidateCount}");
+        Debug.Log($"[FakeBox] Triggered by {other.name}. ReverseRoute={reverseRouteEnabled}");
 
         StartDestroyAfterTriggered();
     }
@@ -215,6 +221,22 @@ public class FakeBox : MonoBehaviour
 
     private void ApplyRouteInterference(Collider other)
     {
+        if (reverseRouteEnabled)
+        {
+            ITargetReverseRouteInterferenceReceiver reverseReceiver = FindReverseRouteInterferenceReceiver(other);
+
+            if (reverseReceiver != null)
+            {
+                reverseReceiver.ApplyFakeBoxReverseRouteInterference(transform.position);
+                return;
+            }
+
+            Debug.LogWarning(
+                "[FakeBox] 반전된 경로 강화가 켜져 있지만 ITargetReverseRouteInterferenceReceiver를 찾지 못했습니다. " +
+                "기존 경로 후보 감소 효과로 대체합니다."
+            );
+        }
+
         ITargetRouteInterferenceReceiver receiver = FindRouteInterferenceReceiver(other);
 
         if (receiver == null)
@@ -235,6 +257,27 @@ public class FakeBox : MonoBehaviour
             return true;
 
         return (targetLayer.value & (1 << layer)) != 0;
+    }
+
+    private ITargetReverseRouteInterferenceReceiver FindReverseRouteInterferenceReceiver(Collider other)
+    {
+        MonoBehaviour[] parentBehaviours = other.GetComponentsInParent<MonoBehaviour>(true);
+
+        for (int i = 0; i < parentBehaviours.Length; i++)
+        {
+            if (parentBehaviours[i] is ITargetReverseRouteInterferenceReceiver receiver)
+                return receiver;
+        }
+
+        MonoBehaviour[] childBehaviours = other.GetComponentsInChildren<MonoBehaviour>(true);
+
+        for (int i = 0; i < childBehaviours.Length; i++)
+        {
+            if (childBehaviours[i] is ITargetReverseRouteInterferenceReceiver receiver)
+                return receiver;
+        }
+
+        return null;
     }
 
     private ITargetRouteInterferenceReceiver FindRouteInterferenceReceiver(Collider other)

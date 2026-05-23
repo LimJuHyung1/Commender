@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
@@ -22,9 +22,9 @@ public class AgentCameraFollow : MonoBehaviour
     [Header("Top View Settings")]
     [SerializeField] private TopDownViewMode topDownViewMode = TopDownViewMode.FixedView;
     [SerializeField] private Vector3 topDownLocalOffset = new Vector3(0f, 30f, 0f);
-    [SerializeField] private Vector3 topDownEuler = new Vector3(90f, 0f, 90f);
-    [SerializeField] private float fixedTopDownOrthoSize = 18f;
-    [SerializeField] private float fitTopDownHeight = 30f;
+    [SerializeField] private Vector3 topDownEuler = new Vector3(90f, 0f, 0f);
+    [SerializeField] private float fixedTopDownOrthoSize = 14f;
+    [SerializeField] private float fitTopDownHeight = 40f;
     [SerializeField] private float fitPadding = 1f;
 
     [Header("Top View Drag Pan")]
@@ -53,7 +53,7 @@ public class AgentCameraFollow : MonoBehaviour
     [SerializeField] private bool allowWheelZoomWhenPointerOverUI = true;
     [SerializeField] private float wheelZoomSensitivity = 25f;
     [SerializeField] private float minTopDownOrthoSize = 8f;
-    [SerializeField] private float maxTopDownOrthoSize = 30f;
+    [SerializeField] private float maxTopDownOrthoSize = 25f;
     [SerializeField] private float minFocusedOrthoSize = 3f;
     [SerializeField] private float maxFocusedOrthoSize = 12f;
     [SerializeField] private float minFitZoomOffset = -12f;
@@ -248,7 +248,7 @@ public class AgentCameraFollow : MonoBehaviour
         if (groundRoot == null)
         {
             hasGroundBounds = false;
-            Debug.LogWarning("[Camera] groundRoot°¡ ¿¬°áµÇÁö ¾Ê¾Ò½À´Ï´Ù.");
+            Debug.LogWarning("[Camera] groundRootï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¾Ò½ï¿½ï¿½Ï´ï¿½.");
             return;
         }
 
@@ -267,7 +267,7 @@ public class AgentCameraFollow : MonoBehaviour
         groundBounds = combinedBounds;
 
         if (!hasGroundBounds)
-            Debug.LogWarning("[Camera] groundRoot ¾Æ·¡¿¡¼­ Ground ·¹ÀÌ¾î bounds¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.");
+            Debug.LogWarning("[Camera] groundRoot ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ Ground ï¿½ï¿½ï¿½Ì¾ï¿½ boundsï¿½ï¿½ Ã£ï¿½ï¿½ ï¿½ï¿½ï¿½ß½ï¿½ï¿½Ï´ï¿½.");
     }
 
     public void SetGroundRoot(Transform newGroundRoot)
@@ -639,7 +639,7 @@ public class AgentCameraFollow : MonoBehaviour
 
         TrySpawnPrefabAtGroundPoint(hit);
 
-        Debug.Log($"[Camera] Ground Å¬¸¯ ÁÂÇ¥: {lastClickedGroundPoint}");
+        Debug.Log($"[Camera] Ground Å¬ï¿½ï¿½ ï¿½ï¿½Ç¥: {lastClickedGroundPoint}");
     }
 
     private void TrySpawnPrefabAtGroundPoint(RaycastHit hit)
@@ -683,7 +683,7 @@ public class AgentCameraFollow : MonoBehaviour
         GUIUtility.systemCopyBuffer = copyText;
         copiedLabelEndTime = Time.unscaledTime + copiedLabelDuration;
 
-        Debug.Log($"[Camera] ÁÂÇ¥ ¹®ÀÚ¿­ º¹»çµÊ: {copyText}");
+        Debug.Log($"[Camera] ï¿½ï¿½Ç¥ ï¿½ï¿½ï¿½Ú¿ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½: {copyText}");
         return true;
     }
 

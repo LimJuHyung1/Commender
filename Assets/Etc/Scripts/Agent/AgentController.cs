@@ -109,6 +109,7 @@ public abstract class AgentController : MonoBehaviour
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
     public VisionSensor VisionSensor => visionSensor;
     public bool IsSkillCommandBlocked => skillCommandBlockers.Count > 0;
+    protected virtual bool ShouldIgnoreDebuffStateIcon => false;
 
     public float SkillGauge => GetLargestCurrentSkillGauge();
     public float SkillGaugeCapacity => GetCurrentSkillGaugeCapacity();
@@ -1457,13 +1458,15 @@ public abstract class AgentController : MonoBehaviour
         if (stateIconController == null)
             return;
 
-        if (IsSmokeDebuffed)
+        bool ignoreDebuffStateIcon = ShouldIgnoreDebuffStateIcon;
+
+        if (!ignoreDebuffStateIcon && IsSmokeDebuffed)
         {
             stateIconController.SetState(AgentStateController.AgentAwarenessState.BlindedBySmoke);
             return;
         }
 
-        if (IsSkillCommandBlocked)
+        if (!ignoreDebuffStateIcon && IsSkillCommandBlocked)
         {
             stateIconController.SetState(AgentStateController.AgentAwarenessState.SkillCommandBlocked);
             return;

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Stage Control
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: trickster_joker_card_stage_control
+  displayName: "\uBB34\uB300 \uC7A5\uC545"
+  description: "\uC870\uCEE4 \uCE74\uB4DC \uBC1C\uB3D9 \uC911\uC5D0\uB294 \uB9C8\uC220\uC0AC\uAC00
+    \uBC29\uD574 \uD6A8\uACFC\uB97C \uBC1B\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: a21eb09d433042e4cbbebf65a5dfb666, type: 3}
+  ownerType: 0
+  agentType: 4
+  targetType: 0
+  skillId: jokercard
+  effectType: 11
+  value: 1
+  minStage: 1
+  stackable: 0
+  maxStack: 1

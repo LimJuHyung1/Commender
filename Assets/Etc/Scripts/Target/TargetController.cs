@@ -8,7 +8,7 @@ using UnityEngine.AI;
 [RequireComponent(typeof(TargetThreatTracker))]
 [RequireComponent(typeof(TargetEscapeMotor))]
 [RequireComponent(typeof(TargetWanderMotor))]
-public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver, ITargetRouteInterferenceReceiver
+public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffReceiver, ITargetRouteInterferenceReceiver, ITargetReverseRouteInterferenceReceiver
 {
     [Header("References")]
     [SerializeField] private TargetThreatTracker threatTracker;
@@ -439,6 +439,26 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
             boxPosition,
             reducedRouteCandidateCount
         );
+    }
+
+    public void ApplyFakeBoxReverseRouteInterference(Vector3 boxPosition)
+    {
+        if (isCaught)
+            return;
+
+        if (healthSystem == null || healthSystem.IsDead())
+            return;
+
+        if (escapeMotor == null)
+            return;
+
+        safeRecoveryTimer = 0f;
+        isRecoveringAfterSafe = false;
+
+        escapeMotor.ApplyFakeBoxReverseRouteInterference(boxPosition);
+
+        if (wanderMotor != null)
+            wanderMotor.StopWandering(false);
     }
 
     public void AddReconReveal()

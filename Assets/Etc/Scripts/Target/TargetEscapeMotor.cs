@@ -493,6 +493,154 @@ public class TargetEscapeMotor : MonoBehaviour
         TryFleeFromThreats(true);
     }
 
+    public void ApplyFakeBoxReverseRouteInterference(Vector3 boxPosition)
+    {
+        if (!CanFlee())
+            return;
+
+        if (isEmergencyEscaping)
+            return;
+
+        if (isRooted)
+            return;
+
+        if (!TryBuildReverseRouteDestination(boxPosition, out Vector3 reversedDestination))
+        {
+            Debug.LogWarning(
+                $"[TargetEscapeMotor] FakeBox reverse route failed. " +
+                $"BoxPosition={boxPosition}"
+            );
+
+            return;
+        }
+
+        fakeBoxCandidateLimitForNextSearch = -1;
+        hasCurrentDestination = false;
+        currentDestinationSetTime = -999f;
+        stuckTimer = 0f;
+        lastRepathTime = -999f;
+
+        ResetAgentPath(false);
+
+        navAgent.isStopped = false;
+        navAgent.autoBraking = false;
+
+        if (!navAgent.SetDestination(reversedDestination))
+        {
+            Debug.LogWarning(
+                $"[TargetEscapeMotor] FakeBox reverse route destination could not be assigned. " +
+                $"Destination={reversedDestination}"
+            );
+
+            return;
+        }
+
+        currentDestination = reversedDestination;
+        hasCurrentDestination = true;
+        currentDestinationSetTime = Time.time;
+        lastRepathTime = Time.time;
+        stuckTimer = 0f;
+
+        TryUseAutoDefensiveSkillAfterDestinationChosen(reversedDestination);
+
+        Debug.Log(
+            $"[TargetEscapeMotor] FakeBox reverse route applied. " +
+            $"BoxPosition={boxPosition}, ReversedDestination={reversedDestination}"
+        );
+    }
+
+    private bool TryBuildReverseRouteDestination(Vector3 boxPosition, out Vector3 reversedDestination)
+    {
+        reversedDestination = transform.position;
+
+        if (navAgent == null)
+            return false;
+
+        Vector3 moveDirection = GetCurrentMoveDirectionForReverseRoute(boxPosition);
+        moveDirection.y = 0f;
+
+        if (moveDirection.sqrMagnitude <= MinMoveThreshold)
+            return false;
+
+        float baseDistance = Mathf.Clamp(
+            moveDirection.magnitude,
+            Mathf.Max(3f, navAgent.stoppingDistance + 2f),
+            Mathf.Max(4f, settings.safeSearchRadius * 0.5f)
+        );
+
+        Vector3 reversedDirection = -moveDirection.normalized;
+
+        float[] distanceScales =
+        {
+            1f,
+            0.75f,
+            0.5f,
+            1.25f
+        };
+
+        for (int i = 0; i < distanceScales.Length; i++)
+        {
+            Vector3 rawDestination = transform.position + reversedDirection * baseDistance * distanceScales[i];
+
+            if (!TryProjectToNavMesh(rawDestination, out Vector3 candidate))
+                continue;
+
+            if (threatTracker != null && threatTracker.IsInsideActiveAlarmSensor(candidate))
+                continue;
+
+            if (!TryCalculateCompletePath(candidate))
+                continue;
+
+            if (DoesPathTouchActiveAlarmSensor(reusablePath))
+                continue;
+
+            reversedDestination = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private Vector3 GetCurrentMoveDirectionForReverseRoute(Vector3 boxPosition)
+    {
+        Vector3 direction = Vector3.zero;
+
+        if (navAgent != null)
+        {
+            if (navAgent.hasPath && !navAgent.pathPending)
+                direction = navAgent.destination - transform.position;
+
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude <= MinMoveThreshold && hasCurrentDestination)
+                direction = currentDestination - transform.position;
+
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude <= MinMoveThreshold)
+                direction = navAgent.desiredVelocity;
+
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude <= MinMoveThreshold)
+                direction = navAgent.velocity;
+        }
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude <= MinMoveThreshold)
+            direction = transform.forward;
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude <= MinMoveThreshold)
+            direction = boxPosition - transform.position;
+
+        direction.y = 0f;
+
+        return direction;
+    }
+
     public void TryFleeFromThreats(bool forceRepath = false)
     {
         if (!CanFlee())

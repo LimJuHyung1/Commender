@@ -13,7 +13,19 @@ MonoBehaviour:
   m_Name: UpgradeDatabase
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDatabase
   upgrades:
+  - {fileID: 11400000, guid: 47642d02a2ce60549bdca6a559488613, type: 2}
+  - {fileID: 11400000, guid: 5a68a984d60acbf4e87f1c632000aafc, type: 2}
+  - {fileID: 11400000, guid: 0a27ccdfcdbf6294a8f3129834c96486, type: 2}
+  - {fileID: 11400000, guid: 476536527c64b454892bd9efedcebb78, type: 2}
   - {fileID: 11400000, guid: 03b5690e89949e443964418a31ac78fb, type: 2}
   - {fileID: 11400000, guid: f8533e00baa797b42aebcd56aa49fdd9, type: 2}
   - {fileID: 11400000, guid: 9f414444b7eff8348a083659ef8ea6a7, type: 2}
   - {fileID: 11400000, guid: 27ccece5160d89449932e26111a3c47b, type: 2}
+  - {fileID: 11400000, guid: 8ef5037e1bc502f47a930e11611bd483, type: 2}
+  - {fileID: 11400000, guid: e42be20ed3f111f42b11d84e106f7051, type: 2}
+  - {fileID: 11400000, guid: 4d9823842e9e6c04c9bc39ff5984eb86, type: 2}
+  - {fileID: 11400000, guid: 9de2fa5ef615a2a4889305418f37516e, type: 2}
+  - {fileID: 11400000, guid: 6327decc91501334390c7d1cb1024eb2, type: 2}
+  - {fileID: 11400000, guid: 92f6ac8e1a7979b4b999bf7b60619135, type: 2}
+  - {fileID: 11400000, guid: b1155a7243b250841ab0932c16d953be, type: 2}
+  - {fileID: 11400000, guid: c78cea91f5c22a64ca1aff323a177ed0, type: 2}
