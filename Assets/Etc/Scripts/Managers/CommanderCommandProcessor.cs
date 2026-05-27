@@ -197,6 +197,18 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent == null)
             return failedPlan;
 
+        if (TryBuildPatrolPlan(
+                targetAgent,
+                instruction,
+                out PendingCommandPlan patrolPlan,
+                out bool handledPatrolInstruction))
+        {
+            return patrolPlan;
+        }
+
+        if (handledPatrolInstruction)
+            return failedPlan;
+
         if (TryBuildMultiCoordinateMovePlan(
                 targetAgent,
                 instruction,
@@ -383,21 +395,19 @@ public class CommanderCommandProcessor : MonoBehaviour
             "4. If no time delay is specified, set \"delaySeconds\": 0.0.\n" +
             "5. \"delaySeconds\" must never be negative.\n" +
             "6. If the instruction is movement only, skill MUST be an empty string.\n" +
-            "7. If the instruction explicitly asks to check surroundings such as 주변, 주위, 주변 확인, 주위 확인, 주변 둘러봐, 주위 둘러봐, 주변 살펴봐, 주위 살펴봐, look around, or check around, use skill \"lookaround\".\n" +
-            "8. Bare instructions like '주변' or '주위' should also be interpreted as \"lookaround\".\n" +
-            "9. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\".\n" +
-            "10. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
-            "11. If a skill is used without a location, set pos as {\"x\":0.0,\"z\":0.0} unless the skill is defined to use current position.\n" +
-            "12. Output JSON only.\n";
+            "7. If the instruction asks to check surroundings, use skill \"lookaround\".\n" +
+            "8. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\".\n" +
+            "9. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
+            "10. Output JSON only.\n";
 
         if (targetAgent is Chaser)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"accesscontrol\" and \"escapeblock\".\n" +
-                   "14. Use \"accesscontrol\" ONLY when the instruction explicitly asks for 출입 통제, 출입통제, 통제 구역, access control, or control zone.\n" +
-                   "15. accesscontrol MUST use the requested coordinate as the center position of the control zone.\n" +
-                   "16. Use \"escapeblock\" ONLY when the instruction explicitly mentions 도주 제지, 도주제지, 도주 스킬 차단, escape block, or escape skill block.\n" +
-                   "17. escapeblock is an automatic gauge-based skill. It does not turn on or off. If no coordinate is provided, set pos as {\"x\":0.0,\"z\":0.0}.\n\n" +
+                   "11. Allowed skills for this agent are only \"accesscontrol\", \"escapeblock\", and \"patrol\".\n" +
+                   "12. Use \"accesscontrol\" ONLY when the instruction explicitly asks for 출입 통제, 출입통제, 통제 구역, access control, or control zone.\n" +
+                   "13. Use \"escapeblock\" ONLY when the instruction explicitly mentions 도주 제지, 도주제지, 도주 스킬 차단, escape block, or escape skill block.\n" +
+                   "14. escapeblock is an automatic gauge-based skill. It does not turn on or off.\n" +
+                   "15. patrol is handled directly by the game when the instruction contains two coordinates and a patrol keyword such as 순찰 or patrol.\n\n" +
                    "OUTPUT FORMAT:\n" +
                    "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
                    "EXAMPLES:\n" +
@@ -410,63 +420,35 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent is Observer)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"drone\", \"positionshare_on\", and \"positionshare_off\".\n" +
-                   "14. Use \"drone\" ONLY when the instruction explicitly asks for drone or 드론.\n" +
-                   "15. drone MUST use the requested coordinate as the center position of the drone observation area.\n" +
-                   "16. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing, 위치 공유 켜, 위치 공유 시작, 위치 공유해, 타겟 위치 공유, 타겟 위치 알려줘, 발견하면 알려, or 보이면 알려.\n" +
-                   "17. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing, 위치 공유 꺼, 위치 공유 중지, 위치 공유하지 마, or 타겟 위치 공유하지 마.\n" +
-                   "18. Do not use flare, signalflare, wallsight, or truesight. Those skills are not supported by ObserverAgent.\n\n" +
+                   "11. Allowed skills for this agent are only \"drone\", \"positionshare_on\", and \"positionshare_off\".\n" +
+                   "12. Use \"drone\" ONLY when the instruction explicitly asks for drone or 드론.\n" +
+                   "13. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing.\n" +
+                   "14. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing.\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
-                   "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 5,4에 드론\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 5.0, \"z\": 4.0}}, \"skill\": \"drone\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 꺼\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_off\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 위치 공유 켜\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"positionshare_on\" }} ] }}";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
         }
 
         if (targetAgent is Engineer)
         {
             return commonRules +
-                   "13. Allowed skills for this agent are only \"barricade\" and \"stopsignal\".\n" +
-                   "14. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
-                   "15. Use \"stopsignal\" ONLY when the instruction explicitly asks for 정지 신호, 정지신호, 신호 설치, 통제 신호, stop signal, or stopsignal.\n" +
-                   "16. barricade MUST use the requested coordinate as the center position of the barricade.\n" +
-                   "17. stopsignal MUST use the requested coordinate as the center position of the stop signal device.\n" +
-                   "18. If the instruction is just 바리케이드, barricade, 정지 신호, 정지신호, 신호 설치, or stopsignal without coordinates, interpret it as using the skill at the engineer's current position.\n\n" +
+                   "11. Allowed skills for this agent are only \"barricade\" and \"stopsignal\".\n" +
+                   "12. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
+                   "13. Use \"stopsignal\" ONLY when the instruction explicitly asks for 정지 신호, 정지신호, 신호 설치, 통제 신호, stop signal, or stopsignal.\n" +
+                   "14. If the instruction is a skill without coordinates, use current position.\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
-                   "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 4,1에 바리케이드 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 4.0, \"z\": 1.0}}, \"skill\": \"barricade\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 2,6에 정지 신호 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 2.0, \"z\": 6.0}}, \"skill\": \"stopsignal\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 정지 신호\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"stopsignal\" }} ] }}";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
         }
 
         if (targetAgent is Trickster)
         {
             return commonRules +
-                   "13. This agent is the Magician-type Trickster agent.\n" +
-                   "14. The only manually commanded skill for this agent is \"fakebox\".\n" +
-                   "15. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
-                   "16. fakebox MUST use the requested coordinate as the center position of the fake box.\n" +
-                   "17. If the instruction is just 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, 가짜상자, fakebox, fake box, magic box, or magicbox without coordinates, interpret it as using the skill at the magician's current position.\n" +
-                   "18. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command.\n" +
-                   "19. If the user asks to use Joker Card, output skill \"hold\" because Joker Card activates automatically when its gauge is full.\n" +
-                   "20. Do not use noisemaker, noise, hologram, or 소란 장치. Those are no longer skills for this magician agent.\n\n" +
+                   "11. This agent is the Magician-type Trickster agent.\n" +
+                   "12. The only manually commanded skill for this agent is \"fakebox\".\n" +
+                   "13. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
+                   "14. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command.\n" +
+                   "15. If the user asks to use Joker Card, output skill \"hold\".\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
-                   "EXAMPLES:\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 7,7에 페이크 박스 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 7.0, \"z\": 7.0}}, \"skill\": \"fakebox\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 마술 상자 설치\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"fakebox\" }} ] }}\n\n" +
-                   $"Input: Agent {targetAgent.AgentID} Instruction: 조커 카드 사용\n" +
-                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"hold\" }} ] }}";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
         }
 
         return commonRules;
@@ -485,8 +467,11 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (agent is Chaser)
         {
+            Chaser chaser = agent as Chaser;
+
             return skill == "accesscontrol" ||
-                   skill == "escapeblock";
+                   skill == "escapeblock" ||
+                   (skill == "patrol" && chaser != null && chaser.CanUsePatrolSkill);
         }
 
         if (agent is Observer)
@@ -516,6 +501,87 @@ public class CommanderCommandProcessor : MonoBehaviour
             commandValidator = new CommandValidator();
 
         return commandValidator.IsBarricadeInstruction(source);
+    }
+
+    private bool TryBuildPatrolPlan(
+        AgentController targetAgent,
+        string instruction,
+        out PendingCommandPlan plan,
+        out bool handledPatrolInstruction)
+    {
+        plan = null;
+        handledPatrolInstruction = false;
+
+        if (targetAgent == null)
+            return false;
+
+        if (!commandValidator.IsPatrolInstruction(instruction))
+            return false;
+
+        handledPatrolInstruction = true;
+
+        Chaser chaser = targetAgent as Chaser;
+
+        if (chaser == null)
+        {
+            Debug.LogWarning($"[Commander] 순찰 명령은 보안 요원만 사용할 수 있습니다. 원문: {instruction}");
+            return false;
+        }
+
+        if (!chaser.CanUsePatrolSkill)
+        {
+            Debug.LogWarning($"[Commander] 보안 요원이 아직 순찰 스킬을 배우지 않았습니다. 원문: {instruction}");
+            return false;
+        }
+
+        if (!TryExtractCoordinates(instruction, out List<Vector2> coordinates) || coordinates.Count < 2)
+        {
+            Debug.LogWarning($"[Commander] 순찰 명령에는 좌표가 2개 필요합니다. 예: (1,2), (5,8) 순찰 / 원문: {instruction}");
+            return false;
+        }
+
+        if (coordinates.Count > 2)
+        {
+            Debug.LogWarning($"[Commander] 순찰 명령에 좌표가 3개 이상 포함되어 있습니다. 앞의 2개 좌표만 사용합니다. 원문: {instruction}");
+        }
+
+        Vector3 firstPoint = ResolveWorldPointFromCoordinate(
+            targetAgent,
+            coordinates[0].x,
+            coordinates[0].y
+        );
+
+        Vector3 secondPoint = ResolveWorldPointFromCoordinate(
+            targetAgent,
+            coordinates[1].x,
+            coordinates[1].y
+        );
+
+        List<Vector3> waypoints = new List<Vector3>
+        {
+            firstPoint,
+            secondPoint
+        };
+
+        float delaySeconds = ExtractDelaySeconds(instruction);
+
+        plan = new PendingCommandPlan
+        {
+            AgentId = targetAgent.AgentID,
+            Agent = targetAgent,
+            Destination = secondPoint,
+            Waypoints = waypoints,
+            Skill = "patrol",
+            DelaySeconds = delaySeconds,
+            IsValid = true
+        };
+
+        Debug.Log(
+            $"[Commander] Agent {targetAgent.AgentID} 순찰 명령 직접 처리. " +
+            $"A={firstPoint}, B={secondPoint}, delay={delaySeconds:0.##}"
+        );
+
+        return true;
     }
 
     private bool TryBuildMultiCoordinateMovePlan(
@@ -620,6 +686,9 @@ public class CommanderCommandProcessor : MonoBehaviour
             return false;
 
         if (commandValidator.IsLookAroundInstruction(source))
+            return true;
+
+        if (commandValidator.IsPatrolInstruction(source))
             return true;
 
         if (commandValidator.IsBarricadeInstruction(source))
@@ -731,24 +800,18 @@ public class CommanderCommandProcessor : MonoBehaviour
             "가짜 상자",
             "가짜상자",
 
+            "patrol",
+            "patrolling",
+            "patrol route",
+            "route patrol",
+            "순찰",
+            "왕복 순찰",
+            "왕복순찰",
+
             "jokercard",
             "joker card",
             "조커 카드",
-            "조커카드",
-
-            "look around",
-            "check around",
-            "around",
-            "scan",
-            "observe",
-            "주변",
-            "주위",
-            "주변 확인",
-            "주위 확인",
-            "주변 둘러",
-            "주위 둘러",
-            "주변 살펴",
-            "주위 살펴"
+            "조커카드"
         );
     }
 
@@ -1023,7 +1086,11 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (delaySeconds <= 0f)
             return;
 
-        if (IsWaypointMoveCommand(validatedSkill, waypoints))
+        if (IsPatrolCommand(validatedSkill, waypoints))
+        {
+            Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 순찰 시작");
+        }
+        else if (IsWaypointMoveCommand(validatedSkill, waypoints))
         {
             Debug.Log($"[Commander] Agent {agentId} 예약 등록: {delaySeconds:0.##}초 후 경유지 {waypoints.Count}개 순차 이동");
         }
@@ -1067,6 +1134,13 @@ public class CommanderCommandProcessor : MonoBehaviour
             yield break;
         }
 
+        if (IsPatrolCommand(validatedSkill, waypoints))
+        {
+            ExecutePatrolCommand(targetAgent, waypoints);
+            scheduledCommandByAgentId.Remove(agentId);
+            yield break;
+        }
+
         if (IsWaypointMoveCommand(validatedSkill, waypoints))
         {
             yield return ExecuteWaypointMoveCoroutine(targetAgent, waypoints);
@@ -1076,6 +1150,32 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         commandExecutor.Execute(targetAgent, dest, validatedSkill);
         scheduledCommandByAgentId.Remove(agentId);
+    }
+
+    private void ExecutePatrolCommand(
+        AgentController targetAgent,
+        List<Vector3> waypoints)
+    {
+        if (targetAgent == null || waypoints == null || waypoints.Count < 2)
+            return;
+
+        Chaser chaser = targetAgent as Chaser;
+
+        if (chaser == null)
+        {
+            Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID}는 순찰 명령을 실행할 수 없습니다.");
+            return;
+        }
+
+        bool started = chaser.TryStartPatrol(waypoints[0], waypoints[1]);
+
+        if (!started)
+        {
+            Debug.LogWarning($"[Commander] Agent {targetAgent.AgentID} 순찰 시작에 실패했습니다.");
+            return;
+        }
+
+        Debug.Log($"[Commander] Agent {targetAgent.AgentID} 순찰 시작: {waypoints[0]} <-> {waypoints[1]}");
     }
 
     private IEnumerator ExecuteWaypointMoveCoroutine(
@@ -1169,6 +1269,13 @@ public class CommanderCommandProcessor : MonoBehaviour
         b.y = 0f;
 
         return Vector3.Distance(a, b);
+    }
+
+    private bool IsPatrolCommand(string validatedSkill, List<Vector3> waypoints)
+    {
+        return validatedSkill == "patrol" &&
+               waypoints != null &&
+               waypoints.Count >= 2;
     }
 
     private bool IsWaypointMoveCommand(string validatedSkill, List<Vector3> waypoints)

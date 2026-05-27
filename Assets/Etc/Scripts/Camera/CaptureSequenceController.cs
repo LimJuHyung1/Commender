@@ -41,8 +41,11 @@ public class CaptureSequenceController : MonoBehaviour
     private const float CameraWallPadding = 0.45f;
     private const float MinimumCameraDistance = 1.2f;
 
-    private Camera mainCamera;
-    private AgentCameraFollow cameraFollow;
+    [Header("References")]
+    [SerializeField] private Camera mainCamera;
+    [SerializeField] private AgentCameraFollow cameraFollow;
+    [SerializeField] private SkillCameraDirector skillCameraDirector;
+
     private bool isPlaying;
 
     private float previousTimeScale = 1f;
@@ -84,6 +87,14 @@ public class CaptureSequenceController : MonoBehaviour
             yield break;
         }
 
+        if (skillCameraDirector != null)
+            skillCameraDirector.CancelPlaybackForExternalSequence();
+
+        bool wasCameraFollowEnabled = cameraFollow != null && cameraFollow.enabled;
+
+        if (cameraFollow != null)
+            cameraFollow.enabled = false;
+
         if (catchingAgent == null)
             catchingAgent = FindNearestAgent(capturedTarget.transform.position);
 
@@ -99,11 +110,6 @@ public class CaptureSequenceController : MonoBehaviour
 
         FaceTarget(capturedTarget.transform, targetLookDirection);
 
-        bool wasCameraFollowEnabled = cameraFollow != null && cameraFollow.enabled;
-
-        if (cameraFollow != null)
-            cameraFollow.enabled = false;
-
         CameraShot[] shots = BuildCameraShots(catchingAgent, capturedTarget.transform);
 
         for (int i = 0; i < shots.Length; i++)
@@ -112,6 +118,9 @@ public class CaptureSequenceController : MonoBehaviour
         }
 
         RestoreWorldTimeScale();
+
+        if (cameraFollow != null && wasCameraFollowEnabled)
+            cameraFollow.enabled = true;
 
         isPlaying = false;
     }
@@ -129,6 +138,9 @@ public class CaptureSequenceController : MonoBehaviour
 
         if (cameraFollow == null)
             cameraFollow = FindFirstObjectByType<AgentCameraFollow>();
+
+        if (skillCameraDirector == null)
+            skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
     }
 
     private void ApplyWorldSlowMotion()

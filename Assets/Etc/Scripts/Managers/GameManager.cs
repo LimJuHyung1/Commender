@@ -222,6 +222,8 @@ public class GameManager : MonoBehaviour
 
         Debug.Log($"<color=green>[GameManager]</color> 스테이지 클리어: {message}");
 
+        VisionConeVisualizer.DisableAllVisionCones();
+
         UnlockNextStage();
         ApplyWinStageResultMotion();
 

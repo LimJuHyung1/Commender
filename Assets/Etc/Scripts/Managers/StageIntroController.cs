@@ -1,7 +1,9 @@
+using Michsky.UI.MTP;
 using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using Michsky.UI.MTP;
 
 public class StageIntroController : MonoBehaviour
 {
@@ -41,6 +43,10 @@ public class StageIntroController : MonoBehaviour
     [SerializeField] private MonoBehaviour[] disableDuringIntroBehaviours;
     [SerializeField] private GameObject[] deactivateDuringIntroObjects;
     [SerializeField] private GameObject[] activateOnIntroFinishedObjects;
+
+    [Header("Michsky Intro Title")]
+    [SerializeField] private StyleManager introTitleStyle;
+    [SerializeField] private string introTitleTextItemID = "Main Text";
 
     private Vector2 topShownPos;
     private Vector2 bottomShownPos;
@@ -109,11 +115,17 @@ public class StageIntroController : MonoBehaviour
     {
         yield return null;
 
-        UpdateStageInfoText();
+        string introMessage = GetStageIntroMessage();
+
+        if (stageInfoText != null)
+            stageInfoText.text = introMessage;
+
         ResolveFocusPoint();
         PrepareIntroCamera();
 
         yield return StartCoroutine(AnimateBars(show: true));
+
+        PlayIntroTitleStyle(introMessage);
 
         float elapsed = 0f;
         while (elapsed < introDuration)
@@ -288,32 +300,33 @@ public class StageIntroController : MonoBehaviour
 
     private void UpdateStageInfoText()
     {
-        if (stageInfoText == null)
-            return;
+        string message = GetStageIntroMessage();
 
+        if (stageInfoText != null)
+            stageInfoText.text = message;
+
+        PlayIntroTitleStyle(message);
+    }
+
+    private string GetStageIntroMessage()
+    {
         StageMapManager stageMapManager = FindFirstObjectByType<StageMapManager>();
         if (stageMapManager == null)
-        {
-            stageInfoText.text = "스테이지";
-            return;
-        }
+            return "스테이지";
 
         string stageName = stageMapManager.CurrentStageDisplayName;
 
         if (string.IsNullOrWhiteSpace(titleFormat))
-        {
-            stageInfoText.text = stageName;
-            return;
-        }
+            return stageName;
 
         try
         {
-            stageInfoText.text = string.Format(titleFormat, stageName);
+            return string.Format(titleFormat, stageName);
         }
         catch (System.FormatException)
         {
             Debug.LogWarning($"[StageIntroController] titleFormat 값이 잘못되었습니다: {titleFormat}");
-            stageInfoText.text = stageName;
+            return stageName;
         }
     }
 
@@ -427,5 +440,31 @@ public class StageIntroController : MonoBehaviour
         }
 
         return false;
+    }
+
+    private void PlayIntroTitleStyle(string message)
+    {
+        if (introTitleStyle == null)
+            return;
+
+        if (introTitleStyle.textItems != null)
+        {
+            for (int i = 0; i < introTitleStyle.textItems.Count; i++)
+            {
+                TextItem textItem = introTitleStyle.textItems[i];
+
+                if (textItem == null)
+                    continue;
+
+                if (!string.IsNullOrEmpty(introTitleTextItemID) && textItem.itemID != introTitleTextItemID)
+                    continue;
+
+                textItem.text = message;
+                textItem.UpdateAll();
+                break;
+            }
+        }
+
+        introTitleStyle.Play();
     }
 }

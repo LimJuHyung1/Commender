@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -10,6 +9,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string SkillAccessControl = "accesscontrol";
     private const string SkillEscapeBlock = "escapeblock";
+    private const string SkillPatrol = "patrol";
+    private const string SkillTrackingInstinct = "trackinginstinct";
 
     private const string SkillDrone = "drone";
     private const string SkillPositionShare = "positionshare";
@@ -26,6 +27,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string LegacySkillNoisemaker = "noisemaker";
     private const string LegacySkillHologram = "hologram";
 
+    private const string ChaserUnlockPatrol = "chaser_unlock_patrol";
+    private const string ChaserUnlockTrackingInstinct = "chaser_unlock_tracking_instinct";
+
     private enum GaugeFillDirection
     {
         HorizontalLeft,
@@ -39,18 +43,16 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private int agentId = -1;
     [SerializeField] private bool autoBindByAgentId = true;
 
+    [Header("Skill Slots")]
+    [SerializeField] private AgentSkillSlotUI skill1Slot;
+    [SerializeField] private AgentSkillSlotUI skill2Slot;
+    [SerializeField] private AgentSkillSlotUI skill3Slot;
+    [SerializeField] private bool autoFindSlotsByComponent = true;
+
     [Header("Skill Names")]
     [SerializeField] private string skill1Name = "";
     [SerializeField] private string skill2Name = "";
-
-    [Header("Gauge Images")]
-    [SerializeField] private Image skill1GaugeImage;
-    [SerializeField] private Image skill2GaugeImage;
-    [SerializeField] private bool autoFindGaugeImages = true;
-
-    [Header("Click Area")]
-    [SerializeField] private RectTransform skill1ClickArea;
-    [SerializeField] private RectTransform skill2ClickArea;
+    [SerializeField] private string skill3Name = "";
 
     [Header("Gauge Fill Setting")]
     [SerializeField] private bool setupImageFillSetting = true;
@@ -73,8 +75,6 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private bool showGaugeInfoAfterSkillPaste = false;
     [SerializeField] private bool autoFindCommanderUIController = true;
 
-    private bool hasCachedGaugeImages;
-
     private string gaugeInfoLabelText = "";
     private Vector2 gaugeInfoLabelScreenPosition;
     private float gaugeInfoLabelEndTime = -1f;
@@ -82,27 +82,42 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     public AgentController TargetAgent => targetAgent;
     public int AgentId => agentId;
+
     public string Skill1Name => skill1Name;
     public string Skill2Name => skill2Name;
+    public string Skill3Name => skill3Name;
 
     public bool CanUseSkill1 => CanUseSkill(skill1Name);
     public bool CanUseSkill2 => CanUseSkill(skill2Name);
+    public bool CanUseSkill3 => CanUseSkill(skill3Name);
 
     private void Awake()
     {
-        TrySetupByUIName();
+        CacheSlotsByComponent();
         TryCacheCommanderUIController();
-        EnsureGaugeImages();
+        ConfigureSlotGauges();
+
+        if (skill3Slot != null)
+        {
+            skill3Slot.ClearIcon();
+            skill3Slot.SetGaugeAmount(0f);
+            skill3Slot.SetVisible(false);
+        }
+
         Refresh();
     }
 
     private void Start()
     {
         if (targetAgent == null && autoBindByAgentId)
+        {
             TryCacheTargetAgent();
+        }
 
         if (commanderUIController == null && autoFindCommanderUIController)
+        {
             TryCacheCommanderUIController();
+        }
 
         Refresh();
     }
@@ -110,10 +125,14 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void Update()
     {
         if (targetAgent == null && autoBindByAgentId && agentId >= 0)
+        {
             TryCacheTargetAgent();
+        }
 
         if (commanderUIController == null && autoFindCommanderUIController)
+        {
             TryCacheCommanderUIController();
+        }
 
         Refresh();
         HandleSkillGaugeInfoClick();
@@ -130,8 +149,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         skill1Name = NormalizeSkillName(skill1Name);
         skill2Name = NormalizeSkillName(skill2Name);
+        skill3Name = NormalizeSkillName(skill3Name);
 
-        hasCachedGaugeImages = false;
+        CacheSlotsByComponent();
+        ConfigureSlotGauges();
     }
 
     public void Bind(AgentController agent)
@@ -143,47 +164,65 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         SetupSkillNamesByAgent(agent);
-        Bind(agent, skill1Name, skill2Name);
+        Bind(agent, skill1Name, skill2Name, skill3Name);
     }
 
     public void Bind(AgentController agent, string firstSkillName, string secondSkillName)
+    {
+        Bind(agent, firstSkillName, secondSkillName, "");
+    }
+
+    public void Bind(AgentController agent, string firstSkillName, string secondSkillName, string thirdSkillName)
     {
         targetAgent = agent;
         agentId = agent != null ? agent.AgentID : -1;
 
         skill1Name = NormalizeSkillName(firstSkillName);
         skill2Name = NormalizeSkillName(secondSkillName);
+        skill3Name = NormalizeSkillName(thirdSkillName);
 
         if (targetAgent != null &&
             string.IsNullOrWhiteSpace(skill1Name) &&
-            string.IsNullOrWhiteSpace(skill2Name))
+            string.IsNullOrWhiteSpace(skill2Name) &&
+            string.IsNullOrWhiteSpace(skill3Name))
         {
             SetupSkillNamesByAgent(targetAgent);
         }
 
-        EnsureGaugeImages();
+        CacheSlotsByComponent();
+        ConfigureSlotGauges();
         Refresh();
     }
 
     public void BindByAgentId(int id, string firstSkillName, string secondSkillName)
     {
-        agentId = id;
-        skill1Name = NormalizeSkillName(firstSkillName);
-        skill2Name = NormalizeSkillName(secondSkillName);
+        BindByAgentId(id, firstSkillName, secondSkillName, "");
+    }
 
+    public void BindByAgentId(int id, string firstSkillName, string secondSkillName, string thirdSkillName)
+    {
+        agentId = id;
         targetAgent = null;
 
+        skill1Name = NormalizeSkillName(firstSkillName);
+        skill2Name = NormalizeSkillName(secondSkillName);
+        skill3Name = NormalizeSkillName(thirdSkillName);
+
         if (autoBindByAgentId)
+        {
             TryCacheTargetAgent();
+        }
 
         if (targetAgent != null &&
             string.IsNullOrWhiteSpace(skill1Name) &&
-            string.IsNullOrWhiteSpace(skill2Name))
+            string.IsNullOrWhiteSpace(skill2Name) &&
+            string.IsNullOrWhiteSpace(skill3Name))
         {
             SetupSkillNamesByAgent(targetAgent);
         }
 
-        EnsureGaugeImages();
+        CacheSlotsByComponent();
+        ConfigureSlotGauges();
         Refresh();
     }
 
@@ -191,74 +230,352 @@ public class AgentSkillGaugeUI : MonoBehaviour
     {
         targetAgent = null;
         agentId = -1;
+
         skill1Name = "";
         skill2Name = "";
+        skill3Name = "";
 
-        Refresh();
+        SetSlotGaugeAmount(skill1Slot, 0f);
+        SetSlotGaugeAmount(skill2Slot, 0f);
+        SetSlotGaugeAmount(skill3Slot, 0f);
+
+        if (skill3Slot != null)
+        {
+            skill3Slot.ClearIcon();
+            skill3Slot.SetVisible(false);
+        }
     }
 
     public void SetSkillNames(string firstSkillName, string secondSkillName)
     {
+        SetSkillNames(firstSkillName, secondSkillName, "");
+    }
+
+    public void SetSkillNames(string firstSkillName, string secondSkillName, string thirdSkillName)
+    {
         skill1Name = NormalizeSkillName(firstSkillName);
         skill2Name = NormalizeSkillName(secondSkillName);
+        skill3Name = NormalizeSkillName(thirdSkillName);
 
         Refresh();
     }
 
     public void Refresh()
     {
-        EnsureGaugeImages();
+        CacheSlotsByComponent();
 
         if (targetAgent == null)
         {
-            SetGaugeAmount(skill1GaugeImage, 0f);
-            SetGaugeAmount(skill2GaugeImage, 0f);
+            SetSlotGaugeAmount(skill1Slot, 0f);
+            SetSlotGaugeAmount(skill2Slot, 0f);
+            SetSlotGaugeAmount(skill3Slot, 0f);
+
+            if (skill3Slot != null)
+            {
+                skill3Slot.ClearIcon();
+                skill3Slot.SetVisible(false);
+            }
+
             return;
         }
 
-        UpdateSkillGaugeImage(skill1GaugeImage, skill1Name);
-        UpdateSkillGaugeImage(skill2GaugeImage, skill2Name);
+        if (string.IsNullOrWhiteSpace(skill1Name) && string.IsNullOrWhiteSpace(skill2Name))
+        {
+            SetupSkillNamesByAgent(targetAgent);
+        }
+
+        UpdateSkillGaugeSlot(skill1Slot, skill1Name);
+        UpdateSkillGaugeSlot(skill2Slot, skill2Name);
+        RefreshThirdSkillSlot();
     }
 
     public bool CanUseSkill(string skillName)
     {
         if (targetAgent == null)
+        {
             return false;
+        }
 
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
 
         if (IsPositionShareSkill(normalizedSkillName))
+        {
             return targetAgent is Observer;
+        }
 
         return targetAgent.CanUseSkillGaugeForSkill(normalizedSkillName);
+    }
+
+    private void CacheSlotsByComponent()
+    {
+        if (!autoFindSlotsByComponent)
+        {
+            return;
+        }
+
+        AgentSkillSlotUI[] slots = GetComponentsInChildren<AgentSkillSlotUI>(true);
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            AgentSkillSlotUI slot = slots[i];
+
+            if (slot == null)
+            {
+                continue;
+            }
+
+            switch (slot.SlotType)
+            {
+                case AgentSkillSlotType.First:
+                    if (skill1Slot == null)
+                    {
+                        skill1Slot = slot;
+                    }
+                    break;
+
+                case AgentSkillSlotType.Second:
+                    if (skill2Slot == null)
+                    {
+                        skill2Slot = slot;
+                    }
+                    break;
+
+                case AgentSkillSlotType.Third:
+                    if (skill3Slot == null)
+                    {
+                        skill3Slot = slot;
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void ConfigureSlotGauges()
+    {
+        if (!setupImageFillSetting)
+        {
+            return;
+        }
+
+        Image.FillMethod fillMethod = Image.FillMethod.Vertical;
+        int fillOrigin = (int)Image.OriginVertical.Bottom;
+
+        switch (fillDirection)
+        {
+            case GaugeFillDirection.HorizontalLeft:
+                fillMethod = Image.FillMethod.Horizontal;
+                fillOrigin = (int)Image.OriginHorizontal.Left;
+                break;
+
+            case GaugeFillDirection.HorizontalRight:
+                fillMethod = Image.FillMethod.Horizontal;
+                fillOrigin = (int)Image.OriginHorizontal.Right;
+                break;
+
+            case GaugeFillDirection.VerticalBottom:
+                fillMethod = Image.FillMethod.Vertical;
+                fillOrigin = (int)Image.OriginVertical.Bottom;
+                break;
+
+            case GaugeFillDirection.VerticalTop:
+                fillMethod = Image.FillMethod.Vertical;
+                fillOrigin = (int)Image.OriginVertical.Top;
+                break;
+        }
+
+        if (skill1Slot != null)
+        {
+            skill1Slot.ConfigureGauge(fillMethod, fillOrigin);
+        }
+
+        if (skill2Slot != null)
+        {
+            skill2Slot.ConfigureGauge(fillMethod, fillOrigin);
+        }
+
+        if (skill3Slot != null)
+        {
+            skill3Slot.ConfigureGauge(fillMethod, fillOrigin);
+        }
+    }
+
+    private void RefreshThirdSkillSlot()
+    {
+        if (skill3Slot == null)
+        {
+            return;
+        }
+
+        if (!IsChaserAgent())
+        {
+            skill3Name = "";
+            skill3Slot.SetGaugeAmount(0f);
+            skill3Slot.ClearIcon();
+            skill3Slot.SetVisible(false);
+            return;
+        }
+
+        UpgradeDefinition unlockedUpgrade = GetUnlockedChaserThirdSkillUpgrade();
+
+        if (unlockedUpgrade == null)
+        {
+            skill3Name = "";
+            skill3Slot.SetGaugeAmount(0f);
+            skill3Slot.ClearIcon();
+            skill3Slot.SetVisible(false);
+            return;
+        }
+
+        string unlockedSkillName = GetSkillNameFromUpgrade(unlockedUpgrade);
+
+        if (string.IsNullOrWhiteSpace(unlockedSkillName))
+        {
+            skill3Name = "";
+            skill3Slot.SetGaugeAmount(0f);
+            skill3Slot.ClearIcon();
+            skill3Slot.SetVisible(false);
+            return;
+        }
+
+        skill3Name = NormalizeSkillName(unlockedSkillName);
+
+        skill3Slot.SetVisible(true);
+        skill3Slot.SetIcon(unlockedUpgrade.Icon);
+        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+        {
+            return null;
+        }
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (upgradeManager.HasAgentUpgrade(ChaserUnlockPatrol))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
+        }
+
+        if (upgradeManager.HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
+        }
+
+        return null;
+    }
+
+    private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
+    {
+        if (upgrade == null)
+        {
+            return "";
+        }
+
+        if (!string.IsNullOrWhiteSpace(upgrade.SkillId))
+        {
+            return NormalizeSkillName(upgrade.SkillId);
+        }
+
+        if (upgrade.UpgradeId == ChaserUnlockPatrol)
+        {
+            return SkillPatrol;
+        }
+
+        if (upgrade.UpgradeId == ChaserUnlockTrackingInstinct)
+        {
+            return SkillTrackingInstinct;
+        }
+
+        return "";
+    }
+
+    private bool IsChaserAgent()
+    {
+        if (targetAgent != null)
+        {
+            if (targetAgent.Stats != null)
+            {
+                return targetAgent.Stats.role == AgentRole.Chaser;
+            }
+
+            return targetAgent.AgentID == 0;
+        }
+
+        return agentId == 0;
     }
 
     private void HandleSkillGaugeInfoClick()
     {
         if (!showGaugeInfoOnSkillClick && !pasteSkillNameOnFunctionKeyClick)
+        {
             return;
+        }
 
         Mouse mouse = Mouse.current;
 
         if (mouse == null)
+        {
             return;
+        }
 
         if (!mouse.leftButton.wasReleasedThisFrame)
+        {
             return;
+        }
 
         Vector2 mousePosition = mouse.position.ReadValue();
 
-        if (IsScreenPointInside(skill1ClickArea, mousePosition))
+        if (IsSlotClicked(skill1Slot, mousePosition))
         {
             HandleSkillIconClick(skill1Name, mousePosition);
             return;
         }
 
-        if (IsScreenPointInside(skill2ClickArea, mousePosition))
+        if (IsSlotClicked(skill2Slot, mousePosition))
+        {
             HandleSkillIconClick(skill2Name, mousePosition);
+            return;
+        }
+
+        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
+        {
+            HandleSkillIconClick(skill3Name, mousePosition);
+        }
+    }
+
+    private bool IsSlotClicked(AgentSkillSlotUI slot, Vector2 screenPosition)
+    {
+        if (slot == null)
+        {
+            return false;
+        }
+
+        RectTransform clickArea = slot.ClickArea;
+
+        if (clickArea == null)
+        {
+            return false;
+        }
+
+        return RectTransformUtility.RectangleContainsScreenPoint(
+            clickArea,
+            screenPosition,
+            GetCanvasCamera()
+        );
     }
 
     private void HandleSkillIconClick(string skillName, Vector2 mousePosition)
@@ -266,33 +583,49 @@ public class AgentSkillGaugeUI : MonoBehaviour
         bool pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
 
         if (pasted && !showGaugeInfoAfterSkillPaste)
+        {
             return;
+        }
 
         if (showGaugeInfoOnSkillClick)
+        {
             ShowGaugeInfoLabel(skillName, mousePosition);
+        }
     }
 
     private bool TryPasteSkillNameToFunctionKeyInput(string skillName)
     {
         if (!pasteSkillNameOnFunctionKeyClick)
+        {
             return false;
+        }
 
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
 
         if (IsAutoActivatedSkill(normalizedSkillName))
+        {
             return false;
+        }
 
         if (!TryGetHeldFunctionKeyInputIndex(out int inputIndex))
+        {
             return false;
+        }
 
         if (commanderUIController == null && autoFindCommanderUIController)
+        {
             TryCacheCommanderUIController();
+        }
 
         if (commanderUIController == null)
+        {
             return false;
+        }
 
         int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
         string displayName = GetSkillDisplayName(normalizedSkillName);
@@ -305,11 +638,6 @@ public class AgentSkillGaugeUI : MonoBehaviour
         );
     }
 
-    private bool IsAutoActivatedSkill(string skillName)
-    {
-        return NormalizeSkillName(skillName) == SkillJokerCard;
-    }
-
     private bool TryGetHeldFunctionKeyInputIndex(out int inputIndex)
     {
         inputIndex = -1;
@@ -317,7 +645,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
 
         if (keyboard == null)
+        {
             return false;
+        }
 
         if (keyboard.f1Key.isPressed)
         {
@@ -349,64 +679,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void TryCacheCommanderUIController()
     {
         if (commanderUIController != null)
-            return;
-
-        commanderUIController = FindFirstObjectByType<CommanderUIController>();
-    }
-
-    private void ShowGaugeInfoLabel(string skillName, Vector2 mousePosition)
-    {
-        gaugeInfoLabelText = GetGaugeInfoText(skillName);
-        gaugeInfoLabelScreenPosition = mousePosition + gaugeInfoLabelOffset;
-        gaugeInfoLabelEndTime = Time.unscaledTime + gaugeInfoLabelDuration;
-
-        Debug.Log($"[AgentSkillGaugeUI] {gaugeInfoLabelText}");
-    }
-
-    private string GetGaugeInfoText(string skillName)
-    {
-        if (targetAgent == null)
-            return "에이전트 연결 없음";
-
-        if (string.IsNullOrWhiteSpace(skillName))
-            return "스킬 정보 없음";
-
-        string normalizedSkillName = NormalizeSkillName(skillName);
-
-        if (IsPositionShareSkill(normalizedSkillName))
         {
-            Observer observer = targetAgent as Observer;
-
-            if (observer == null)
-                return $"{GetSkillDisplayName(normalizedSkillName)}: 사용 불가";
-
-            string stateText = observer.IsTargetPositionShareEnabled ? "켜짐" : "꺼짐";
-            return $"{GetSkillDisplayName(normalizedSkillName)}: {stateText}";
+            return;
         }
 
-        float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
-
-        if (requiredGauge <= 0f)
-            return $"{GetSkillDisplayName(normalizedSkillName)}: 게이지 필요 없음";
-
-        float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(normalizedSkillName);
-
-        if (IsAutoActivatedSkill(normalizedSkillName))
-            return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#} 자동 발동";
-
-        return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
-    }
-
-    private bool IsScreenPointInside(RectTransform rectTransform, Vector2 screenPosition)
-    {
-        if (rectTransform == null)
-            return false;
-
-        return RectTransformUtility.RectangleContainsScreenPoint(
-            rectTransform,
-            screenPosition,
-            GetCanvasCamera()
-        );
+        commanderUIController = FindFirstObjectByType<CommanderUIController>();
     }
 
     private Camera GetCanvasCamera()
@@ -414,210 +691,67 @@ public class AgentSkillGaugeUI : MonoBehaviour
         Canvas canvas = GetComponentInParent<Canvas>();
 
         if (canvas == null)
+        {
             return null;
+        }
 
         if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+        {
             return null;
+        }
 
         if (canvas.worldCamera != null)
+        {
             return canvas.worldCamera;
+        }
 
         return Camera.main;
     }
 
-    private void EnsureGaugeImages()
+    private void TryCacheTargetAgent()
     {
-        if (hasCachedGaugeImages)
-            return;
-
-        if (autoFindGaugeImages)
-            CacheGaugeImages();
-
-        SetupGaugeImage(skill1GaugeImage);
-        SetupGaugeImage(skill2GaugeImage);
-
-        hasCachedGaugeImages = true;
-    }
-
-    private void CacheGaugeImages()
-    {
-        FindSkillRoots(out Transform skill1Root, out Transform skill2Root);
-
-        if (skill1ClickArea == null && skill1Root != null)
-            skill1ClickArea = skill1Root as RectTransform;
-
-        if (skill2ClickArea == null && skill2Root != null)
-            skill2ClickArea = skill2Root as RectTransform;
-
-        if (skill1GaugeImage == null)
-            skill1GaugeImage = FindGaugeImage(skill1Root);
-
-        if (skill2GaugeImage == null)
-            skill2GaugeImage = FindGaugeImage(skill2Root);
-    }
-
-    private void FindSkillRoots(out Transform skill1Root, out Transform skill2Root)
-    {
-        skill1Root = null;
-        skill2Root = null;
-
-        int foundCount = 0;
-
-        for (int i = 0; i < transform.childCount; i++)
+        if (agentId < 0)
         {
-            Transform child = transform.GetChild(i);
+            return;
+        }
 
-            if (!child.name.StartsWith("Skill", StringComparison.OrdinalIgnoreCase))
+        AgentController[] foundAgents = FindObjectsByType<AgentController>(
+            FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None
+        );
+
+        for (int i = 0; i < foundAgents.Length; i++)
+        {
+            AgentController agent = foundAgents[i];
+
+            if (agent == null)
+            {
                 continue;
+            }
 
-            if (foundCount == 0)
-                skill1Root = child;
-            else if (foundCount == 1)
-                skill2Root = child;
+            if (agent.AgentID != agentId)
+            {
+                continue;
+            }
 
-            foundCount++;
+            targetAgent = agent;
 
-            if (foundCount >= 2)
-                break;
-        }
+            if (string.IsNullOrWhiteSpace(skill1Name) &&
+                string.IsNullOrWhiteSpace(skill2Name))
+            {
+                SetupSkillNamesByAgent(targetAgent);
+            }
 
-        if (skill1Root == null)
-            skill1Root = FindChildRecursive(transform, "Skill1");
-
-        if (skill2Root == null)
-            skill2Root = FindChildRecursive(transform, "Skill2");
-    }
-
-    private Image FindGaugeImage(Transform skillRoot)
-    {
-        if (skillRoot == null)
-            return null;
-
-        Transform imageTransform = FindChildRecursive(skillRoot, "Image");
-
-        if (imageTransform != null)
-        {
-            Image image = imageTransform.GetComponent<Image>();
-
-            if (image != null)
-                return image;
-        }
-
-        Transform fillTransform = FindChildRecursive(skillRoot, "Fill");
-
-        if (fillTransform != null)
-        {
-            Image image = fillTransform.GetComponent<Image>();
-
-            if (image != null)
-                return image;
-        }
-
-        return skillRoot.GetComponentInChildren<Image>(true);
-    }
-
-    private void SetupGaugeImage(Image image)
-    {
-        if (image == null)
             return;
-
-        if (!setupImageFillSetting)
-            return;
-
-        image.type = Image.Type.Filled;
-
-        switch (fillDirection)
-        {
-            case GaugeFillDirection.HorizontalLeft:
-                image.fillMethod = Image.FillMethod.Horizontal;
-                image.fillOrigin = (int)Image.OriginHorizontal.Left;
-                break;
-
-            case GaugeFillDirection.HorizontalRight:
-                image.fillMethod = Image.FillMethod.Horizontal;
-                image.fillOrigin = (int)Image.OriginHorizontal.Right;
-                break;
-
-            case GaugeFillDirection.VerticalBottom:
-                image.fillMethod = Image.FillMethod.Vertical;
-                image.fillOrigin = (int)Image.OriginVertical.Bottom;
-                break;
-
-            case GaugeFillDirection.VerticalTop:
-                image.fillMethod = Image.FillMethod.Vertical;
-                image.fillOrigin = (int)Image.OriginVertical.Top;
-                break;
-        }
-
-        image.fillAmount = 0f;
-    }
-
-    private void TrySetupByUIName()
-    {
-        skill1Name = NormalizeSkillName(skill1Name);
-        skill2Name = NormalizeSkillName(skill2Name);
-
-        if (!string.IsNullOrWhiteSpace(skill1Name) ||
-            !string.IsNullOrWhiteSpace(skill2Name))
-        {
-            return;
-        }
-
-        string uiName = gameObject.name.ToLower();
-
-        if (uiName.Contains("pursuer") ||
-            uiName.Contains("chaser") ||
-            uiName.Contains("추격") ||
-            uiName.Contains("체이서"))
-        {
-            agentId = 0;
-            skill1Name = SkillAccessControl;
-            skill2Name = SkillEscapeBlock;
-            return;
-        }
-
-        if (uiName.Contains("scout") ||
-            uiName.Contains("observer") ||
-            uiName.Contains("수색") ||
-            uiName.Contains("옵저버"))
-        {
-            agentId = 1;
-            skill1Name = SkillDrone;
-            skill2Name = SkillPositionShare;
-            return;
-        }
-
-        if (uiName.Contains("engineer") ||
-            uiName.Contains("공병") ||
-            uiName.Contains("엔지니어") ||
-            uiName.Contains("안전관리자") ||
-            uiName.Contains("안전 관리자"))
-        {
-            agentId = 2;
-            skill1Name = SkillBarricade;
-            skill2Name = SkillStopSignal;
-            return;
-        }
-
-        if (uiName.Contains("disruptor") ||
-            uiName.Contains("distruptor") ||
-            uiName.Contains("trickster") ||
-            uiName.Contains("magician") ||
-            uiName.Contains("교란") ||
-            uiName.Contains("트릭스터") ||
-            uiName.Contains("마술사") ||
-            uiName.Contains("마술"))
-        {
-            agentId = 3;
-            skill1Name = SkillFakeBox;
-            skill2Name = SkillJokerCard;
         }
     }
 
     private void SetupSkillNamesByAgent(AgentController agent)
     {
         if (agent == null)
+        {
             return;
+        }
 
         if (agent.Stats != null)
         {
@@ -635,21 +769,25 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case AgentRole.Chaser:
                 skill1Name = SkillAccessControl;
                 skill2Name = SkillEscapeBlock;
+                skill3Name = "";
                 break;
 
             case AgentRole.Observer:
                 skill1Name = SkillDrone;
                 skill2Name = SkillPositionShare;
+                skill3Name = "";
                 break;
 
             case AgentRole.Engineer:
                 skill1Name = SkillBarricade;
                 skill2Name = SkillStopSignal;
+                skill3Name = "";
                 break;
 
             case AgentRole.Trickster:
                 skill1Name = SkillFakeBox;
                 skill2Name = SkillJokerCard;
+                skill3Name = "";
                 break;
         }
     }
@@ -661,101 +799,79 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case 0:
                 skill1Name = SkillAccessControl;
                 skill2Name = SkillEscapeBlock;
+                skill3Name = "";
                 break;
 
             case 1:
                 skill1Name = SkillDrone;
                 skill2Name = SkillPositionShare;
+                skill3Name = "";
                 break;
 
             case 2:
                 skill1Name = SkillBarricade;
                 skill2Name = SkillStopSignal;
+                skill3Name = "";
                 break;
 
             case 3:
                 skill1Name = SkillFakeBox;
                 skill2Name = SkillJokerCard;
+                skill3Name = "";
                 break;
         }
     }
 
-    private void TryCacheTargetAgent()
+    private void UpdateSkillGaugeSlot(AgentSkillSlotUI slot, string skillName)
     {
-        if (agentId < 0)
-            return;
-
-        AgentController[] foundAgents = FindObjectsByType<AgentController>(
-            FindObjectsInactive.Exclude,
-            FindObjectsSortMode.None
-        );
-
-        for (int i = 0; i < foundAgents.Length; i++)
+        if (slot == null)
         {
-            AgentController agent = foundAgents[i];
-
-            if (agent == null)
-                continue;
-
-            if (agent.AgentID != agentId)
-                continue;
-
-            targetAgent = agent;
-
-            if (string.IsNullOrWhiteSpace(skill1Name) &&
-                string.IsNullOrWhiteSpace(skill2Name))
-            {
-                SetupSkillNamesByAgent(targetAgent);
-            }
-
             return;
         }
-    }
-
-    private void UpdateSkillGaugeImage(Image image, string skillName)
-    {
-        if (image == null)
-            return;
 
         if (targetAgent == null)
         {
-            SetGaugeAmount(image, 0f);
+            slot.SetGaugeAmount(0f);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(skillName))
         {
-            SetGaugeAmount(image, 0f);
+            slot.SetGaugeAmount(0f);
             return;
         }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
 
-        if (TryUpdateToggleSkillGaugeImage(image, normalizedSkillName))
+        if (TryUpdateToggleSkillGaugeSlot(slot, normalizedSkillName))
+        {
             return;
+        }
 
         float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
         {
-            SetGaugeAmount(image, 1f);
+            slot.SetGaugeAmount(1f);
             return;
         }
 
         float amount = targetAgent.GetSkillGaugeNormalizedForSkill(normalizedSkillName);
-        SetGaugeAmount(image, amount);
+        slot.SetGaugeAmount(amount);
     }
 
-    private bool TryUpdateToggleSkillGaugeImage(Image image, string normalizedSkillName)
+    private bool TryUpdateToggleSkillGaugeSlot(AgentSkillSlotUI slot, string normalizedSkillName)
     {
         if (!IsPositionShareSkill(normalizedSkillName))
+        {
             return false;
+        }
 
         Observer observer = targetAgent as Observer;
 
         if (observer == null)
         {
-            SetGaugeAmount(image, toggleSkillOffFillAmount);
+            slot.SetGaugeAmount(toggleSkillOffFillAmount);
             return true;
         }
 
@@ -763,54 +879,93 @@ public class AgentSkillGaugeUI : MonoBehaviour
             ? toggleSkillOnFillAmount
             : toggleSkillOffFillAmount;
 
-        SetGaugeAmount(image, amount);
+        slot.SetGaugeAmount(amount);
         return true;
     }
 
-    private void SetGaugeAmount(Image image, float amount)
+    private void SetSlotGaugeAmount(AgentSkillSlotUI slot, float amount)
     {
-        if (image == null)
+        if (slot == null)
+        {
             return;
+        }
 
-        image.fillAmount = Mathf.Clamp01(amount);
+        slot.SetGaugeAmount(amount);
+    }
+
+    private bool IsAutoActivatedSkill(string skillName)
+    {
+        return NormalizeSkillName(skillName) == SkillJokerCard;
     }
 
     private string NormalizeSkillName(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return "";
+        }
 
         string skill = skillName.Trim().ToLower();
 
         if (IsAccessControlSkill(skill))
+        {
             return SkillAccessControl;
+        }
 
         if (IsEscapeBlockSkill(skill))
+        {
             return SkillEscapeBlock;
+        }
+
+        if (IsPatrolSkill(skill))
+        {
+            return SkillPatrol;
+        }
+
+        if (IsTrackingInstinctSkill(skill))
+        {
+            return SkillTrackingInstinct;
+        }
 
         if (IsPositionShareSkill(skill))
+        {
             return SkillPositionShare;
+        }
 
         if (IsLegacySlowTrapSkill(skill))
+        {
             return SkillStopSignal;
+        }
 
         if (IsLegacyNoisemakerSkill(skill))
+        {
             return SkillFakeBox;
+        }
 
         if (IsLegacyHologramSkill(skill))
+        {
             return SkillJokerCard;
+        }
 
         if (IsFakeBoxSkill(skill))
+        {
             return SkillFakeBox;
+        }
 
         if (IsJokerCardSkill(skill))
+        {
             return SkillJokerCard;
+        }
 
         if (IsStopSignalSkill(skill))
+        {
             return SkillStopSignal;
+        }
 
         if (IsDroneSkill(skill))
+        {
             return SkillDrone;
+        }
 
         return skill;
     }
@@ -818,7 +973,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsAccessControlSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -835,7 +992,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsEscapeBlockSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -846,10 +1005,43 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("도주 제지");
     }
 
+    private bool IsPatrolSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillPatrol ||
+               skill == "chaser_patrol" ||
+               skill.Contains("patrol") ||
+               skill.Contains("순찰");
+    }
+
+    private bool IsTrackingInstinctSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillTrackingInstinct ||
+               skill == "tracking_instinct" ||
+               skill.Contains("tracking instinct") ||
+               skill.Contains("추적본능") ||
+               skill.Contains("추적 본능");
+    }
+
     private bool IsDroneSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -862,7 +1054,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsPositionShareSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -881,7 +1075,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsStopSignalSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -896,7 +1092,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsLegacySlowTrapSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -912,7 +1110,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsLegacyNoisemakerSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -927,7 +1127,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsLegacyHologramSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -939,7 +1141,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsFakeBoxSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -959,7 +1163,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsJokerCardSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
+        {
             return false;
+        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -986,6 +1192,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case SkillEscapeBlock:
                 return "도주 제지";
 
+            case SkillPatrol:
+                return "순찰";
+
+            case SkillTrackingInstinct:
+                return "추적 본능";
+
             case SkillDrone:
                 return "드론";
 
@@ -1009,25 +1221,57 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
     }
 
-    private Transform FindChildRecursive(Transform parent, string targetName)
+    private void ShowGaugeInfoLabel(string skillName, Vector2 mousePosition)
     {
-        if (parent == null)
-            return null;
+        gaugeInfoLabelText = GetGaugeInfoText(skillName);
+        gaugeInfoLabelScreenPosition = mousePosition + gaugeInfoLabelOffset;
+        gaugeInfoLabelEndTime = Time.unscaledTime + gaugeInfoLabelDuration;
 
-        for (int i = 0; i < parent.childCount; i++)
+        Debug.Log($"[AgentSkillGaugeUI] {gaugeInfoLabelText}");
+    }
+
+    private string GetGaugeInfoText(string skillName)
+    {
+        if (targetAgent == null)
         {
-            Transform child = parent.GetChild(i);
-
-            if (child.name == targetName)
-                return child;
-
-            Transform found = FindChildRecursive(child, targetName);
-
-            if (found != null)
-                return found;
+            return "에이전트 연결 없음";
         }
 
-        return null;
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return "스킬 정보 없음";
+        }
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsPositionShareSkill(normalizedSkillName))
+        {
+            Observer observer = targetAgent as Observer;
+
+            if (observer == null)
+            {
+                return $"{GetSkillDisplayName(normalizedSkillName)}: 사용 불가";
+            }
+
+            string stateText = observer.IsTargetPositionShareEnabled ? "켜짐" : "꺼짐";
+            return $"{GetSkillDisplayName(normalizedSkillName)}: {stateText}";
+        }
+
+        float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
+
+        if (requiredGauge <= 0f)
+        {
+            return $"{GetSkillDisplayName(normalizedSkillName)}: 게이지 필요 없음";
+        }
+
+        float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(normalizedSkillName);
+
+        if (IsAutoActivatedSkill(normalizedSkillName))
+        {
+            return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#} 자동 발동";
+        }
+
+        return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
     }
 
     private bool IsGaugeInfoLabelVisible()
@@ -1053,7 +1297,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void OnGUI()
     {
         if (!IsGaugeInfoLabelVisible())
+        {
             return;
+        }
 
         if (gaugeInfoLabelStyle == null)
         {

@@ -1,0 +1,593 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+[RequireComponent(typeof(SphereCollider))]
+public abstract class DroneBase : MonoBehaviour
+{
+    [Header("Detection")]
+    [SerializeField] private LayerMask targetLayer;
+    [SerializeField] private float radius = 4f;
+    [SerializeField] private float duration = 20f;
+
+    [Header("Observation Area Visual")]
+    [SerializeField] private bool showObservationArea = true;
+    [SerializeField] private GameObject observationAreaPrefab;
+    [SerializeField] private Material observationAreaMaterial;
+    [SerializeField] private float observationAreaYOffset = 0.05f;
+
+    [Header("Advanced")]
+    [SerializeField] private float checkInterval = 0.1f;
+    [SerializeField] private int maxColliders = 32;
+    [SerializeField] private float ownerNotifyInterval = 0.15f;
+    [SerializeField] private bool autoDestroyWhenFinished = true;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugLog = false;
+    [SerializeField] private bool drawGizmos = true;
+
+    private Observer owner;
+    private SphereCollider zoneCollider;
+
+    private Vector3 observationCenterPosition;
+    private float visualHeightOffset;
+
+    private float finishTime;
+    private float checkTimer;
+    private float notifyTimer;
+    private bool initialized;
+
+    private Collider[] hitBuffer;
+
+    private GameObject observationAreaObject;
+    private Renderer observationAreaRenderer;
+    private Material runtimeObservationAreaMaterial;
+
+    private readonly HashSet<TargetController> revealedTargets = new HashSet<TargetController>();
+    private readonly HashSet<TargetController> currentTargets = new HashSet<TargetController>();
+    private readonly List<TargetController> targetsToRemove = new List<TargetController>();
+
+    public Observer Owner => owner;
+    public float Radius => radius;
+    public float Duration => duration;
+    public Vector3 ObservationCenterPosition => observationCenterPosition;
+    public bool IsInitialized => initialized;
+
+    protected bool DebugLog => debugLog;
+    protected float VisualHeightOffset => visualHeightOffset;
+
+    protected virtual void Awake()
+    {
+        CacheCollider();
+        ApplyColliderSettings();
+        PrepareHitBuffer();
+    }
+
+    protected virtual void OnValidate()
+    {
+        radius = Mathf.Max(0f, radius);
+        duration = Mathf.Max(0f, duration);
+        observationAreaYOffset = Mathf.Max(0f, observationAreaYOffset);
+        checkInterval = Mathf.Max(0.02f, checkInterval);
+        ownerNotifyInterval = Mathf.Max(0.02f, ownerNotifyInterval);
+        maxColliders = Mathf.Max(1, maxColliders);
+
+        CacheCollider();
+        ApplyColliderSettings();
+    }
+
+    private void Update()
+    {
+        if (!initialized)
+            return;
+
+        if (duration > 0f && Time.time >= finishTime)
+        {
+            FinishSkill();
+            return;
+        }
+
+        OnSkillUpdate();
+
+        UpdateObservationAreaVisual();
+        UpdateDetection();
+        UpdateOwnerNotify();
+    }
+
+    protected virtual void OnDisable()
+    {
+        ClearAllReveals();
+        HideObservationArea();
+        OnSkillStopped();
+    }
+
+    protected virtual void OnDestroy()
+    {
+        ClearAllReveals();
+
+        if (observationAreaObject != null)
+            Destroy(observationAreaObject);
+
+        if (runtimeObservationAreaMaterial != null)
+            Destroy(runtimeObservationAreaMaterial);
+    }
+
+    protected void InitializeBase(
+        Observer observer,
+        Vector3 observationCenter,
+        Vector3 droneVisualPosition,
+        LayerMask observationTargetLayer,
+        float observationRadius,
+        float observationDuration)
+    {
+        owner = observer;
+
+        observationCenterPosition = observationCenter;
+        transform.position = droneVisualPosition;
+        visualHeightOffset = droneVisualPosition.y - observationCenter.y;
+
+        targetLayer = observationTargetLayer;
+        radius = Mathf.Max(0f, observationRadius);
+        duration = Mathf.Max(0f, observationDuration);
+
+        finishTime = Time.time + duration;
+        checkTimer = 0f;
+        notifyTimer = 0f;
+        initialized = true;
+
+        CacheCollider();
+        ApplyColliderSettings();
+        PrepareHitBuffer();
+        SetupObservationAreaVisual();
+        DetectTargets();
+
+        OnInitialized();
+
+        if (debugLog)
+        {
+            Debug.Log(
+                $"[{GetType().Name}] Initialized. " +
+                $"Drone Position: {transform.position}, " +
+                $"Observation Center: {observationCenterPosition}, " +
+                $"Radius: {radius}, Duration: {duration}"
+            );
+        }
+    }
+
+    protected virtual void OnInitialized()
+    {
+    }
+
+    protected virtual void OnSkillUpdate()
+    {
+    }
+
+    protected virtual void OnSkillStopped()
+    {
+    }
+
+    protected virtual void OnTargetDetected(TargetController target)
+    {
+    }
+
+    protected virtual void OnTargetRevealed(TargetController target)
+    {
+    }
+
+    protected virtual void OnTargetLost(TargetController target)
+    {
+    }
+
+    protected virtual void DrawAdditionalGizmos()
+    {
+    }
+
+    protected void SetObservationCenter(Vector3 centerPosition)
+    {
+        observationCenterPosition = centerPosition;
+        ApplyColliderSettings();
+    }
+
+    protected void SetDroneVisualPositionFromCenter(Vector3 centerPosition)
+    {
+        transform.position = GetDroneVisualPosition(centerPosition);
+    }
+
+    protected Vector3 GetDroneVisualPosition(Vector3 centerPosition)
+    {
+        return new Vector3(
+            centerPosition.x,
+            centerPosition.y + visualHeightOffset,
+            centerPosition.z
+        );
+    }
+
+    protected void FinishSkill()
+    {
+        ClearAllReveals();
+        HideObservationArea();
+        OnSkillStopped();
+
+        if (autoDestroyWhenFinished)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        enabled = false;
+    }
+
+    private void CacheCollider()
+    {
+        if (zoneCollider != null)
+            return;
+
+        zoneCollider = GetComponent<SphereCollider>();
+    }
+
+    private void ApplyColliderSettings()
+    {
+        if (zoneCollider == null)
+            return;
+
+        zoneCollider.isTrigger = true;
+        zoneCollider.radius = radius;
+
+        if (initialized)
+            zoneCollider.center = transform.InverseTransformPoint(observationCenterPosition);
+        else
+            zoneCollider.center = Vector3.zero;
+    }
+
+    private void PrepareHitBuffer()
+    {
+        if (hitBuffer != null && hitBuffer.Length == maxColliders)
+            return;
+
+        hitBuffer = new Collider[maxColliders];
+    }
+
+    private void SetupObservationAreaVisual()
+    {
+        if (!showObservationArea)
+            return;
+
+        if (observationAreaObject == null)
+            CreateObservationAreaObject();
+
+        if (observationAreaObject == null)
+            return;
+
+        observationAreaObject.SetActive(true);
+        UpdateObservationAreaVisual();
+    }
+
+    private void CreateObservationAreaObject()
+    {
+        if (observationAreaPrefab != null)
+        {
+            observationAreaObject = Instantiate(
+                observationAreaPrefab,
+                GetObservationAreaPosition(),
+                Quaternion.Euler(90f, 0f, 0f)
+            );
+
+            observationAreaObject.name = $"{GetType().Name}_ObservationArea";
+        }
+        else
+        {
+            observationAreaObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            observationAreaObject.name = $"{GetType().Name}_ObservationArea";
+
+            Collider areaCollider = observationAreaObject.GetComponent<Collider>();
+
+            if (areaCollider != null)
+                Destroy(areaCollider);
+        }
+
+        observationAreaObject.transform.SetParent(null);
+
+        observationAreaRenderer = observationAreaObject.GetComponentInChildren<Renderer>();
+
+        if (observationAreaRenderer == null)
+        {
+            Debug.LogWarning($"[{GetType().Name}] Observation area renderer is missing.");
+            return;
+        }
+
+        Material material = ResolveObservationAreaMaterial();
+
+        if (material != null)
+            observationAreaRenderer.sharedMaterial = material;
+    }
+
+    private Material ResolveObservationAreaMaterial()
+    {
+        if (observationAreaMaterial != null)
+            return observationAreaMaterial;
+
+        Shader shader = Shader.Find("Commander/DroneObservationArea");
+
+        if (shader == null)
+        {
+            Debug.LogWarning($"[{GetType().Name}] Shader not found: Commander/DroneObservationArea");
+            return null;
+        }
+
+        runtimeObservationAreaMaterial = new Material(shader);
+        runtimeObservationAreaMaterial.name = $"Runtime_{GetType().Name}_ObservationArea";
+
+        return runtimeObservationAreaMaterial;
+    }
+
+    private void UpdateObservationAreaVisual()
+    {
+        if (!showObservationArea)
+            return;
+
+        if (observationAreaObject == null)
+            return;
+
+        observationAreaObject.transform.position = GetObservationAreaPosition();
+        observationAreaObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        observationAreaObject.transform.localScale = new Vector3(radius * 2f, radius * 2f, 1f);
+    }
+
+    private Vector3 GetObservationAreaPosition()
+    {
+        return new Vector3(
+            observationCenterPosition.x,
+            observationCenterPosition.y + observationAreaYOffset,
+            observationCenterPosition.z
+        );
+    }
+
+    private void HideObservationArea()
+    {
+        if (observationAreaObject == null)
+            return;
+
+        observationAreaObject.SetActive(false);
+    }
+
+    private void UpdateDetection()
+    {
+        checkTimer -= Time.deltaTime;
+
+        if (checkTimer > 0f)
+            return;
+
+        checkTimer = checkInterval;
+        DetectTargets();
+    }
+
+    private void DetectTargets()
+    {
+        currentTargets.Clear();
+
+        int hitCount = Physics.OverlapSphereNonAlloc(
+            observationCenterPosition,
+            radius,
+            hitBuffer,
+            targetLayer,
+            QueryTriggerInteraction.Collide
+        );
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider hit = hitBuffer[i];
+
+            if (hit == null)
+                continue;
+
+            if (!IsColliderInsideVisibleObservationArea(hit))
+                continue;
+
+            TargetController target = hit.GetComponentInParent<TargetController>();
+
+            if (target == null)
+                continue;
+
+            currentTargets.Add(target);
+            OnTargetDetected(target);
+
+            if (revealedTargets.Add(target))
+            {
+                target.AddReconReveal();
+                NotifyOwnerSkillReveal(target);
+                OnTargetRevealed(target);
+
+                if (debugLog)
+                {
+                    float horizontalDistance = GetHorizontalDistanceToObservationCenter(target.transform.position);
+
+                    Debug.Log(
+                        $"[{GetType().Name}] Target revealed: {target.name}, " +
+                        $"Horizontal Distance: {horizontalDistance}, Radius: {radius}"
+                    );
+                }
+            }
+
+            NotifyOwner(target);
+        }
+
+        RemoveLostTargets();
+    }
+
+    private void RemoveLostTargets()
+    {
+        targetsToRemove.Clear();
+
+        foreach (TargetController target in revealedTargets)
+        {
+            if (target == null)
+            {
+                targetsToRemove.Add(target);
+                continue;
+            }
+
+            if (!currentTargets.Contains(target))
+                targetsToRemove.Add(target);
+        }
+
+        for (int i = 0; i < targetsToRemove.Count; i++)
+        {
+            TargetController target = targetsToRemove[i];
+
+            revealedTargets.Remove(target);
+
+            if (target != null)
+            {
+                target.RemoveReconReveal();
+                OnTargetLost(target);
+
+                if (debugLog)
+                    Debug.Log($"[{GetType().Name}] Target reveal removed: {target.name}");
+            }
+        }
+
+        targetsToRemove.Clear();
+    }
+
+    private void NotifyOwnerSkillReveal(TargetController target)
+    {
+        if (owner == null)
+            return;
+
+        if (target == null)
+            return;
+
+        owner.NotifyDroneSkillRevealedTarget(target.transform);
+    }
+
+    private void UpdateOwnerNotify()
+    {
+        if (owner == null)
+            return;
+
+        notifyTimer -= Time.deltaTime;
+
+        if (notifyTimer > 0f)
+            return;
+
+        notifyTimer = ownerNotifyInterval;
+
+        foreach (TargetController target in revealedTargets)
+        {
+            if (target == null)
+                continue;
+
+            NotifyOwner(target);
+        }
+    }
+
+    private void NotifyOwner(TargetController target)
+    {
+        if (owner == null)
+            return;
+
+        if (target == null)
+            return;
+
+        owner.NotifyDroneTargetObserved(target.transform);
+    }
+
+    private void ClearAllReveals()
+    {
+        if (revealedTargets.Count == 0)
+            return;
+
+        targetsToRemove.Clear();
+
+        foreach (TargetController target in revealedTargets)
+        {
+            if (target != null)
+                targetsToRemove.Add(target);
+        }
+
+        for (int i = 0; i < targetsToRemove.Count; i++)
+        {
+            TargetController target = targetsToRemove[i];
+
+            if (target != null)
+                target.RemoveReconReveal();
+        }
+
+        revealedTargets.Clear();
+        currentTargets.Clear();
+        targetsToRemove.Clear();
+    }
+
+    private bool IsColliderInsideVisibleObservationArea(Collider targetCollider)
+    {
+        if (targetCollider == null)
+            return false;
+
+        Vector3 closestPoint = targetCollider.ClosestPoint(observationCenterPosition);
+
+        Vector2 centerXZ = new Vector2(
+            observationCenterPosition.x,
+            observationCenterPosition.z
+        );
+
+        Vector2 closestXZ = new Vector2(
+            closestPoint.x,
+            closestPoint.z
+        );
+
+        float sqrDistance = (closestXZ - centerXZ).sqrMagnitude;
+        return sqrDistance <= radius * radius;
+    }
+
+    private float GetHorizontalDistanceToObservationCenter(Vector3 worldPosition)
+    {
+        Vector2 centerXZ = new Vector2(
+            observationCenterPosition.x,
+            observationCenterPosition.z
+        );
+
+        Vector2 positionXZ = new Vector2(
+            worldPosition.x,
+            worldPosition.z
+        );
+
+        return Vector2.Distance(centerXZ, positionXZ);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!drawGizmos)
+            return;
+
+        Vector3 center = initialized ? observationCenterPosition : transform.position;
+
+        Gizmos.color = Color.cyan;
+        DrawFlatCircleGizmo(center, radius, 64);
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawLine(transform.position, center);
+
+        DrawAdditionalGizmos();
+    }
+
+    private void DrawFlatCircleGizmo(Vector3 center, float circleRadius, int segmentCount)
+    {
+        if (circleRadius <= 0f)
+            return;
+
+        Vector3 previousPoint = center + new Vector3(circleRadius, 0f, 0f);
+
+        for (int i = 1; i <= segmentCount; i++)
+        {
+            float angle = i / (float)segmentCount * Mathf.PI * 2f;
+
+            Vector3 currentPoint = center + new Vector3(
+                Mathf.Cos(angle) * circleRadius,
+                0f,
+                Mathf.Sin(angle) * circleRadius
+            );
+
+            Gizmos.DrawLine(previousPoint, currentPoint);
+            previousPoint = currentPoint;
+        }
+    }
+}

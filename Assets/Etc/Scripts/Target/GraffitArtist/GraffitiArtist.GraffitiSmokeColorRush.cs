@@ -109,6 +109,9 @@ public partial class GraffitiArtist
         if (!TryFindGraffitiSpawnPosition(out Vector3 spawnPosition))
             return false;
 
+        if (overrideGraffitiSpawnY)
+            spawnPosition.y = graffitiSpawnY;
+
         GameObject zoneObject;
 
         if (graffitiZonePrefab != null)

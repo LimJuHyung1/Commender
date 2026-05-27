@@ -1,5 +1,6 @@
 using System.Collections;
 using DG.Tweening;
+using Michsky.UI.MTP;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -14,6 +15,14 @@ public class UIController : MonoBehaviour
     [SerializeField] private Transform resultRoot;
     [SerializeField] private GameObject resultPanelObject;
     [SerializeField] private Text resultText;
+
+    [Header("Michsky Result UI")]
+    [SerializeField] private bool useMichskyResultUI = true;
+    [SerializeField] private StyleManager successResultStyle;
+    [SerializeField] private StyleManager failureResultStyle;
+    [SerializeField] private string resultTextItemID = "Main Text";
+    [SerializeField] private bool useUnscaledTimeForResult = true;
+    [SerializeField] private bool hideResultRootOnHide = false;
 
     [Header("Option UI")]
     [SerializeField] private Transform optionsRoot;
@@ -50,7 +59,14 @@ public class UIController : MonoBehaviour
     {
         if (resultRoot == null)
         {
-            Transform foundResultRoot = FindChildRecursive(transform, "ResultPanel");
+            Transform foundResultRoot = FindChildRecursive(transform, "ResultUI");
+
+            if (foundResultRoot == null)
+                foundResultRoot = FindChildRecursive(transform, "resultUI");
+
+            if (foundResultRoot == null)
+                foundResultRoot = FindChildRecursive(transform, "ResultPanel");
+
             if (foundResultRoot != null)
                 resultRoot = foundResultRoot;
         }
@@ -60,9 +76,13 @@ public class UIController : MonoBehaviour
 
         if (resultPanelObject == null)
         {
-            Image resultImage = FindFirstImageInChildren(resultRoot);
-            if (resultImage != null)
-                resultPanelObject = resultImage.gameObject;
+            Transform panelTransform = FindDirectChild(resultRoot, "Panel");
+
+            if (panelTransform == null)
+                panelTransform = FindChildRecursive(resultRoot, "Panel");
+
+            if (panelTransform != null)
+                resultPanelObject = panelTransform.gameObject;
         }
 
         if (resultText == null && resultPanelObject != null)
@@ -74,6 +94,7 @@ public class UIController : MonoBehaviour
         if (optionsRoot == null)
         {
             Transform foundOptions = FindChildRecursive(transform, "Options");
+
             if (foundOptions != null)
                 optionsRoot = foundOptions;
         }
@@ -84,6 +105,7 @@ public class UIController : MonoBehaviour
         if (optionButton == null)
         {
             Transform buttonTransform = FindChildRecursive(optionsRoot, "OptionButton");
+
             if (buttonTransform != null)
                 optionButton = buttonTransform.GetComponent<Button>();
         }
@@ -91,6 +113,7 @@ public class UIController : MonoBehaviour
         if (optionPanel == null)
         {
             Transform panelTransform = FindChildRecursive(optionsRoot, "OptionPanel");
+
             if (panelTransform == null)
                 panelTransform = FindChildRecursive(optionsRoot, "OptionFrame");
 
@@ -101,6 +124,7 @@ public class UIController : MonoBehaviour
         if (exitButton == null)
         {
             Transform exitTransform = FindChildRecursive(optionsRoot, "ExitButton");
+
             if (exitTransform != null)
                 exitButton = exitTransform.GetComponent<Button>();
         }
@@ -132,6 +156,22 @@ public class UIController : MonoBehaviour
             exitButton.gameObject.SetActive(false);
     }
 
+    private Transform FindDirectChild(Transform parent, string targetName)
+    {
+        if (parent == null)
+            return null;
+
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+
+            if (child.name == targetName)
+                return child;
+        }
+
+        return null;
+    }
+
     private Transform FindChildRecursive(Transform parent, string targetName)
     {
         if (parent == null)
@@ -145,27 +185,9 @@ public class UIController : MonoBehaviour
                 return child;
 
             Transform found = FindChildRecursive(child, targetName);
+
             if (found != null)
                 return found;
-        }
-
-        return null;
-    }
-
-    private Image FindFirstImageInChildren(Transform parent)
-    {
-        if (parent == null)
-            return null;
-
-        Image selfImage = parent.GetComponent<Image>();
-        if (selfImage != null)
-            return selfImage;
-
-        for (int i = 0; i < parent.childCount; i++)
-        {
-            Image childImage = FindFirstImageInChildren(parent.GetChild(i));
-            if (childImage != null)
-                return childImage;
         }
 
         return null;
@@ -207,21 +229,111 @@ public class UIController : MonoBehaviour
 
     public void ShowResultPanel(bool isSuccess, string message)
     {
+        if (resultRoot != null)
+            resultRoot.gameObject.SetActive(true);
+
         if (resultPanelObject != null)
             resultPanelObject.SetActive(true);
 
-        if (resultText != null)
+        string resultMessage = isSuccess
+            ? $"성공\n{message}"
+            : $"실패\n{message}";
+
+        if (useMichskyResultUI)
         {
-            resultText.text = isSuccess
-                ? $"성공\n{message}"
-                : $"실패\n{message}";
+            PlayResultStyle(isSuccess, resultMessage);
+            return;
         }
+
+        if (resultText != null)
+            resultText.text = resultMessage;
+    }
+
+    private void PlayResultStyle(bool isSuccess, string message)
+    {
+        StyleManager targetStyle = isSuccess ? successResultStyle : failureResultStyle;
+        StyleManager otherStyle = isSuccess ? failureResultStyle : successResultStyle;
+
+        if (otherStyle != null)
+            otherStyle.gameObject.SetActive(false);
+
+        if (targetStyle == null)
+        {
+            if (resultText != null)
+                resultText.text = message;
+
+            return;
+        }
+
+        if (!targetStyle.gameObject.activeSelf)
+            targetStyle.gameObject.SetActive(true);
+
+        ApplyTextToStyle(targetStyle, message);
+        PrepareStyleAnimator(targetStyle);
+
+        targetStyle.Play();
+    }
+
+    private void ApplyTextToStyle(StyleManager styleManager, string message)
+    {
+        if (styleManager == null || styleManager.textItems == null)
+            return;
+
+        for (int i = 0; i < styleManager.textItems.Count; i++)
+        {
+            TextItem textItem = styleManager.textItems[i];
+
+            if (textItem == null)
+                continue;
+
+            if (!string.IsNullOrEmpty(resultTextItemID) && textItem.itemID != resultTextItemID)
+                continue;
+
+            textItem.text = message;
+
+            if (textItem.textObject == null)
+                textItem.textObject = textItem.GetComponent<TMPro.TextMeshProUGUI>();
+
+            textItem.UpdateText();
+            return;
+        }
+    }
+
+    private void PrepareStyleAnimator(StyleManager styleManager)
+    {
+        if (styleManager == null)
+            return;
+
+        styleManager.playOnEnable = false;
+
+        if (useUnscaledTimeForResult)
+            styleManager.UseUnscaledTime = true;
+
+        Animator animator = styleManager.GetComponent<Animator>();
+
+        if (animator == null)
+            return;
+
+        if (useUnscaledTimeForResult)
+            animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+
+        animator.Rebind();
+        animator.Update(0f);
     }
 
     public void HideResultPanel()
     {
+        if (successResultStyle != null)
+            successResultStyle.gameObject.SetActive(false);
+
+        if (failureResultStyle != null)
+            failureResultStyle.gameObject.SetActive(false);
+
         if (resultPanelObject != null)
             resultPanelObject.SetActive(false);
+
+        if (hideResultRootOnHide && resultRoot != null)
+            resultRoot.gameObject.SetActive(false);
     }
 
     public void OnClickOptionButton()
@@ -369,6 +481,7 @@ public class UIController : MonoBehaviour
         for (int i = 0; i < tweenAnimations.Length; i++)
         {
             DOTweenAnimation tweenAnimation = tweenAnimations[i];
+
             if (tweenAnimation == null)
                 continue;
 
@@ -384,6 +497,7 @@ public class UIController : MonoBehaviour
         for (int i = 0; i < tweenAnimations.Length; i++)
         {
             DOTweenAnimation tweenAnimation = tweenAnimations[i];
+
             if (tweenAnimation == null)
                 continue;
 
@@ -401,6 +515,7 @@ public class UIController : MonoBehaviour
         for (int i = 0; i < tweenAnimations.Length; i++)
         {
             DOTweenAnimation tweenAnimation = tweenAnimations[i];
+
             if (tweenAnimation == null)
                 continue;
 
@@ -482,8 +597,6 @@ public class UIController : MonoBehaviour
 
         GameManager.Instance.ToggleTargetDebugReveal();
     }
-
-
 
     public void SetStageHudVisible(bool visible)
     {

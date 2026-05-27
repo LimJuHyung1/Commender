@@ -596,10 +596,31 @@ public class StageMapManager : MonoBehaviour
 
         currentTarget = Instantiate(selectedTargetPrefab, spawnPoint.position, spawnPoint.rotation);
 
+        PlayTargetMusicForCurrentTarget();
+
         ApplyTargetLevelToCurrentTarget();
         ApplyTargetUpgradesToCurrentTarget();
 
         Debug.Log($"[StageMapManager] 타겟 생성 완료: Prefab={selectedTargetPrefab.name}, SpawnPoint={spawnPoint.name}");
+    }
+
+    private void PlayTargetMusicForCurrentTarget()
+    {
+        if (currentTarget == null)
+            return;
+
+        TargetBgmPlayer bgmPlayer = TargetBgmPlayer.Instance;
+
+        if (bgmPlayer == null)
+            bgmPlayer = FindFirstObjectByType<TargetBgmPlayer>();
+
+        if (bgmPlayer == null)
+        {
+            Debug.LogWarning("[StageMapManager] TargetBgmPlayer를 찾지 못했습니다.");
+            return;
+        }
+
+        bgmPlayer.PlayTargetMusic(currentTarget);
     }
 
     private GameObject GetSelectedTargetPrefab()

@@ -5,6 +5,15 @@ public class UpgradeManager : MonoBehaviour
 {
     public static UpgradeManager Instance { get; private set; }
 
+    private const string ChaserUnlockPatrol = "chaser_unlock_patrol";
+    private const string ChaserUnlockTrackingInstinct = "chaser_unlock_tracking_instinct";
+
+    private const string ChaserPatrolPressureTracking = "chaser_patrol_pressure_tracking";
+    private const string ChaserPatrolHighSpeed = "chaser_patrol_high_speed";
+
+    private const string ChaserTrackingInstinctMaxStack10 = "chaser_tracking_instinct_max_stack_10";
+    private const string ChaserTrackingInstinctInstinctiveCharge = "chaser_tracking_instinct_instinctive_charge";
+
     [Header("Database")]
     [SerializeField] private UpgradeDatabase upgradeDatabase;
 
@@ -202,6 +211,11 @@ public class UpgradeManager : MonoBehaviour
         return appliedTargetMilestoneStages.Contains(stageNumber);
     }
 
+    public bool HasAgentUpgrade(string upgradeId)
+    {
+        return ContainsUpgrade(selectedAgentUpgradeIds, upgradeId);
+    }
+
     private void AddRandomTargetUpgrade(int stageNumber, CommanderTargetType targetType)
     {
         if (upgradeDatabase == null)
@@ -258,8 +272,15 @@ public class UpgradeManager : MonoBehaviour
         return false;
     }
 
-    private void RemoveUnavailableUpgrades(List<UpgradeDefinition> candidates, List<string> alreadySelectedUpgradeIds)
+    private void RemoveUnavailableUpgrades(
+        List<UpgradeDefinition> candidates,
+        List<string> alreadySelectedUpgradeIds)
     {
+        if (candidates == null)
+        {
+            return;
+        }
+
         for (int i = candidates.Count - 1; i >= 0; i--)
         {
             UpgradeDefinition upgrade = candidates[i];
@@ -284,6 +305,11 @@ public class UpgradeManager : MonoBehaviour
             return false;
         }
 
+        if (!CanAddChaserNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
+        {
+            return false;
+        }
+
         int currentStack = CountUpgrade(alreadySelectedUpgradeIds, upgrade.UpgradeId);
 
         if (!upgrade.Stackable && currentStack > 0)
@@ -297,6 +323,83 @@ public class UpgradeManager : MonoBehaviour
         }
 
         return true;
+    }
+
+    private bool CanAddChaserNewSkillUpgrade(
+        UpgradeDefinition upgrade,
+        List<string> alreadySelectedUpgradeIds)
+    {
+        if (upgrade == null)
+        {
+            return false;
+        }
+
+        string upgradeId = upgrade.UpgradeId;
+
+        bool hasPatrol = ContainsUpgrade(alreadySelectedUpgradeIds, ChaserUnlockPatrol);
+        bool hasTrackingInstinct = ContainsUpgrade(alreadySelectedUpgradeIds, ChaserUnlockTrackingInstinct);
+
+        if (upgradeId == ChaserUnlockPatrol && hasTrackingInstinct)
+        {
+            return false;
+        }
+
+        if (upgradeId == ChaserUnlockTrackingInstinct && hasPatrol)
+        {
+            return false;
+        }
+
+        if (IsPatrolUpgrade(upgradeId) && !hasPatrol)
+        {
+            return false;
+        }
+
+        if (IsTrackingInstinctUpgrade(upgradeId) && !hasTrackingInstinct)
+        {
+            return false;
+        }
+
+        if (IsPatrolUpgrade(upgradeId) && hasTrackingInstinct)
+        {
+            return false;
+        }
+
+        if (IsTrackingInstinctUpgrade(upgradeId) && hasPatrol)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IsPatrolUpgrade(string upgradeId)
+    {
+        return upgradeId == ChaserPatrolPressureTracking ||
+               upgradeId == ChaserPatrolHighSpeed;
+    }
+
+    private bool IsTrackingInstinctUpgrade(string upgradeId)
+    {
+        return upgradeId == ChaserTrackingInstinctMaxStack10 ||
+               upgradeId == ChaserTrackingInstinctInstinctiveCharge;
+    }
+
+    private bool ContainsUpgrade(List<string> upgradeIds, string upgradeId)
+    {
+        if (upgradeIds == null || string.IsNullOrWhiteSpace(upgradeId))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < upgradeIds.Count; i++)
+        {
+            if (upgradeIds[i] == upgradeId)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int CountUpgrade(List<string> upgradeIds, string upgradeId)
@@ -334,5 +437,53 @@ public class UpgradeManager : MonoBehaviour
             list[i] = list[randomIndex];
             list[randomIndex] = temp;
         }
+    }
+
+    public string GetUnlockedChaserThirdSkillName()
+    {
+        if (HasAgentUpgrade(ChaserUnlockPatrol))
+        {
+            return "patrol";
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+        {
+            return "trackinginstinct";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockPatrol))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
+        }
+
+        return null;
+    }
+
+
+    public Sprite GetUnlockedChaserThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedChaserThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
     }
 }

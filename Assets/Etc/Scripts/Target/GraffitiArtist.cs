@@ -79,6 +79,9 @@ public partial class GraffitiArtist : TargetSkillController
     [SerializeField] private float graffitiRandomSpawnMaxDistance = 7f;
     [SerializeField] private int graffitiRandomSpawnSampleCount = 12;
 
+    [SerializeField] private bool overrideGraffitiSpawnY = true;
+    [SerializeField] private float graffitiSpawnY = 0.01f;
+
     [Header("Graffiti Difficulty Scaling")]
     [SerializeField] private bool scaleGraffitiByStageDifficulty = true;
     [SerializeField, Range(1, 10)] private int maxGraffitiDifficultyLevel = 10;

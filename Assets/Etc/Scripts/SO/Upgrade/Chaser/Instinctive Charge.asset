@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Instinctive Charge
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: chaser_tracking_instinct_instinctive_charge
+  displayName: "\uBCF8\uB2A5\uC801 \uB3CC\uACA9"
+  description: "\uCD94\uC801 \uBCF8\uB2A5\uC774 \uCD5C\uB300 \uC2A4\uD0DD\uC5D0 \uB3C4\uB2EC\uD558\uBA74,
+    \uD0C0\uAC9F \uC704\uCE58\uAC00 \uBCF4\uC774\uC9C0 \uC54A\uC544\uB3C4 \uC77C\uC815
+    \uC2DC\uAC04 \uB3D9\uC548 \uD0C0\uAC9F\uC744 \uD5A5\uD574 \uC790\uB3D9 \uB3CC\uACA9\uD569\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: 2c11cc9ae37264e4a8ecc90063d00065, type: 3}
+  ownerType: 0
+  agentType: 1
+  targetType: 0
+  skillId: trackinginstinct
+  effectType: 1
+  value: 3
+  minStage: 1
+  stackable: 0
+  maxStack: 1

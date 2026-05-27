@@ -1158,4 +1158,19 @@ public class SkillCameraDirector : MonoBehaviour
         wasCameraFollowEnabledBeforePlay = false;
         nextAllowedTime = 0f;
     }
+
+    public void CancelPlaybackForExternalSequence()
+    {
+        if (currentRoutine != null)
+        {
+            StopCoroutine(currentRoutine);
+            currentRoutine = null;
+        }
+
+        RestoreWorldTimeScale();
+
+        isPlaying = false;
+        wasCameraFollowEnabledBeforePlay = false;
+        nextAllowedTime = 0f;
+    }
 }

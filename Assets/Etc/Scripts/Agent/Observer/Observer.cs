@@ -13,6 +13,8 @@ public class Observer : AgentController, IUpgradeReceiver
     }
 
     private const string SkillDrone = "drone";
+    private const string SkillReconnaissance = "reconnaissance";
+    private const string SkillObservationSupport = "observationsupport";
     private const string SkillPositionShare = "positionshare";
 
     private const string UpgradeDroneTrackingWatch = "observer_drone_tracking_watch";
@@ -29,6 +31,7 @@ public class Observer : AgentController, IUpgradeReceiver
     private const float AnimationMovingThreshold = 0.05f;
     private const float DestinationBuffer = 0.2f;
     private const float LinkedSurveillanceShareInterval = 0.15f;
+    private const float DefaultObserverSkillGaugeMax = 100f;
 
     [Header("Drone")]
     [SerializeField] private Drone dronePrefab;
@@ -38,6 +41,23 @@ public class Observer : AgentController, IUpgradeReceiver
     [SerializeField] private float droneSpawnHeight = 6f;
     [SerializeField] private bool replaceExistingDrone = true;
     [SerializeField] private bool stopWhenDeployDrone = true;
+
+    [Header("Reconnaissance")]
+    [SerializeField] private Reconnaissance reconnaissancePrefab;
+    [SerializeField] private float reconnaissanceGaugeRequirement = 75f;
+    [SerializeField] private float reconnaissanceRadius = 3.5f;
+    [SerializeField] private float reconnaissanceMaxDistance = 18f;
+    [SerializeField] private float reconnaissanceFlightSpeed = 12f;
+    [SerializeField] private float reconnaissanceRevealHoldDuration = 2.5f;
+    [SerializeField] private bool replaceExistingReconnaissance = true;
+    [SerializeField] private bool requestCameraOnReconnaissance = false;
+
+    [Header("Observation Support")]
+    [SerializeField] private float observationSupportGaugeRequirement = 100f;
+    [SerializeField] private float observationSupportDuration = 10f;
+    [SerializeField] private float observationSupportViewRadiusMultiplier = 1.5f;
+    [SerializeField] private bool includeSelfInObservationSupport = false;
+    [SerializeField] private bool requestCameraOnObservationSupport = true;
 
     [Header("Position Share")]
     [SerializeField] private bool targetPositionShareEnabled = true;
@@ -57,6 +77,8 @@ public class Observer : AgentController, IUpgradeReceiver
     [SerializeField] private bool faceAwayFromHitSource = true;
 
     private Drone currentDrone;
+    private Reconnaissance currentReconnaissance;
+
     private AgentController[] cachedAgents;
     private float lastAgentCacheRefreshTime = -999f;
 
@@ -71,6 +93,9 @@ public class Observer : AgentController, IUpgradeReceiver
     private readonly HashSet<VisionSensor> linkedSurveillanceSensors = new HashSet<VisionSensor>();
     private readonly List<VisionSensor> linkedSurveillanceSensorsToRemove = new List<VisionSensor>();
     private float nextLinkedSurveillanceShareTime;
+
+    private readonly HashSet<VisionSensor> observationSupportSensors = new HashSet<VisionSensor>();
+    private readonly List<VisionSensor> observationSupportSensorsToRemove = new List<VisionSensor>();
 
     private int moveModeHash;
     private int hitReactionHash;
@@ -90,10 +115,13 @@ public class Observer : AgentController, IUpgradeReceiver
 
     private Coroutine droneDeployRoutine;
     private Coroutine hitReactionRoutine;
+    private Coroutine observationSupportRoutine;
 
     public bool IsTargetPositionShareEnabled => targetPositionShareEnabled;
     public bool IsTargetPositionSharing => isTargetPositionSharing;
     public Drone CurrentDrone => currentDrone;
+    public Reconnaissance CurrentReconnaissance => currentReconnaissance;
+    public bool IsObservationSupportActive => observationSupportRoutine != null;
     public bool IsResultAnimationLocked => isResultAnimationLocked;
     public bool IsDroneDeployLocked => isDroneDeployLocked;
 
@@ -126,6 +154,16 @@ public class Observer : AgentController, IUpgradeReceiver
         droneDuration = Mathf.Max(0f, droneDuration);
         droneSpawnHeight = Mathf.Max(0f, droneSpawnHeight);
 
+        reconnaissanceGaugeRequirement = Mathf.Max(0f, reconnaissanceGaugeRequirement);
+        reconnaissanceRadius = Mathf.Max(0f, reconnaissanceRadius);
+        reconnaissanceMaxDistance = Mathf.Max(0f, reconnaissanceMaxDistance);
+        reconnaissanceFlightSpeed = Mathf.Max(0.01f, reconnaissanceFlightSpeed);
+        reconnaissanceRevealHoldDuration = Mathf.Max(0f, reconnaissanceRevealHoldDuration);
+
+        observationSupportGaugeRequirement = Mathf.Max(0f, observationSupportGaugeRequirement);
+        observationSupportDuration = Mathf.Max(0f, observationSupportDuration);
+        observationSupportViewRadiusMultiplier = Mathf.Max(1f, observationSupportViewRadiusMultiplier);
+
         droneDeployLockSeconds = Mathf.Max(0f, droneDeployLockSeconds);
         droneSpawnDelay = Mathf.Max(0f, droneSpawnDelay);
         hitReactionLockSeconds = Mathf.Max(0f, hitReactionLockSeconds);
@@ -142,6 +180,9 @@ public class Observer : AgentController, IUpgradeReceiver
     protected override void OnDisable()
     {
         DestroyCurrentDrone();
+        DestroyCurrentReconnaissance();
+        StopObservationSupport();
+
         ClearSharedTargetPositionFromThisObserver();
         ClearLinkedSurveillanceSubscriptions();
 
@@ -192,6 +233,16 @@ public class Observer : AgentController, IUpgradeReceiver
         UpdateLinkedSurveillanceCurrentVision();
     }
 
+    protected override string[] GetCurrentAgentGaugeKeys()
+    {
+        return new[]
+        {
+            SkillDrone,
+            SkillReconnaissance,
+            SkillObservationSupport
+        };
+    }
+
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
     {
         return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Observer);
@@ -217,9 +268,7 @@ public class Observer : AgentController, IUpgradeReceiver
                 break;
 
             case UpgradePositionShareLinkedSurveillance:
-                linkedSurveillanceNetworkEnabled = true;
-                UpdateLinkedSurveillanceSubscriptions(true);
-                Debug.Log($"[Observer {AgentID}] 연계 감시망 강화 적용");
+                ApplyLinkedSurveillanceNetworkUpgrade();
                 break;
 
             default:
@@ -228,15 +277,69 @@ public class Observer : AgentController, IUpgradeReceiver
         }
     }
 
+    public override float GetSkillGaugeMaxForSkill(string skillName)
+    {
+        if (IsReconnaissanceSkillName(skillName))
+        {
+            float maxGauge = base.GetSkillGaugeMaxForSkill(SkillReconnaissance);
+            return maxGauge > 0f ? maxGauge : DefaultObserverSkillGaugeMax;
+        }
+
+        if (IsObservationSupportSkillName(skillName))
+        {
+            float maxGauge = base.GetSkillGaugeMaxForSkill(SkillObservationSupport);
+            return maxGauge > 0f ? maxGauge : DefaultObserverSkillGaugeMax;
+        }
+
+        if (IsDroneSkillName(skillName))
+            return base.GetSkillGaugeMaxForSkill(SkillDrone);
+
+        return base.GetSkillGaugeMaxForSkill(skillName);
+    }
+
     public override float GetSkillGaugeRequiredForSkill(string skillName)
     {
+        if (IsReconnaissanceSkillName(skillName))
+            return reconnaissanceGaugeRequirement;
+
+        if (IsObservationSupportSkillName(skillName))
+            return observationSupportGaugeRequirement;
+
         if (IsDroneSkillName(skillName) && highPowerBatteryEnabled)
         {
-            float maxGauge = GetSkillGaugeMaxForSkill(skillName);
+            float maxGauge = GetSkillGaugeMaxForSkill(SkillDrone);
             return maxGauge * highPowerBatteryGaugeRequirementMultiplier;
         }
 
         return base.GetSkillGaugeRequiredForSkill(skillName);
+    }
+
+    public override float GetSkillGaugeCurrentForSkill(string skillName)
+    {
+        string canonicalSkillName = GetCanonicalGaugeSkillName(skillName);
+        return base.GetSkillGaugeCurrentForSkill(canonicalSkillName);
+    }
+
+    public override float GetSkillGaugeNormalizedForSkill(string skillName)
+    {
+        string canonicalSkillName = GetCanonicalGaugeSkillName(skillName);
+        return base.GetSkillGaugeNormalizedForSkill(canonicalSkillName);
+    }
+
+    public override bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
+    {
+        string canonicalSkillName = GetCanonicalGaugeSkillName(skillName);
+        return base.CanUseSkillGaugeForSkill(canonicalSkillName, showWarning);
+    }
+
+    private void ApplyLinkedSurveillanceNetworkUpgrade()
+    {
+        linkedSurveillanceNetworkEnabled = true;
+
+        UpdateLinkedSurveillanceSubscriptions(true);
+        UpdateTeamVisionColorOverride();
+
+        Debug.Log($"[Observer {AgentID}] 연계 감시망 강화 적용");
     }
 
     private void ApplyDroneTrackingWatchUpgrade(float value)
@@ -293,6 +396,18 @@ public class Observer : AgentController, IUpgradeReceiver
 
         Debug.Log($"[Observer {AgentID}] Skill request: {skillName}, Position: {targetPos}");
 
+        if (IsReconnaissanceSkill(skill))
+        {
+            ExecuteReconnaissanceSkill(targetPos);
+            return;
+        }
+
+        if (IsObservationSupportSkill(skill))
+        {
+            ExecuteObservationSupportSkill();
+            return;
+        }
+
         if (IsDroneSkill(skill))
         {
             ExecuteDroneSkill(targetPos);
@@ -337,13 +452,28 @@ public class Observer : AgentController, IUpgradeReceiver
         {
             isTargetPositionSharing = false;
             ClearSharedTargetPositionFromThisObserver();
+            ClearLinkedSurveillanceSubscriptions();
         }
         else
         {
             UpdateLinkedSurveillanceSubscriptions(true);
         }
 
+        UpdateTeamVisionColorOverride();
+
         Debug.Log($"[Observer {AgentID}] Position share {(targetPositionShareEnabled ? "on" : "off")}");
+    }
+
+    private void UpdateTeamVisionColorOverride()
+    {
+        bool shouldUseTeamVisionColor =
+            linkedSurveillanceNetworkEnabled &&
+            targetPositionShareEnabled;
+
+        VisionConeVisualizer.SetTeamVisionColorOverride(
+            shouldUseTeamVisionColor,
+            VisionConeVisualizer.GetDefaultObserverSharedVisionColor()
+        );
     }
 
     public void ToggleTargetPositionShare()
@@ -432,6 +562,44 @@ public class Observer : AgentController, IUpgradeReceiver
         SpawnDrone(targetPos);
     }
 
+    private void ExecuteReconnaissanceSkill(Vector3 targetPos)
+    {
+        if (!TryConsumeSkillGaugeForSkill(SkillReconnaissance))
+            return;
+
+        if (hasDeployDroneTrigger)
+        {
+            if (droneDeployRoutine != null)
+                StopCoroutine(droneDeployRoutine);
+
+            droneDeployRoutine = StartCoroutine(ReconnaissanceDeployRoutine(targetPos));
+            return;
+        }
+
+        Debug.LogWarning($"[Observer {AgentID}] Animator parameter is missing: DeployDrone. Reconnaissance will start without animation.");
+        SpawnReconnaissance(targetPos);
+    }
+
+    private void ExecuteObservationSupportSkill()
+    {
+        if (!TryConsumeSkillGaugeForSkill(SkillObservationSupport))
+            return;
+
+        if (observationSupportRoutine != null)
+            StopObservationSupport();
+
+        observationSupportRoutine = StartCoroutine(ObservationSupportRoutine());
+
+        if (requestCameraOnObservationSupport)
+            RequestUserSkillCamera();
+
+        Debug.Log(
+            $"[Observer {AgentID}] 관측 지원 사용. " +
+            $"Duration={observationSupportDuration:0.#}, " +
+            $"ViewRadiusMultiplier={observationSupportViewRadiusMultiplier:0.##}"
+        );
+    }
+
     private IEnumerator DroneDeployRoutine(Vector3 targetPos)
     {
         isDroneDeployLocked = true;
@@ -466,6 +634,53 @@ public class Observer : AgentController, IUpgradeReceiver
             navAgent.isStopped = false;
 
         UpdateAnimationState(true);
+    }
+
+    private IEnumerator ReconnaissanceDeployRoutine(Vector3 targetPos)
+    {
+        isDroneDeployLocked = true;
+
+        if (stopWhenDeployDrone)
+            ForceStopForSkill();
+
+        UpdateAnimationState(true);
+
+        ResetAnimatorTrigger(hitReactionHash, hasHitReactionTrigger);
+        ResetAnimatorTrigger(victoryHash, hasVictoryTrigger);
+        ResetAnimatorTrigger(defeatHash, hasDefeatTrigger);
+
+        animator.SetTrigger(deployDroneHash);
+
+        float spawnDelay = Mathf.Clamp(droneSpawnDelay, 0f, droneDeployLockSeconds);
+
+        if (spawnDelay > 0f)
+            yield return new WaitForSeconds(spawnDelay);
+
+        SpawnReconnaissance(targetPos);
+
+        float remainTime = droneDeployLockSeconds - spawnDelay;
+
+        if (remainTime > 0f)
+            yield return new WaitForSeconds(remainTime);
+
+        isDroneDeployLocked = false;
+        droneDeployRoutine = null;
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+            navAgent.isStopped = false;
+
+        UpdateAnimationState(true);
+    }
+
+    private IEnumerator ObservationSupportRoutine()
+    {
+        ApplyObservationSupportToTeam();
+
+        if (observationSupportDuration > 0f)
+            yield return new WaitForSeconds(observationSupportDuration);
+
+        RemoveObservationSupportFromTeam();
+        observationSupportRoutine = null;
     }
 
     private void SpawnDrone(Vector3 targetPos)
@@ -505,6 +720,61 @@ public class Observer : AgentController, IUpgradeReceiver
             $"Drone Position: {droneVisualPosition}, " +
             $"Radius: {droneRadius}, Duration: {finalDroneDuration}, " +
             $"TrackingWatch={droneTrackingWatchEnabled}"
+        );
+    }
+
+    private void SpawnReconnaissance(Vector3 targetPos)
+    {
+        if (replaceExistingReconnaissance)
+            DestroyCurrentReconnaissance();
+
+        Vector3 startCenter = transform.position;
+        Vector3 droneVisualPosition = GetDroneVisualPosition(startCenter);
+        Vector3 direction = targetPos - transform.position;
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = transform.forward;
+
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = Vector3.forward;
+
+        direction.Normalize();
+
+        Reconnaissance reconnaissance = CreateReconnaissance(droneVisualPosition, direction);
+
+        if (reconnaissance == null)
+        {
+            Debug.LogWarning($"[Observer {AgentID}] Failed to create reconnaissance.");
+            return;
+        }
+
+        reconnaissance.Initialize(
+            this,
+            startCenter,
+            droneVisualPosition,
+            direction,
+            targetLayer,
+            reconnaissanceRadius,
+            reconnaissanceMaxDistance,
+            reconnaissanceFlightSpeed,
+            reconnaissanceRevealHoldDuration
+        );
+
+        currentReconnaissance = reconnaissance;
+
+        if (requestCameraOnReconnaissance)
+            RequestInstalledObjectCamera(reconnaissance.transform);
+
+        Debug.Log(
+            $"[Observer {AgentID}] Reconnaissance started. " +
+            $"Start Center: {startCenter}, " +
+            $"Direction: {direction}, " +
+            $"Radius: {reconnaissanceRadius}, " +
+            $"MaxDistance: {reconnaissanceMaxDistance}, " +
+            $"FlightSpeed: {reconnaissanceFlightSpeed}"
         );
     }
 
@@ -549,6 +819,36 @@ public class Observer : AgentController, IUpgradeReceiver
         return droneObject.AddComponent<Drone>();
     }
 
+    private Reconnaissance CreateReconnaissance(Vector3 droneVisualPosition, Vector3 direction)
+    {
+        Quaternion rotation = Quaternion.identity;
+
+        if (direction.sqrMagnitude > 0.0001f)
+            rotation = Quaternion.LookRotation(direction, Vector3.up);
+
+        if (reconnaissancePrefab != null)
+        {
+            Reconnaissance reconnaissance = Instantiate(
+                reconnaissancePrefab,
+                droneVisualPosition,
+                rotation,
+                droneParent
+            );
+
+            reconnaissance.name = $"ObserverReconnaissance_Agent{AgentID}";
+            return reconnaissance;
+        }
+
+        GameObject reconnaissanceObject = new GameObject($"ObserverReconnaissance_Agent{AgentID}");
+        reconnaissanceObject.transform.position = droneVisualPosition;
+        reconnaissanceObject.transform.rotation = rotation;
+
+        if (droneParent != null)
+            reconnaissanceObject.transform.SetParent(droneParent);
+
+        return reconnaissanceObject.AddComponent<Reconnaissance>();
+    }
+
     private void DestroyCurrentDrone()
     {
         if (currentDrone == null)
@@ -556,6 +856,82 @@ public class Observer : AgentController, IUpgradeReceiver
 
         Destroy(currentDrone.gameObject);
         currentDrone = null;
+    }
+
+    private void DestroyCurrentReconnaissance()
+    {
+        if (currentReconnaissance == null)
+            return;
+
+        Destroy(currentReconnaissance.gameObject);
+        currentReconnaissance = null;
+    }
+
+    private void ApplyObservationSupportToTeam()
+    {
+        EnsureAgentCache(true);
+        RemoveObservationSupportFromTeam();
+
+        if (cachedAgents == null)
+            return;
+
+        for (int i = 0; i < cachedAgents.Length; i++)
+        {
+            AgentController agent = cachedAgents[i];
+
+            if (agent == null)
+                continue;
+
+            if (!agent.isActiveAndEnabled)
+                continue;
+
+            if (agent == this && !includeSelfInObservationSupport)
+                continue;
+
+            VisionSensor sensor = agent.VisionSensor;
+
+            if (sensor == null)
+                continue;
+
+            sensor.SetExternalViewRadiusMultiplier(this, observationSupportViewRadiusMultiplier);
+            observationSupportSensors.Add(sensor);
+        }
+    }
+
+    private void RemoveObservationSupportFromTeam()
+    {
+        if (observationSupportSensors.Count == 0)
+            return;
+
+        observationSupportSensorsToRemove.Clear();
+
+        foreach (VisionSensor sensor in observationSupportSensors)
+        {
+            if (sensor != null)
+                observationSupportSensorsToRemove.Add(sensor);
+        }
+
+        for (int i = 0; i < observationSupportSensorsToRemove.Count; i++)
+        {
+            VisionSensor sensor = observationSupportSensorsToRemove[i];
+
+            if (sensor != null)
+                sensor.RemoveExternalViewRadiusMultiplier(this);
+        }
+
+        observationSupportSensors.Clear();
+        observationSupportSensorsToRemove.Clear();
+    }
+
+    private void StopObservationSupport()
+    {
+        if (observationSupportRoutine != null)
+        {
+            StopCoroutine(observationSupportRoutine);
+            observationSupportRoutine = null;
+        }
+
+        RemoveObservationSupportFromTeam();
     }
 
     private void UpdateTargetPositionShareFromVision()
@@ -1078,12 +1454,42 @@ public class Observer : AgentController, IUpgradeReceiver
         return false;
     }
 
+    private string GetCanonicalGaugeSkillName(string skillName)
+    {
+        if (IsReconnaissanceSkillName(skillName))
+            return SkillReconnaissance;
+
+        if (IsObservationSupportSkillName(skillName))
+            return SkillObservationSupport;
+
+        if (IsDroneSkillName(skillName))
+            return SkillDrone;
+
+        return skillName;
+    }
+
     private bool IsDroneSkillName(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
             return false;
 
         return IsDroneSkill(skillName.Trim().ToLower());
+    }
+
+    private bool IsReconnaissanceSkillName(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        return IsReconnaissanceSkill(skillName.Trim().ToLower());
+    }
+
+    private bool IsObservationSupportSkillName(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        return IsObservationSupportSkill(skillName.Trim().ToLower());
     }
 
     private bool IsDroneSkill(string skill)
@@ -1093,6 +1499,31 @@ public class Observer : AgentController, IUpgradeReceiver
 
         return skill.Contains(SkillDrone) ||
                skill.Contains("드론");
+    }
+
+    private bool IsReconnaissanceSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains(SkillReconnaissance) ||
+               skill.Contains("recon") ||
+               skill.Contains("scout") ||
+               skill.Contains("정찰");
+    }
+
+    private bool IsObservationSupportSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains(SkillObservationSupport) ||
+               skill.Contains("observation support") ||
+               skill.Contains("vision support") ||
+               skill.Contains("관측지원") ||
+               skill.Contains("관측 지원") ||
+               skill.Contains("시야지원") ||
+               skill.Contains("시야 지원");
     }
 
     private bool IsTargetPositionShareSkill(string skill)

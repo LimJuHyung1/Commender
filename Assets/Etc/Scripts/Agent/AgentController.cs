@@ -109,7 +109,11 @@ public abstract class AgentController : MonoBehaviour
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
     public VisionSensor VisionSensor => visionSensor;
     public bool IsSkillCommandBlocked => skillCommandBlockers.Count > 0;
+
     protected virtual bool ShouldIgnoreDebuffStateIcon => false;
+    protected virtual float SkillGaugeChargeMultiplier => 1f;
+
+    protected virtual bool ShouldBlockSharedTargetMovement => false;
 
     public float SkillGauge => GetLargestCurrentSkillGauge();
     public float SkillGaugeCapacity => GetCurrentSkillGaugeCapacity();
@@ -399,6 +403,7 @@ public abstract class AgentController : MonoBehaviour
     private void UpdateSkillGaugeCharge()
     {
         Vector3 currentPosition = transform.position;
+        float movedDistance = Vector3.Distance(lastSkillGaugePosition, currentPosition);
 
         if (IsSkillGaugeChargeBlocked())
         {
@@ -406,16 +411,18 @@ public abstract class AgentController : MonoBehaviour
             return;
         }
 
-        float movedDistance = Vector3.Distance(lastSkillGaugePosition, currentPosition);
         lastSkillGaugePosition = currentPosition;
 
         if (movedDistance <= 0.001f)
             return;
 
+        OnAgentMoved(movedDistance);
+
         if (!ShouldChargeSkillGauge())
             return;
 
-        float chargeAmount = movedDistance * skillGaugeChargePerMeter;
+        float chargeMultiplier = Mathf.Max(0f, SkillGaugeChargeMultiplier);
+        float chargeAmount = movedDistance * skillGaugeChargePerMeter * chargeMultiplier;
         string[] gaugeKeys = GetCurrentAgentGaugeKeys();
 
         for (int i = 0; i < gaugeKeys.Length; i++)
@@ -477,6 +484,10 @@ public abstract class AgentController : MonoBehaviour
 
         skillGaugeChargeBlockedUntil = Mathf.Max(skillGaugeChargeBlockedUntil, Time.time + seconds);
         lastSkillGaugePosition = transform.position;
+    }
+
+    protected virtual void OnAgentMoved(float movedDistance)
+    {
     }
 
     private float GetCurrentSkillGaugeCapacity()
@@ -1098,6 +1109,11 @@ public abstract class AgentController : MonoBehaviour
             Debug.Log($"[Agent {AgentID}] 주변 둘러보기를 중단했습니다.");
     }
 
+    protected void StopLookAroundFromDerived(bool logMessage)
+    {
+        StopLookAroundInternal(logMessage);
+    }
+
     public virtual void SetChaseTarget(Transform target)
     {
         if (navAgent == null || target == null)
@@ -1277,7 +1293,7 @@ public abstract class AgentController : MonoBehaviour
         if (navAgent == null)
             return;
 
-        if (currentTarget != null || isManualMoving || isLookingAround)
+        if (currentTarget != null || isManualMoving || isLookingAround || ShouldBlockSharedTargetMovement)
             return;
 
         sharedTargetRepathTimer -= Time.deltaTime;

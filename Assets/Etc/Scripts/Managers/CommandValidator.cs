@@ -15,6 +15,8 @@ public sealed class CommandValidator
 
     private const string SkillAccessControl = "accesscontrol";
     private const string SkillEscapeBlock = "escapeblock";
+    private const string SkillPatrol = "patrol";
+    private const string SkillTrackingInstinct = "trackinginstinct";
 
     private const string SkillDrone = "drone";
     private const string SkillPositionShareOn = "positionshare_on";
@@ -79,6 +81,26 @@ public sealed class CommandValidator
         "도주차단",
         "탈출 차단",
         "탈출차단"
+    };
+
+    private static readonly string[] PatrolInstructionKeywords =
+    {
+        "patrol",
+        "patrolling",
+        "patrol route",
+        "route patrol",
+        "순찰",
+        "왕복 순찰",
+        "왕복순찰"
+    };
+
+    private static readonly string[] TrackingInstinctInstructionKeywords =
+    {
+        "trackinginstinct",
+        "tracking instinct",
+        "pursuit instinct",
+        "추적 본능",
+        "추적본능"
     };
 
     private static readonly string[] DroneInstructionKeywords =
@@ -250,6 +272,15 @@ public sealed class CommandValidator
         if (TryResolveEscapeBlockSkill(normalizedInstruction, normalizedSkill, out string escapeBlockSkill))
             return escapeBlockSkill;
 
+        if (IsPatrolInstruction(normalizedInstruction))
+            return SkillPatrol;
+
+        if (IsTrackingInstinctInstruction(normalizedInstruction))
+        {
+            Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
 
@@ -286,6 +317,15 @@ public sealed class CommandValidator
             return SkillPositionShareOn;
         }
 
+        if (ContainsAny(normalizedSkill, SkillPatrol, "patrolling", "patrol route"))
+            return MatchOrHold(normalizedInstruction, PatrolInstructionKeywords, SkillPatrol, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillTrackingInstinct, "tracking instinct", "pursuit instinct"))
+        {
+            Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
         if (ContainsAny(normalizedSkill, SkillBarricade))
             return MatchOrHold(normalizedInstruction, BarricadeInstructionKeywords, SkillBarricade, aiSkill, originalInstruction);
 
@@ -309,6 +349,15 @@ public sealed class CommandValidator
 
         if (string.IsNullOrWhiteSpace(normalizedSkill))
         {
+            if (IsPatrolInstruction(normalizedInstruction))
+                return SkillPatrol;
+
+            if (IsTrackingInstinctInstruction(normalizedInstruction))
+            {
+                Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+                return SkillHold;
+            }
+
             if (IsLookAroundInstruction(normalizedInstruction))
                 return SkillLookAround;
 
@@ -343,6 +392,16 @@ public sealed class CommandValidator
     public bool IsLookAroundInstruction(string source)
     {
         return ContainsAny(Normalize(source), LookAroundInstructionKeywords);
+    }
+
+    public bool IsPatrolInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), PatrolInstructionKeywords);
+    }
+
+    public bool IsTrackingInstinctInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), TrackingInstinctInstructionKeywords);
     }
 
     public bool IsMovementInstruction(string source)
@@ -452,7 +511,6 @@ public sealed class CommandValidator
 
         return coordinates.Count > 0;
     }
-
 
     private bool TryResolveAccessControlSkill(
         string normalizedInstruction,

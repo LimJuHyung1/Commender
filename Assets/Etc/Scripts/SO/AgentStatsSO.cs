@@ -42,14 +42,73 @@ public class AgentStatsSO : ScriptableObject
     [Header("체이서 스킬 게이지")]
     public float accessControlSkillGaugeMax = 100f;
 
+    [Header("체이서 출입 통제 설정")]
+    public float accessControlRadius = 10f;
+    public float accessControlDuration = 20f;
+    public float targetSpeedMultiplierInAccessControl = 0.5f;
+    public float targetAngularSpeedMultiplierInAccessControl = 0.5f;
+    public float chaserSpeedMultiplierInAccessControl = 1.5f;
+    public float chaserAngularSpeedMultiplierInAccessControl = 1.5f;
+
+    [Header("체이서 도주 제지 설정")]
+    public float escapeBlockGaugeMax = 25f;
+    public float escapeBlockGaugeDrainPerSecond = 10f;
+    public bool escapeBlockStartsFull = true;
+    public float escapeBlockMaxDistance = 10f;
+    public float escapeBlockRequiredSightTime = 0.25f;
+    public float escapeBlockReleaseDelay = 0.5f;
+
+    [Header("체이서 도주 제지 강화 기본값")]
+    public float pressureVisionRadiusMultiplier = 1.5f;
+    public float pressureVisionHealthDrainMultiplier = 2f;
+
+    [Header("체이서 순찰 설정")]
+    public float patrolArrivalDistance = 0.8f;
+    public float patrolNavMeshSampleDistance = 2f;
+    public float patrolSpeedMultiplier = 1f;
+    public float patrolVisionRadiusMultiplier = 1f;
+
+    [Range(0f, 1f)]
+    public float patrolSkillGaugeChargeMultiplier = 0.25f;
+
+    [Header("체이서 순찰 강화 기본값")]
+    public float patrolPressureTrackingDuration = 4f;
+    public float patrolPressureTrackingHealthDrainMultiplier = 1.5f;
+    public float upgradedPatrolSpeedMultiplier = 1.5f;
+
+    [Header("체이서 추적 본능 설정")]
+    public float trackingInstinctDistancePerStack = 30f;
+    public float trackingInstinctSpeedBonusPerStack = 0.05f;
+    public int trackingInstinctMaxStack = 5;
+    public bool resetTrackingInstinctOnSkillGaugeReset = true;
+
+    [Header("체이서 추적 본능 강화 기본값")]
+    public int upgradedTrackingInstinctMaxStack = 10;
+    public int instinctiveChargeRequiredStack = 5;
+    public float instinctiveChargeDuration = 3f;
+    public float instinctiveChargeSpeedMultiplier = 1f;
+    public bool instinctiveChargeOncePerStage = true;
+
     [Header("옵저버 드론 스킬 설정")]
     public float droneDuration = 20f;
     public float droneRadius = 7f;
     public float droneSpawnHeight = 6f;
     public float droneObservationAreaYOffset = 0.05f;
 
+    [Header("옵저버 정찰 스킬 설정")]
+    public float reconnaissanceRadius = 3.5f;
+    public float reconnaissanceMaxDistance = 18f;
+    public float reconnaissanceFlightSpeed = 12f;
+    public float reconnaissanceRevealHoldDuration = 2.5f;
+
+    [Header("옵저버 관측 지원 스킬 설정")]
+    public float observationSupportDuration = 10f;
+    public float observationSupportViewRadiusMultiplier = 1.5f;
+
     [Header("옵저버 스킬 게이지")]
     public float droneSkillGaugeMax = 100f;
+    public float reconnaissanceSkillGaugeMax = 100f;
+    public float observationSupportSkillGaugeMax = 100f;
 
     [Header("안전 관리자 스킬 게이지")]
     public float barricadeSkillGaugeMax = 50f;
@@ -107,11 +166,57 @@ public class AgentStatsSO : ScriptableObject
 
         accessControlSkillGaugeMax = Mathf.Max(0f, accessControlSkillGaugeMax);
 
+        accessControlRadius = Mathf.Max(0f, accessControlRadius);
+        accessControlDuration = Mathf.Max(0f, accessControlDuration);
+        targetSpeedMultiplierInAccessControl = Mathf.Max(0.01f, targetSpeedMultiplierInAccessControl);
+        targetAngularSpeedMultiplierInAccessControl = Mathf.Max(0.01f, targetAngularSpeedMultiplierInAccessControl);
+        chaserSpeedMultiplierInAccessControl = Mathf.Max(0.01f, chaserSpeedMultiplierInAccessControl);
+        chaserAngularSpeedMultiplierInAccessControl = Mathf.Max(0.01f, chaserAngularSpeedMultiplierInAccessControl);
+
+        escapeBlockGaugeMax = Mathf.Max(0f, escapeBlockGaugeMax);
+        escapeBlockGaugeDrainPerSecond = Mathf.Max(0f, escapeBlockGaugeDrainPerSecond);
+        escapeBlockMaxDistance = Mathf.Max(0f, escapeBlockMaxDistance);
+        escapeBlockRequiredSightTime = Mathf.Max(0f, escapeBlockRequiredSightTime);
+        escapeBlockReleaseDelay = Mathf.Max(0f, escapeBlockReleaseDelay);
+
+        pressureVisionRadiusMultiplier = Mathf.Max(1f, pressureVisionRadiusMultiplier);
+        pressureVisionHealthDrainMultiplier = Mathf.Max(1f, pressureVisionHealthDrainMultiplier);
+
+        patrolArrivalDistance = Mathf.Max(0.1f, patrolArrivalDistance);
+        patrolNavMeshSampleDistance = Mathf.Max(0.1f, patrolNavMeshSampleDistance);
+        patrolSpeedMultiplier = Mathf.Max(0.01f, patrolSpeedMultiplier);
+        patrolVisionRadiusMultiplier = Mathf.Max(1f, patrolVisionRadiusMultiplier);
+        patrolSkillGaugeChargeMultiplier = Mathf.Clamp01(patrolSkillGaugeChargeMultiplier);
+
+        patrolPressureTrackingDuration = Mathf.Max(0f, patrolPressureTrackingDuration);
+        patrolPressureTrackingHealthDrainMultiplier = Mathf.Max(1f, patrolPressureTrackingHealthDrainMultiplier);
+        upgradedPatrolSpeedMultiplier = Mathf.Max(1f, upgradedPatrolSpeedMultiplier);
+
+        trackingInstinctDistancePerStack = Mathf.Max(1f, trackingInstinctDistancePerStack);
+        trackingInstinctSpeedBonusPerStack = Mathf.Max(0f, trackingInstinctSpeedBonusPerStack);
+        trackingInstinctMaxStack = Mathf.Max(0, trackingInstinctMaxStack);
+
+        upgradedTrackingInstinctMaxStack = Mathf.Max(1, upgradedTrackingInstinctMaxStack);
+        instinctiveChargeRequiredStack = Mathf.Max(1, instinctiveChargeRequiredStack);
+        instinctiveChargeDuration = Mathf.Max(0f, instinctiveChargeDuration);
+        instinctiveChargeSpeedMultiplier = Mathf.Max(1f, instinctiveChargeSpeedMultiplier);
+
         droneDuration = Mathf.Max(0f, droneDuration);
         droneRadius = Mathf.Max(0f, droneRadius);
         droneSpawnHeight = Mathf.Max(0f, droneSpawnHeight);
         droneObservationAreaYOffset = Mathf.Max(0f, droneObservationAreaYOffset);
+
+        reconnaissanceRadius = Mathf.Max(0f, reconnaissanceRadius);
+        reconnaissanceMaxDistance = Mathf.Max(0f, reconnaissanceMaxDistance);
+        reconnaissanceFlightSpeed = Mathf.Max(0.01f, reconnaissanceFlightSpeed);
+        reconnaissanceRevealHoldDuration = Mathf.Max(0f, reconnaissanceRevealHoldDuration);
+
+        observationSupportDuration = Mathf.Max(0f, observationSupportDuration);
+        observationSupportViewRadiusMultiplier = Mathf.Max(1f, observationSupportViewRadiusMultiplier);
+
         droneSkillGaugeMax = Mathf.Max(0f, droneSkillGaugeMax);
+        reconnaissanceSkillGaugeMax = Mathf.Max(0f, reconnaissanceSkillGaugeMax);
+        observationSupportSkillGaugeMax = Mathf.Max(0f, observationSupportSkillGaugeMax);
 
         barricadeSkillGaugeMax = Mathf.Max(0f, barricadeSkillGaugeMax);
         stopSignalSkillGaugeMax = Mathf.Max(0f, stopSignalSkillGaugeMax);
@@ -159,6 +264,15 @@ public class AgentStatsSO : ScriptableObject
         if (IsAccessControlSkill(skill))
             return Mathf.Max(0f, accessControlSkillGaugeMax);
 
+        if (IsTrackingInstinctSkill(skill))
+            return Mathf.Max(0f, trackingInstinctMaxStack);
+
+        if (IsReconnaissanceSkill(skill))
+            return Mathf.Max(0f, reconnaissanceSkillGaugeMax);
+
+        if (IsObservationSupportSkill(skill))
+            return Mathf.Max(0f, observationSupportSkillGaugeMax);
+
         if (IsDroneSkill(skill))
             return Mathf.Max(0f, droneSkillGaugeMax);
 
@@ -196,13 +310,17 @@ public class AgentStatsSO : ScriptableObject
             case AgentRole.Chaser:
                 return Mathf.Max(
                     0f,
-                    accessControlSkillGaugeMax
+                    accessControlSkillGaugeMax,
+                    escapeBlockGaugeMax,
+                    trackingInstinctMaxStack
                 );
 
             case AgentRole.Observer:
                 return Mathf.Max(
                     0f,
-                    droneSkillGaugeMax
+                    droneSkillGaugeMax,
+                    reconnaissanceSkillGaugeMax,
+                    observationSupportSkillGaugeMax
                 );
 
             case AgentRole.Engineer:
@@ -223,7 +341,11 @@ public class AgentStatsSO : ScriptableObject
                 return Mathf.Max(
                     0f,
                     accessControlSkillGaugeMax,
+                    escapeBlockGaugeMax,
+                    trackingInstinctMaxStack,
                     droneSkillGaugeMax,
+                    reconnaissanceSkillGaugeMax,
+                    observationSupportSkillGaugeMax,
                     barricadeSkillGaugeMax,
                     stopSignalSkillGaugeMax,
                     fakeBoxSkillGaugeMax,
@@ -242,7 +364,8 @@ public class AgentStatsSO : ScriptableObject
         string skill = NormalizeSkillName(skillName);
 
         return IsPositionShareSkill(skill) ||
-               IsEscapeBlockSkill(skill);
+               IsEscapeBlockSkill(skill) ||
+               IsPatrolSkill(skill);
     }
 
     private string NormalizeSkillName(string skillName)
@@ -290,6 +413,26 @@ public class AgentStatsSO : ScriptableObject
                skill.Contains("탈출 차단");
     }
 
+    private bool IsPatrolSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("patrol") ||
+               skill.Contains("순찰");
+    }
+
+    private bool IsTrackingInstinctSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("trackinginstinct") ||
+               skill.Contains("tracking instinct") ||
+               skill.Contains("추적본능") ||
+               skill.Contains("추적 본능");
+    }
+
     private bool IsPositionShareSkill(string skill)
     {
         if (string.IsNullOrWhiteSpace(skill))
@@ -314,6 +457,31 @@ public class AgentStatsSO : ScriptableObject
         return skill.Contains("drone") ||
                skill.Contains("uav") ||
                skill.Contains("드론");
+    }
+
+    private bool IsReconnaissanceSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("reconnaissance") ||
+               skill.Contains("recon") ||
+               skill.Contains("scout") ||
+               skill.Contains("정찰");
+    }
+
+    private bool IsObservationSupportSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("observationsupport") ||
+               skill.Contains("observation support") ||
+               skill.Contains("vision support") ||
+               skill.Contains("관측지원") ||
+               skill.Contains("관측 지원") ||
+               skill.Contains("시야지원") ||
+               skill.Contains("시야 지원");
     }
 
     private bool IsBarricadeSkill(string skill)

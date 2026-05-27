@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Patrol
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: chaser_unlock_patrol
+  displayName: "\uC21C\uCC30"
+  description: "\uBCF4\uC548 \uC694\uC6D0\uC774 \uB450 \uC88C\uD45C \uC0AC\uC774\uB97C
+    \uBC18\uBCF5 \uC21C\uCC30\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: b7e84bb2f6aa5544a9ddaccc4e44505c, type: 3}
+  ownerType: 0
+  agentType: 1
+  targetType: 0
+  skillId: patrol
+  effectType: 11
+  value: 0
+  minStage: 1
+  stackable: 0
+  maxStack: 1

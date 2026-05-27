@@ -19,6 +19,11 @@ public class AgentCameraFollow : MonoBehaviour
     [Header("Common Camera Settings")]
     [SerializeField] private float smoothSpeed = 5f;
 
+    [Header("Camera Smooth Damp")]
+    [SerializeField] private float positionSmoothTime = 0.18f;
+    [SerializeField] private float sizeSmoothTime = 0.15f;
+    [SerializeField] private float maxPositionSpeed = 45f;
+
     [Header("Top View Settings")]
     [SerializeField] private TopDownViewMode topDownViewMode = TopDownViewMode.FixedView;
     [SerializeField] private Vector3 topDownLocalOffset = new Vector3(0f, 30f, 0f);
@@ -124,6 +129,9 @@ public class AgentCameraFollow : MonoBehaviour
     private Vector3 cachedPanRightOnGround;
     private Vector3 cachedPanUpOnGround;
 
+    private Vector3 cameraPositionVelocity;
+    private float cameraSizeVelocity;
+
     private GameObject lastSpawnedObject;
 
     public Vector3 LastClickedGroundPoint => lastClickedGroundPoint;
@@ -155,14 +163,31 @@ public class AgentCameraFollow : MonoBehaviour
         RebuildRotationCaches();
         ResetFocusedOrbitAngles();
         ResetZoomStates();
+        ResetCameraSmoothVelocity();
         RefreshGroundBounds();
 
         if (EventSystem.current != null)
             pointerEventData = new PointerEventData(EventSystem.current);
     }
 
+    private void OnEnable()
+    {
+        ResetCameraSmoothVelocity();
+        ResetDragState();
+        ResetFocusedOrbitDragState();
+    }
+
     private void OnValidate()
     {
+        if (positionSmoothTime < 0.01f)
+            positionSmoothTime = 0.01f;
+
+        if (sizeSmoothTime < 0.01f)
+            sizeSmoothTime = 0.01f;
+
+        if (maxPositionSpeed < 0.01f)
+            maxPositionSpeed = 0.01f;
+
         if (maxOrbitPitch < minOrbitPitch)
             maxOrbitPitch = minOrbitPitch;
 
@@ -224,6 +249,9 @@ public class AgentCameraFollow : MonoBehaviour
 
         if (focusChanged || resetOrbitOnFocusChanged)
             ResetFocusedOrbitAngles();
+
+        if (focusChanged)
+            ResetCameraSmoothVelocity();
     }
 
     public void ClearFocusAgent()
@@ -231,16 +259,19 @@ public class AgentCameraFollow : MonoBehaviour
         focusedAgent = null;
         ClearFocusedAgentCache();
         ResetFocusedOrbitDragState();
+        ResetCameraSmoothVelocity();
     }
 
     public void ResetTopDownPan()
     {
         topDownPanOffset = Vector3.zero;
+        ResetCameraSmoothVelocity();
     }
 
     public void ResetZoom()
     {
         ResetZoomStates();
+        ResetCameraSmoothVelocity();
     }
 
     public void RefreshGroundBounds()
@@ -248,7 +279,7 @@ public class AgentCameraFollow : MonoBehaviour
         if (groundRoot == null)
         {
             hasGroundBounds = false;
-            Debug.LogWarning("[Camera] groundRoot�� ������� �ʾҽ��ϴ�.");
+            Debug.LogWarning("[Camera] groundRoot가 설정되지 않았습니다.");
             return;
         }
 
@@ -267,7 +298,7 @@ public class AgentCameraFollow : MonoBehaviour
         groundBounds = combinedBounds;
 
         if (!hasGroundBounds)
-            Debug.LogWarning("[Camera] groundRoot �Ʒ����� Ground ���̾� bounds�� ã�� ���߽��ϴ�.");
+            Debug.LogWarning("[Camera] groundRoot 아래에서 Ground 레이어 bounds를 찾지 못했습니다.");
     }
 
     public void SetGroundRoot(Transform newGroundRoot)
@@ -275,11 +306,19 @@ public class AgentCameraFollow : MonoBehaviour
         groundRoot = newGroundRoot;
         ResetTopDownPan();
         RefreshGroundBounds();
+        ResetCameraSmoothVelocity();
     }
 
     public void SetTargets(List<Transform> newTargets)
     {
         RefreshGroundBounds();
+        ResetCameraSmoothVelocity();
+    }
+
+    public void ResetCameraSmoothVelocity()
+    {
+        cameraPositionVelocity = Vector3.zero;
+        cameraSizeVelocity = 0f;
     }
 
     private void HandleLeftMouseInput(Mouse mouse, Vector2 mousePosition)
@@ -538,9 +577,29 @@ public class AgentCameraFollow : MonoBehaviour
             );
         }
 
-        transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, cachedTopDownRotation, smoothSpeed * Time.deltaTime);
-        cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, desiredOrthoSize, smoothSpeed * Time.deltaTime);
+        transform.position = Vector3.SmoothDamp(
+            transform.position,
+            desiredPosition,
+            ref cameraPositionVelocity,
+            positionSmoothTime,
+            maxPositionSpeed,
+            Time.deltaTime
+        );
+
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            cachedTopDownRotation,
+            smoothSpeed * Time.deltaTime
+        );
+
+        cam.orthographicSize = Mathf.SmoothDamp(
+            cam.orthographicSize,
+            desiredOrthoSize,
+            ref cameraSizeVelocity,
+            sizeSmoothTime,
+            Mathf.Infinity,
+            Time.deltaTime
+        );
     }
 
     private void UpdateFocusedAgentView()
@@ -552,9 +611,29 @@ public class AgentCameraFollow : MonoBehaviour
         Quaternion orbitRotation = Quaternion.Euler(focusedOrbitPitch, focusedOrbitYaw, focusedOrbitRoll);
         Vector3 desiredPosition = focusPoint + orbitRotation * focusedLocalOffset;
 
-        transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, orbitRotation, smoothSpeed * Time.deltaTime);
-        cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, currentFocusedOrthoSize, smoothSpeed * Time.deltaTime);
+        transform.position = Vector3.SmoothDamp(
+            transform.position,
+            desiredPosition,
+            ref cameraPositionVelocity,
+            positionSmoothTime,
+            maxPositionSpeed,
+            Time.deltaTime
+        );
+
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            orbitRotation,
+            smoothSpeed * Time.deltaTime
+        );
+
+        cam.orthographicSize = Mathf.SmoothDamp(
+            cam.orthographicSize,
+            currentFocusedOrthoSize,
+            ref cameraSizeVelocity,
+            sizeSmoothTime,
+            Mathf.Infinity,
+            Time.deltaTime
+        );
     }
 
     private void CacheFocusedAgentData(Transform root)
@@ -639,7 +718,7 @@ public class AgentCameraFollow : MonoBehaviour
 
         TrySpawnPrefabAtGroundPoint(hit);
 
-        Debug.Log($"[Camera] Ground Ŭ�� ��ǥ: {lastClickedGroundPoint}");
+        Debug.Log($"[Camera] Ground 클릭 좌표: {lastClickedGroundPoint}");
     }
 
     private void TrySpawnPrefabAtGroundPoint(RaycastHit hit)
@@ -683,7 +762,7 @@ public class AgentCameraFollow : MonoBehaviour
         GUIUtility.systemCopyBuffer = copyText;
         copiedLabelEndTime = Time.unscaledTime + copiedLabelDuration;
 
-        Debug.Log($"[Camera] ��ǥ ���ڿ� �����: {copyText}");
+        Debug.Log($"[Camera] 좌표 문자열 복사됨: {copyText}");
         return true;
     }
 
@@ -876,6 +955,9 @@ public class AgentCameraFollow : MonoBehaviour
 
     private bool IsIntroBlockingInput()
     {
+        if (stageIntroController != null && stageIntroController.IsIntroPlaying)
+            return true;
+
         return StageIntroController.Instance != null &&
                StageIntroController.Instance.IsIntroPlaying;
     }

@@ -13,7 +13,7 @@ public class VisionConeVisualizer : MonoBehaviour
     [SerializeField] private float meshHeightOffset = 0.03f;
     [SerializeField] private float updateInterval = 0.03f;
 
-    [Header("»ö»ó")]
+    [Header("Color")]
     [SerializeField] private Color normalColor = DefaultNormalColor;
     [SerializeField] private Color positionShareEnabledColor = DefaultPositionShareEnabledColor;
     [SerializeField] private Color positionSharingColor = DefaultPositionSharingColor;
@@ -28,6 +28,9 @@ public class VisionConeVisualizer : MonoBehaviour
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
+    private static bool useTeamVisionColorOverride;
+    private static Color teamVisionColorOverride = DefaultPositionShareEnabledColor;
+
     private Mesh mesh;
     private MeshRenderer meshRenderer;
     private MaterialPropertyBlock propertyBlock;
@@ -36,6 +39,44 @@ public class VisionConeVisualizer : MonoBehaviour
     private float updateTimer;
     private Color lastAppliedColor;
     private bool hasAppliedColor;
+
+    public static bool IsTeamVisionColorOverrideEnabled => useTeamVisionColorOverride;
+
+    public static void SetTeamVisionColorOverride(bool enabled, Color color)
+    {
+        useTeamVisionColorOverride = enabled;
+        teamVisionColorOverride = color;
+
+        VisionConeVisualizer[] visualizers =
+            FindObjectsByType<VisionConeVisualizer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        for (int i = 0; i < visualizers.Length; i++)
+        {
+            if (visualizers[i] == null)
+                continue;
+
+            visualizers[i].ApplyVisionColor(true);
+        }
+    }
+
+    public static void DisableAllVisionCones()
+    {
+        VisionConeVisualizer[] visualizers =
+            FindObjectsByType<VisionConeVisualizer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        for (int i = 0; i < visualizers.Length; i++)
+        {
+            if (visualizers[i] == null)
+                continue;
+
+            visualizers[i].gameObject.SetActive(false);
+        }
+    }
+
+    public static Color GetDefaultObserverSharedVisionColor()
+    {
+        return DefaultPositionShareEnabledColor;
+    }
 
     private void Reset()
     {
@@ -77,6 +118,11 @@ public class VisionConeVisualizer : MonoBehaviour
 
         observer = GetComponentInParent<Observer>();
 
+        ApplyVisionColor(true);
+    }
+
+    private void OnEnable()
+    {
         ApplyVisionColor(true);
     }
 
@@ -166,6 +212,9 @@ public class VisionConeVisualizer : MonoBehaviour
 
     private Color ResolveVisionColor()
     {
+        if (useTeamVisionColorOverride)
+            return teamVisionColorOverride;
+
         if (observer == null)
             return normalColor;
 
