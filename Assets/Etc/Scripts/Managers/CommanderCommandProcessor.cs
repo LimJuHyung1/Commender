@@ -321,6 +321,22 @@ public class CommanderCommandProcessor : MonoBehaviour
                 {
                     validatedSkill = "lookaround";
                 }
+                else if (commandValidator.IsReconnaissanceInstruction(originalInstruction))
+                {
+                    validatedSkill = "reconnaissance";
+                }
+                else if (commandValidator.IsObservationSupportInstruction(originalInstruction))
+                {
+                    validatedSkill = "observationsupport";
+                }
+                else if (commandValidator.IsDemolitionInstruction(originalInstruction))
+                {
+                    validatedSkill = "demolition";
+                }
+                else if (commandValidator.IsSafeZoneInstruction(originalInstruction))
+                {
+                    validatedSkill = "safezone";
+                }
                 else if (commandValidator.IsStopSignalInstruction(originalInstruction))
                 {
                     validatedSkill = "stopsignal";
@@ -420,23 +436,40 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (targetAgent is Observer)
         {
             return commonRules +
-                   "11. Allowed skills for this agent are only \"drone\", \"positionshare_on\", and \"positionshare_off\".\n" +
+                   "11. Allowed skills for this agent are only \"drone\", \"reconnaissance\", \"observationsupport\", \"positionshare_on\", and \"positionshare_off\".\n" +
                    "12. Use \"drone\" ONLY when the instruction explicitly asks for drone or 드론.\n" +
-                   "13. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing.\n" +
-                   "14. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing.\n\n" +
+                   "13. Use \"reconnaissance\" ONLY when the instruction explicitly asks for 정찰, reconnaissance, recon, or scout.\n" +
+                   "14. Use \"observationsupport\" ONLY when the instruction explicitly asks for 관측 지원, 시야 지원, observation support, or vision support.\n" +
+                   "15. Use \"positionshare_on\" ONLY when the instruction explicitly asks to enable position sharing.\n" +
+                   "16. Use \"positionshare_off\" ONLY when the instruction explicitly asks to disable position sharing.\n" +
+                   "17. If the instruction asks for 정찰 without coordinates, use the agent current position so the skill can use the agent forward direction.\n" +
+                   "18. If the instruction asks for 관측 지원 without coordinates, use the agent current position.\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 10,5에 정찰\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 10.0, \"z\": 5.0}}, \"skill\": \"reconnaissance\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 관측 지원\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"observationsupport\" }} ] }}";
         }
 
         if (targetAgent is Engineer)
         {
             return commonRules +
-                   "11. Allowed skills for this agent are only \"barricade\" and \"stopsignal\".\n" +
+                   "11. Allowed skills for this agent are only \"barricade\", \"stopsignal\", \"demolition\", and \"safezone\".\n" +
                    "12. Use \"barricade\" ONLY when the instruction explicitly asks for barricade, 바리케이드, 봉쇄, or 장애물 설치.\n" +
                    "13. Use \"stopsignal\" ONLY when the instruction explicitly asks for 정지 신호, 정지신호, 신호 설치, 통제 신호, stop signal, or stopsignal.\n" +
-                   "14. If the instruction is a skill without coordinates, use current position.\n\n" +
+                   "14. Use \"demolition\" ONLY when the instruction explicitly asks for 철거, demolition, demolish, or remove obstacle.\n" +
+                   "15. Use \"safezone\" ONLY when the instruction explicitly asks for 안전 구역, 안전구역, safe zone, or safezone.\n" +
+                   "16. If the instruction is demolition without coordinates, use current position.\n" +
+                   "17. If the instruction is safezone with coordinates, use the given coordinates.\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 철거\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"demolition\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 10,5에 안전 구역\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 10.0, \"z\": 5.0}}, \"skill\": \"safezone\" }} ] }}";
         }
 
         if (targetAgent is Trickster)
@@ -477,6 +510,8 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (agent is Observer)
         {
             return skill == "drone" ||
+                   skill == "reconnaissance" ||
+                   skill == "observationsupport" ||
                    skill == "positionshare_on" ||
                    skill == "positionshare_off";
         }
@@ -484,7 +519,9 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (agent is Engineer)
         {
             return skill == "barricade" ||
-                   skill == "stopsignal";
+                   skill == "stopsignal" ||
+                   skill == "demolition" ||
+                   skill == "safezone";
         }
 
         if (agent is Trickster)
@@ -697,7 +734,19 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (commandValidator.IsStopSignalInstruction(source))
             return true;
 
+        if (commandValidator.IsDemolitionInstruction(source))
+            return true;
+
+        if (commandValidator.IsSafeZoneInstruction(source))
+            return true;
+
         if (commandValidator.IsFakeBoxInstruction(source))
+            return true;
+
+        if (commandValidator.IsReconnaissanceInstruction(source))
+            return true;
+
+        if (commandValidator.IsObservationSupportInstruction(source))
             return true;
 
         if (commandValidator.IsJokerCardInstruction(source))
@@ -741,6 +790,22 @@ public class CommanderCommandProcessor : MonoBehaviour
             "drone",
             "uav",
             "드론",
+
+            "reconnaissance",
+            "recon",
+            "scout",
+            "정찰",
+            "정찰 드론",
+            "드론 정찰",
+
+            "observationsupport",
+            "observation support",
+            "vision support",
+            "sight support",
+            "관측 지원",
+            "관측지원",
+            "시야 지원",
+            "시야지원",
 
             "positionshare",
             "position share",
@@ -788,6 +853,19 @@ public class CommanderCommandProcessor : MonoBehaviour
             "구속 함정",
             "구속함정",
             "함정",
+
+            "demolition",
+            "demolish",
+            "remove obstacle",
+            "remove obstacles",
+            "철거",
+            "장애물 철거",
+
+            "safezone",
+            "safe zone",
+            "safe_zone",
+            "안전 구역",
+            "안전구역",
 
             "fakebox",
             "fake box",
@@ -945,6 +1023,12 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (commandValidator.ContainsCoordinate(originalInstruction))
             return false;
 
+        if (validatedSkill == "demolition")
+            return commandValidator.IsDemolitionInstruction(originalInstruction);
+
+        if (validatedSkill == "safezone")
+            return commandValidator.IsSafeZoneInstruction(originalInstruction);
+
         if (validatedSkill == "stopsignal")
             return commandValidator.IsStopSignalInstruction(originalInstruction);
 
@@ -953,6 +1037,12 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (validatedSkill == "fakebox")
             return commandValidator.IsFakeBoxInstruction(originalInstruction);
+
+        if (validatedSkill == "reconnaissance")
+            return commandValidator.IsReconnaissanceInstruction(originalInstruction);
+
+        if (validatedSkill == "observationsupport")
+            return commandValidator.IsObservationSupportInstruction(originalInstruction);
 
         return false;
     }

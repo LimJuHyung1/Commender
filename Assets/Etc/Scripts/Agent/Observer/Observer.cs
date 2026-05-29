@@ -22,6 +22,13 @@ public class Observer : AgentController, IUpgradeReceiver
     private const string UpgradePositionShareQuickResponse = "observer_position_share_quick_response";
     private const string UpgradePositionShareLinkedSurveillance = "observer_position_share_linked_surveillance";
 
+    private const string UpgradeUnlockReconnaissance = "observer_unlock_reconnaissance";
+    private const string UpgradeUnlockObservationSupport = "observer_unlock_observation_support";
+    private const string UpgradeReconnaissanceUpgradeModule = "observer_reconnaissance_upgrade_module";
+    private const string UpgradeReconnaissanceSkilledPilot = "observer_reconnaissance_skilled_pilot";
+    private const string UpgradeObservationSupportHawkeye = "observer_observation_support_hawkeye";
+    private const string UpgradeObservationSupportEfficientObservation = "observer_observation_support_efficient_observation";
+
     private const string MoveModeParameter = "MoveMode";
     private const string HitReactionTriggerName = "HitReaction";
     private const string VictoryTriggerName = "Victory";
@@ -44,6 +51,7 @@ public class Observer : AgentController, IUpgradeReceiver
 
     [Header("Reconnaissance")]
     [SerializeField] private Reconnaissance reconnaissancePrefab;
+    [SerializeField] private bool reconnaissanceUnlocked = false;
     [SerializeField] private float reconnaissanceGaugeRequirement = 75f;
     [SerializeField] private float reconnaissanceRadius = 3.5f;
     [SerializeField] private float reconnaissanceMaxDistance = 18f;
@@ -53,11 +61,11 @@ public class Observer : AgentController, IUpgradeReceiver
     [SerializeField] private bool requestCameraOnReconnaissance = false;
 
     [Header("Observation Support")]
+    [SerializeField] private bool observationSupportUnlocked = false;
     [SerializeField] private float observationSupportGaugeRequirement = 100f;
     [SerializeField] private float observationSupportDuration = 10f;
-    [SerializeField] private float observationSupportViewRadiusMultiplier = 1.5f;
+    [SerializeField] private float observationSupportViewRadiusMultiplier = 1.25f;
     [SerializeField] private bool includeSelfInObservationSupport = false;
-    [SerializeField] private bool requestCameraOnObservationSupport = true;
 
     [Header("Position Share")]
     [SerializeField] private bool targetPositionShareEnabled = true;
@@ -69,6 +77,13 @@ public class Observer : AgentController, IUpgradeReceiver
     [SerializeField] private float trackingWatchDurationMultiplier = 0.5f;
     [SerializeField] private float highPowerBatteryGaugeRequirementMultiplier = 0.5f;
     [SerializeField] private float quickResponseMoveSpeedMultiplier = 1.5f;
+    [SerializeField] private float upgradeModuleReconnaissanceGaugeRequirement = 50f;
+    [SerializeField] private float upgradeModuleReconnaissanceRadiusMultiplier = 1.25f;
+    [SerializeField] private float skilledPilotCurveAmplitude = 1.25f;
+    [SerializeField] private float skilledPilotCurveWaveLength = 8f;
+    [SerializeField] private float hawkeyeObservationSupportDuration = 20f;
+    [SerializeField] private float hawkeyeViewAngleOffset = -10f;
+    [SerializeField] private float efficientObservationGaugeRequirement = 50f;
 
     [Header("Observer Animation")]
     [SerializeField] private float droneDeployLockSeconds = 0.8f;
@@ -89,6 +104,10 @@ public class Observer : AgentController, IUpgradeReceiver
     private bool highPowerBatteryEnabled;
     private bool quickResponseEnabled;
     private bool linkedSurveillanceNetworkEnabled;
+    private bool reconnaissanceUpgradeModuleEnabled;
+    private bool reconnaissanceSkilledPilotEnabled;
+    private bool observationSupportHawkeyeEnabled;
+    private bool observationSupportEfficientObservationEnabled;
 
     private readonly HashSet<VisionSensor> linkedSurveillanceSensors = new HashSet<VisionSensor>();
     private readonly List<VisionSensor> linkedSurveillanceSensorsToRemove = new List<VisionSensor>();
@@ -119,6 +138,8 @@ public class Observer : AgentController, IUpgradeReceiver
 
     public bool IsTargetPositionShareEnabled => targetPositionShareEnabled;
     public bool IsTargetPositionSharing => isTargetPositionSharing;
+    public bool IsReconnaissanceUnlocked => reconnaissanceUnlocked;
+    public bool IsObservationSupportUnlocked => observationSupportUnlocked;
     public Drone CurrentDrone => currentDrone;
     public Reconnaissance CurrentReconnaissance => currentReconnaissance;
     public bool IsObservationSupportActive => observationSupportRoutine != null;
@@ -173,6 +194,14 @@ public class Observer : AgentController, IUpgradeReceiver
         trackingWatchDurationMultiplier = Mathf.Clamp(trackingWatchDurationMultiplier, 0.01f, 1f);
         highPowerBatteryGaugeRequirementMultiplier = Mathf.Clamp(highPowerBatteryGaugeRequirementMultiplier, 0.01f, 1f);
         quickResponseMoveSpeedMultiplier = Mathf.Max(1f, quickResponseMoveSpeedMultiplier);
+        upgradeModuleReconnaissanceGaugeRequirement = Mathf.Max(0f, upgradeModuleReconnaissanceGaugeRequirement);
+        upgradeModuleReconnaissanceRadiusMultiplier = Mathf.Max(1f, upgradeModuleReconnaissanceRadiusMultiplier);
+
+        skilledPilotCurveAmplitude = Mathf.Max(0f, skilledPilotCurveAmplitude);
+        skilledPilotCurveWaveLength = Mathf.Max(0.01f, skilledPilotCurveWaveLength);
+        hawkeyeObservationSupportDuration = Mathf.Max(0f, hawkeyeObservationSupportDuration);
+        hawkeyeViewAngleOffset = Mathf.Clamp(hawkeyeViewAngleOffset, -359f, 359f);
+        efficientObservationGaugeRequirement = Mathf.Max(0f, efficientObservationGaugeRequirement);
 
         CacheObserverAnimationHashes();
     }
@@ -271,10 +300,77 @@ public class Observer : AgentController, IUpgradeReceiver
                 ApplyLinkedSurveillanceNetworkUpgrade();
                 break;
 
+            case UpgradeUnlockReconnaissance:
+                UnlockReconnaissance();
+                break;
+
+            case UpgradeUnlockObservationSupport:
+                UnlockObservationSupport();
+                break;
+
+            case UpgradeReconnaissanceUpgradeModule:
+                ApplyReconnaissanceUpgradeModule();
+                break;
+
+            case UpgradeReconnaissanceSkilledPilot:
+                ApplyReconnaissanceSkilledPilot();
+                break;
+
+            case UpgradeObservationSupportHawkeye:
+                ApplyObservationSupportHawkeye();
+                break;
+
+            case UpgradeObservationSupportEfficientObservation:
+                ApplyObservationSupportEfficientObservation();
+                break;
+
             default:
                 Debug.LogWarning($"[Observer {AgentID}] 알 수 없는 강화 ID입니다: {upgrade.UpgradeId}");
                 break;
         }
+    }
+
+    private void ApplyObservationSupportEfficientObservation()
+    {
+        if (observationSupportEfficientObservationEnabled)
+            return;
+
+        observationSupportEfficientObservationEnabled = true;
+        observationSupportGaugeRequirement = efficientObservationGaugeRequirement;
+
+        Debug.Log(
+            $"[Observer {AgentID}] 효율적 관측 강화 적용. " +
+            $"ObservationSupportGaugeRequirement={observationSupportGaugeRequirement:0.#}"
+        );
+    }
+
+    private void ApplyObservationSupportHawkeye()
+    {
+        if (observationSupportHawkeyeEnabled)
+            return;
+
+        observationSupportHawkeyeEnabled = true;
+        observationSupportDuration = hawkeyeObservationSupportDuration;
+
+        Debug.Log(
+            $"[Observer {AgentID}] 호크아이 강화 적용. " +
+            $"ObservationSupportDuration={observationSupportDuration:0.#}, " +
+            $"ViewAngleOffset={hawkeyeViewAngleOffset:0.#}"
+        );
+    }
+
+    private void ApplyReconnaissanceSkilledPilot()
+    {
+        if (reconnaissanceSkilledPilotEnabled)
+            return;
+
+        reconnaissanceSkilledPilotEnabled = true;
+
+        Debug.Log(
+            $"[Observer {AgentID}] 숙련된 조종사 강화 적용. " +
+            $"CurveAmplitude={skilledPilotCurveAmplitude:0.##}, " +
+            $"CurveWaveLength={skilledPilotCurveWaveLength:0.##}"
+        );
     }
 
     public override float GetSkillGaugeMaxForSkill(string skillName)
@@ -328,8 +424,36 @@ public class Observer : AgentController, IUpgradeReceiver
 
     public override bool CanUseSkillGaugeForSkill(string skillName, bool showWarning = false)
     {
+        if (IsReconnaissanceSkillName(skillName) && !reconnaissanceUnlocked)
+        {
+            if (showWarning)
+                Debug.LogWarning($"[Observer {AgentID}] 정찰 스킬이 아직 해금되지 않았습니다.");
+
+            return false;
+        }
+
+        if (IsObservationSupportSkillName(skillName) && !observationSupportUnlocked)
+        {
+            if (showWarning)
+                Debug.LogWarning($"[Observer {AgentID}] 관측 지원 스킬이 아직 해금되지 않았습니다.");
+
+            return false;
+        }
+
         string canonicalSkillName = GetCanonicalGaugeSkillName(skillName);
         return base.CanUseSkillGaugeForSkill(canonicalSkillName, showWarning);
+    }
+
+    private void UnlockReconnaissance()
+    {
+        reconnaissanceUnlocked = true;
+        Debug.Log($"[Observer {AgentID}] 정찰 스킬 해금");
+    }
+
+    private void UnlockObservationSupport()
+    {
+        observationSupportUnlocked = true;
+        Debug.Log($"[Observer {AgentID}] 관측 지원 스킬 해금");
     }
 
     private void ApplyLinkedSurveillanceNetworkUpgrade()
@@ -381,6 +505,23 @@ public class Observer : AgentController, IUpgradeReceiver
         );
     }
 
+    private void ApplyReconnaissanceUpgradeModule()
+    {
+        if (reconnaissanceUpgradeModuleEnabled)
+            return;
+
+        reconnaissanceUpgradeModuleEnabled = true;
+
+        reconnaissanceGaugeRequirement = upgradeModuleReconnaissanceGaugeRequirement;
+        reconnaissanceRadius *= upgradeModuleReconnaissanceRadiusMultiplier;
+
+        Debug.Log(
+            $"[Observer {AgentID}] 업그레이드 모듈 강화 적용. " +
+            $"ReconGaugeRequirement={reconnaissanceGaugeRequirement:0.#}, " +
+            $"ReconRadius={reconnaissanceRadius:0.##}"
+        );
+    }
+
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -398,12 +539,24 @@ public class Observer : AgentController, IUpgradeReceiver
 
         if (IsReconnaissanceSkill(skill))
         {
+            if (!reconnaissanceUnlocked)
+            {
+                Debug.LogWarning($"[Observer {AgentID}] 정찰 스킬이 아직 해금되지 않았습니다.");
+                return;
+            }
+
             ExecuteReconnaissanceSkill(targetPos);
             return;
         }
 
         if (IsObservationSupportSkill(skill))
         {
+            if (!observationSupportUnlocked)
+            {
+                Debug.LogWarning($"[Observer {AgentID}] 관측 지원 스킬이 아직 해금되지 않았습니다.");
+                return;
+            }
+
             ExecuteObservationSupportSkill();
             return;
         }
@@ -590,9 +743,6 @@ public class Observer : AgentController, IUpgradeReceiver
 
         observationSupportRoutine = StartCoroutine(ObservationSupportRoutine());
 
-        if (requestCameraOnObservationSupport)
-            RequestUserSkillCamera();
-
         Debug.Log(
             $"[Observer {AgentID}] 관측 지원 사용. " +
             $"Duration={observationSupportDuration:0.#}, " +
@@ -763,6 +913,15 @@ public class Observer : AgentController, IUpgradeReceiver
             reconnaissanceRevealHoldDuration
         );
 
+        if (reconnaissanceSkilledPilotEnabled)
+        {
+            reconnaissance.SetCurvedFlightEnabled(
+                true,
+                skilledPilotCurveAmplitude,
+                skilledPilotCurveWaveLength
+            );
+        }
+
         currentReconnaissance = reconnaissance;
 
         if (requestCameraOnReconnaissance)
@@ -894,6 +1053,10 @@ public class Observer : AgentController, IUpgradeReceiver
                 continue;
 
             sensor.SetExternalViewRadiusMultiplier(this, observationSupportViewRadiusMultiplier);
+
+            if (observationSupportHawkeyeEnabled)
+                sensor.SetExternalViewAngleOffset(this, hawkeyeViewAngleOffset);
+
             observationSupportSensors.Add(sensor);
         }
     }
@@ -903,20 +1066,13 @@ public class Observer : AgentController, IUpgradeReceiver
         if (observationSupportSensors.Count == 0)
             return;
 
-        observationSupportSensorsToRemove.Clear();
-
         foreach (VisionSensor sensor in observationSupportSensors)
         {
-            if (sensor != null)
-                observationSupportSensorsToRemove.Add(sensor);
-        }
+            if (sensor == null)
+                continue;
 
-        for (int i = 0; i < observationSupportSensorsToRemove.Count; i++)
-        {
-            VisionSensor sensor = observationSupportSensorsToRemove[i];
-
-            if (sensor != null)
-                sensor.RemoveExternalViewRadiusMultiplier(this);
+            sensor.RemoveExternalViewRadiusMultiplier(this);
+            sensor.RemoveExternalViewAngleOffset(this);
         }
 
         observationSupportSensors.Clear();
@@ -1543,12 +1699,11 @@ public class Observer : AgentController, IUpgradeReceiver
         if (string.IsNullOrWhiteSpace(skill))
             return false;
 
-        return skill.Contains("_off") ||
-               skill.Contains("off") ||
+        return skill.Contains("off") ||
+               skill.Contains("disable") ||
+               skill.Contains("stop") ||
+               skill.Contains("해제") ||
                skill.Contains("끄기") ||
-               skill.Contains("끔") ||
-               skill.Contains("중지") ||
-               skill.Contains("비활성") ||
-               skill.Contains("꺼");
+               skill.Contains("중지");
     }
 }

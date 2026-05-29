@@ -1078,36 +1078,61 @@ public class CommanderUIController : MonoBehaviour
         if (agent == null)
             return "";
 
+        if (agent.Stats != null)
+            return GetSkillPlaceholderTextByRole(agent.Stats.role);
+
         string typeName = agent.GetType().Name;
 
         if (typeName.Contains("Chaser"))
-            return "EX) (좌표) 출입 통제, 도주 제지";
+            return GetSkillPlaceholderTextByRole(AgentRole.Chaser);
 
         if (typeName.Contains("Observer"))
-            return "EX) (좌표) 드론, 위치 공유 꺼";
-
-        if (typeName.Contains("Scout"))
-            return "EX) (좌표) 드론, 위치 공유 꺼";
+            return GetSkillPlaceholderTextByRole(AgentRole.Observer);
 
         if (typeName.Contains("Engineer"))
-            return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
+            return GetSkillPlaceholderTextByRole(AgentRole.Engineer);
 
-        if (typeName.Contains("Trickster") || typeName.Contains("Magician"))
-            return "EX) (좌표) 페이크 박스";
+        if (typeName.Contains("Trickster"))
+            return GetSkillPlaceholderTextByRole(AgentRole.Trickster);
 
-        switch (agent.AgentID)
+        return GetSkillPlaceholderTextByAgentId(agent.AgentID);
+    }
+
+    private string GetSkillPlaceholderTextByRole(AgentRole role)
+    {
+        switch (role)
+        {
+            case AgentRole.Chaser:
+                return "체이서 EX) (좌표) 출입 통제, 도주 제지";
+
+            case AgentRole.Observer:
+                return "옵저버 EX) (좌표) 드론, 위치 공유 꺼";
+
+            case AgentRole.Engineer:
+                return "엔지니어 EX) 철거, (좌표) 바리케이드, (좌표) 정지 신호, (좌표) 안전 구역";
+
+            case AgentRole.Trickster:
+                return "트릭스터 EX) (좌표) 페이크 박스";
+        }
+
+        return "";
+    }
+
+    private string GetSkillPlaceholderTextByAgentId(int agentId)
+    {
+        switch (agentId)
         {
             case 0:
-                return "EX) (좌표) 출입 통제, 도주 제지";
+                return GetSkillPlaceholderTextByRole(AgentRole.Chaser);
 
             case 1:
-                return "EX) (좌표) 드론, 위치 공유 꺼";
+                return GetSkillPlaceholderTextByRole(AgentRole.Observer);
 
             case 2:
-                return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
+                return GetSkillPlaceholderTextByRole(AgentRole.Engineer);
 
             case 3:
-                return "EX) (좌표) 페이크 박스";
+                return GetSkillPlaceholderTextByRole(AgentRole.Trickster);
         }
 
         return "";

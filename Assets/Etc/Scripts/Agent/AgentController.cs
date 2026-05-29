@@ -54,6 +54,8 @@ public abstract class AgentController : MonoBehaviour
     private const string SkillDroneKey = "drone";
     private const string SkillBarricadeKey = "barricade";
     private const string SkillStopSignalKey = "stopsignal";
+    private const string SkillDemolitionKey = "demolition";
+    private const string SkillSafeZoneKey = "safezone";
     private const string SkillFakeBoxKey = "fakebox";
     private const string SkillJokerCardKey = "jokercard";
     private const string SkillNoisemakerKey = "noisemaker";
@@ -619,6 +621,46 @@ public abstract class AgentController : MonoBehaviour
         lastSkillGaugePosition = transform.position;
     }
 
+    public virtual void AddSkillGauge(float amount)
+    {
+        if (amount <= 0f)
+            return;
+
+        string[] gaugeKeys = GetCurrentAgentGaugeKeys();
+
+        for (int i = 0; i < gaugeKeys.Length; i++)
+        {
+            AddSkillGaugeForSkill(gaugeKeys[i], amount);
+        }
+
+        lastSkillGaugePosition = transform.position;
+    }
+
+    public virtual bool AddSkillGaugeForSkill(string skillName, float amount)
+    {
+        if (amount <= 0f)
+            return false;
+
+        float capacity = GetSkillGaugeMaxForSkill(skillName);
+
+        if (capacity <= 0f)
+            return false;
+
+        string key = GetSkillGaugeKey(skillName);
+        float currentGauge = GetSkillGaugeValue(key);
+
+        if (currentGauge >= capacity - SkillGaugeFullEpsilon)
+        {
+            SetSkillGaugeValue(key, capacity);
+            return false;
+        }
+
+        float nextGauge = Mathf.Min(capacity, currentGauge + amount);
+        SetSkillGaugeValue(key, nextGauge);
+
+        return true;
+    }
+
     private float GetSkillGaugeValue(string key)
     {
         key = GetSkillGaugeKey(key);
@@ -670,6 +712,12 @@ public abstract class AgentController : MonoBehaviour
         if (IsStopSignalSkill(skill))
             return SkillStopSignalKey;
 
+        if (IsDemolitionSkill(skill))
+            return SkillDemolitionKey;
+
+        if (IsSafeZoneSkill(skill))
+            return SkillSafeZoneKey;
+
         if (IsFakeBoxSkill(skill))
             return SkillFakeBoxKey;
 
@@ -718,9 +766,11 @@ public abstract class AgentController : MonoBehaviour
             case AgentRole.Engineer:
                 return new[]
                 {
-                    SkillBarricadeKey,
-                    SkillStopSignalKey
-                };
+        SkillBarricadeKey,
+        SkillStopSignalKey,
+        SkillDemolitionKey,
+        SkillSafeZoneKey
+    };
 
             case AgentRole.Trickster:
                 return new[]
@@ -798,6 +848,22 @@ public abstract class AgentController : MonoBehaviour
                skill.Contains("감속 함정") ||
                skill.Contains("구속함정") ||
                skill.Contains("구속 함정");
+    }
+
+    private bool IsDemolitionSkill(string skill)
+    {
+        return skill.Contains("demolition") ||
+               skill.Contains("demolish") ||
+               skill.Contains("철거");
+    }
+
+    private bool IsSafeZoneSkill(string skill)
+    {
+        return skill.Contains("safezone") ||
+               skill.Contains("safe zone") ||
+               skill.Contains("safe_zone") ||
+               skill.Contains("안전구역") ||
+               skill.Contains("안전 구역");
     }
 
     private bool IsFakeBoxSkill(string skill)

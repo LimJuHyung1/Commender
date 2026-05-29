@@ -13,6 +13,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillTrackingInstinct = "trackinginstinct";
 
     private const string SkillDrone = "drone";
+    private const string SkillReconnaissance = "reconnaissance";
+    private const string SkillObservationSupport = "observationsupport";
     private const string SkillPositionShare = "positionshare";
     private const string SkillPositionShareOn = "positionshare_on";
     private const string SkillPositionShareOff = "positionshare_off";
@@ -20,6 +22,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillBarricade = "barricade";
     private const string SkillStopSignal = "stopsignal";
     private const string SkillSlowTrap = "slowtrap";
+    private const string SkillDemolition = "demolition";
+    private const string SkillSafeZone = "safezone";
 
     private const string SkillFakeBox = "fakebox";
     private const string SkillJokerCard = "jokercard";
@@ -29,6 +33,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string ChaserUnlockPatrol = "chaser_unlock_patrol";
     private const string ChaserUnlockTrackingInstinct = "chaser_unlock_tracking_instinct";
+
+    private const string ObserverUnlockReconnaissance = "observer_unlock_reconnaissance";
+    private const string ObserverUnlockObservationSupport = "observer_unlock_observation_support";
+
+    private const string EngineerUnlockDemolition = "engineer_unlock_demolition";
+    private const string EngineerUnlockSafeZone = "engineer_unlock_safe_zone";
 
     private enum GaugeFillDirection
     {
@@ -411,16 +421,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return;
         }
 
-        if (!IsChaserAgent())
-        {
-            skill3Name = "";
-            skill3Slot.SetGaugeAmount(0f);
-            skill3Slot.ClearIcon();
-            skill3Slot.SetVisible(false);
-            return;
-        }
-
-        UpgradeDefinition unlockedUpgrade = GetUnlockedChaserThirdSkillUpgrade();
+        UpgradeDefinition unlockedUpgrade = GetUnlockedThirdSkillUpgrade();
 
         if (unlockedUpgrade == null)
         {
@@ -447,6 +448,26 @@ public class AgentSkillGaugeUI : MonoBehaviour
         skill3Slot.SetVisible(true);
         skill3Slot.SetIcon(unlockedUpgrade.Icon);
         UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private UpgradeDefinition GetUnlockedThirdSkillUpgrade()
+    {
+        if (IsChaserAgent())
+        {
+            return GetUnlockedChaserThirdSkillUpgrade();
+        }
+
+        if (IsObserverAgent())
+        {
+            return GetUnlockedObserverThirdSkillUpgrade();
+        }
+
+        if (IsEngineerAgent())
+        {
+            return GetUnlockedEngineerThirdSkillUpgrade();
+        }
+
+        return null;
     }
 
     private UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
@@ -478,6 +499,64 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return null;
     }
 
+    private UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+        {
+            return null;
+        }
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (upgradeManager.HasAgentUpgrade(ObserverUnlockReconnaissance))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
+        }
+
+        if (upgradeManager.HasAgentUpgrade(ObserverUnlockObservationSupport))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
+        }
+
+        return null;
+    }
+
+    private UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+        {
+            return null;
+        }
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (upgradeManager.HasAgentUpgrade(EngineerUnlockDemolition))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
+        }
+
+        if (upgradeManager.HasAgentUpgrade(EngineerUnlockSafeZone))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
+        }
+
+        return null;
+    }
+
     private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
     {
         if (upgrade == null)
@@ -500,6 +579,26 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return SkillTrackingInstinct;
         }
 
+        if (upgrade.UpgradeId == ObserverUnlockReconnaissance)
+        {
+            return SkillReconnaissance;
+        }
+
+        if (upgrade.UpgradeId == ObserverUnlockObservationSupport)
+        {
+            return SkillObservationSupport;
+        }
+
+        if (upgrade.UpgradeId == EngineerUnlockDemolition)
+        {
+            return SkillDemolition;
+        }
+
+        if (upgrade.UpgradeId == EngineerUnlockSafeZone)
+        {
+            return SkillSafeZone;
+        }
+
         return "";
     }
 
@@ -516,6 +615,36 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         return agentId == 0;
+    }
+
+    private bool IsObserverAgent()
+    {
+        if (targetAgent != null)
+        {
+            if (targetAgent.Stats != null)
+            {
+                return targetAgent.Stats.role == AgentRole.Observer;
+            }
+
+            return targetAgent.AgentID == 1;
+        }
+
+        return agentId == 1;
+    }
+
+    private bool IsEngineerAgent()
+    {
+        if (targetAgent != null)
+        {
+            if (targetAgent.Stats != null)
+            {
+                return targetAgent.Stats.role == AgentRole.Engineer;
+            }
+
+            return targetAgent.AgentID == 2;
+        }
+
+        return agentId == 2;
     }
 
     private void HandleSkillGaugeInfoClick()
@@ -927,6 +1056,16 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return SkillTrackingInstinct;
         }
 
+        if (IsReconnaissanceSkill(skill))
+        {
+            return SkillReconnaissance;
+        }
+
+        if (IsObservationSupportSkill(skill))
+        {
+            return SkillObservationSupport;
+        }
+
         if (IsPositionShareSkill(skill))
         {
             return SkillPositionShare;
@@ -960,6 +1099,16 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (IsStopSignalSkill(skill))
         {
             return SkillStopSignal;
+        }
+
+        if (IsDemolitionSkill(skill))
+        {
+            return SkillDemolition;
+        }
+
+        if (IsSafeZoneSkill(skill))
+        {
+            return SkillSafeZone;
         }
 
         if (IsDroneSkill(skill))
@@ -1051,6 +1200,44 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("드론");
     }
 
+    private bool IsReconnaissanceSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillReconnaissance ||
+               skill == "recon" ||
+               skill == "scout" ||
+               skill.Contains("reconnaissance") ||
+               skill.Contains("recon") ||
+               skill.Contains("scout") ||
+               skill.Contains("정찰");
+    }
+
+    private bool IsObservationSupportSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillObservationSupport ||
+               skill == "observation_support" ||
+               skill == "vision_support" ||
+               skill.Contains("observation support") ||
+               skill.Contains("vision support") ||
+               skill.Contains("관측지원") ||
+               skill.Contains("관측 지원") ||
+               skill.Contains("시야지원") ||
+               skill.Contains("시야 지원");
+    }
+
     private bool IsPositionShareSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -1087,6 +1274,36 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("stop sign") ||
                skill.Contains("정지신호") ||
                skill.Contains("정지 신호");
+    }
+
+    private bool IsDemolitionSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillDemolition ||
+               skill.Contains("demolish") ||
+               skill.Contains("철거");
+    }
+
+    private bool IsSafeZoneSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillSafeZone ||
+               skill == "safe_zone" ||
+               skill.Contains("safe zone") ||
+               skill.Contains("안전구역") ||
+               skill.Contains("안전 구역");
     }
 
     private bool IsLegacySlowTrapSkill(string skillName)
@@ -1201,6 +1418,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
             case SkillDrone:
                 return "드론";
 
+            case SkillReconnaissance:
+                return "정찰";
+
+            case SkillObservationSupport:
+                return "관측 지원";
+
             case SkillPositionShare:
                 return "위치 공유";
 
@@ -1209,6 +1432,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case SkillStopSignal:
                 return "정지 신호";
+
+            case SkillDemolition:
+                return "철거";
+
+            case SkillSafeZone:
+                return "안전 구역";
 
             case SkillFakeBox:
                 return "페이크 박스";

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Upgrade Module
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: observer_reconnaissance_upgrade_module
+  displayName: "\uC5C5\uADF8\uB808\uC774\uB4DC \uBAA8\uB4C8"
+  description: "\uC815\uCC30 \uB4DC\uB860\uC744 \uB354 \uC790\uC8FC \uC0AC\uC6A9\uD560
+    \uC218 \uC788\uC73C\uBA70, \uC218\uC0C9 \uBC94\uC704\uB3C4 \uC870\uAE08 \uB113\uC5B4\uC9D1\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: c63cc5ae8bb668c4fbf935af41cb18b4, type: 3}
+  ownerType: 0
+  agentType: 2
+  targetType: 0
+  skillId: observationsupport
+  effectType: 11
+  value: 0
+  minStage: 1
+  stackable: 0
+  maxStack: 1

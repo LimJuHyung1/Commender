@@ -4,23 +4,29 @@ public class Reconnaissance : DroneBase
 {
     [Header("Recon Skill")]
     [SerializeField] private float flightSpeed = 12f;
-    [SerializeField] private float maxFlightDistance = 18f;
-    [SerializeField] private float revealHoldDuration = 2.5f;
-    [SerializeField] private bool stopWhenTargetFound = true;
 
-    [Header("Obstacle")]
-    [SerializeField] private LayerMask obstacleMask;
-    [SerializeField] private float obstacleCheckRadius = 0.2f;
+    [Header("Curved Flight")]
+    [SerializeField] private bool curvedFlightEnabled = false;
+    [SerializeField] private float curvedFlightAmplitude = 1.25f;
+    [SerializeField] private float curvedFlightWaveLength = 5f;
+    [SerializeField] private float curvedFlightMaxStepDistance = 0.25f;
+
+    [Header("Wall Collision")]
+    [SerializeField] private LayerMask wallLayerMask;
+    [SerializeField] private float wallCollisionRadius = 0.25f;
+    [SerializeField] private float wallCollisionYOffset = 0f;
+    [SerializeField] private float wallCollisionIgnoreSeconds = 0.1f;
 
     private Vector3 startCenterPosition;
     private Vector3 flightDirection;
+    private Vector3 flightRight;
+
+    private float forwardDistance;
     private float traveledDistance;
+    private float wallCollisionEnableTime;
 
-    private bool stoppedByTarget;
-    private float stopEndTime;
-
-    public bool IsStoppedByTarget => stoppedByTarget;
     public float TraveledDistance => traveledDistance;
+    public bool CurvedFlightEnabled => curvedFlightEnabled;
 
     public void Initialize(
         Observer observer,
@@ -34,9 +40,9 @@ public class Reconnaissance : DroneBase
         float targetRevealHoldDuration)
     {
         startCenterPosition = startCenter;
+        forwardDistance = 0f;
         traveledDistance = 0f;
-        stoppedByTarget = false;
-        stopEndTime = -1f;
+        wallCollisionEnableTime = Time.time + wallCollisionIgnoreSeconds;
 
         flightDirection = direction;
         flightDirection.y = 0f;
@@ -51,16 +57,15 @@ public class Reconnaissance : DroneBase
 
         flightDirection.Normalize();
 
-        if (reconMaxDistance > 0f)
-            maxFlightDistance = reconMaxDistance;
+        flightRight = Vector3.Cross(Vector3.up, flightDirection);
+
+        if (flightRight.sqrMagnitude <= 0.0001f)
+            flightRight = Vector3.right;
+
+        flightRight.Normalize();
 
         if (reconFlightSpeed > 0f)
             flightSpeed = reconFlightSpeed;
-
-        if (targetRevealHoldDuration > 0f)
-            revealHoldDuration = targetRevealHoldDuration;
-
-        float safetyDuration = CalculateSafetyDuration();
 
         InitializeBase(
             observer,
@@ -68,41 +73,40 @@ public class Reconnaissance : DroneBase
             droneVisualPosition,
             observationTargetLayer,
             observationRadius,
-            safetyDuration
+            0f
         );
 
         transform.rotation = Quaternion.LookRotation(flightDirection, Vector3.up);
     }
 
-    protected override void OnSkillUpdate()
+    public void SetCurvedFlightEnabled(bool enabled, float amplitude, float waveLength)
     {
-        if (stoppedByTarget)
-        {
-            if (Time.time >= stopEndTime)
-                FinishSkill();
+        curvedFlightEnabled = enabled;
 
-            return;
-        }
+        if (amplitude > 0f)
+            curvedFlightAmplitude = amplitude;
 
-        MoveForward();
+        if (waveLength > 0f)
+            curvedFlightWaveLength = waveLength;
     }
 
-    protected override void OnTargetDetected(TargetController target)
+    protected override void OnValidate()
     {
-        if (!stopWhenTargetFound)
-            return;
+        base.OnValidate();
 
-        if (stoppedByTarget)
-            return;
+        flightSpeed = Mathf.Max(0.01f, flightSpeed);
 
-        if (target == null)
-            return;
+        curvedFlightAmplitude = Mathf.Max(0f, curvedFlightAmplitude);
+        curvedFlightWaveLength = Mathf.Max(0.01f, curvedFlightWaveLength);
+        curvedFlightMaxStepDistance = Mathf.Max(0.05f, curvedFlightMaxStepDistance);
 
-        stoppedByTarget = true;
-        stopEndTime = Time.time + revealHoldDuration;
+        wallCollisionRadius = Mathf.Max(0.01f, wallCollisionRadius);
+        wallCollisionIgnoreSeconds = Mathf.Max(0f, wallCollisionIgnoreSeconds);
+    }
 
-        if (DebugLog)
-            Debug.Log($"[ReconDrone] Target found. Recon drone stopped: {target.name}");
+    protected override void OnSkillUpdate()
+    {
+        MoveForward();
     }
 
     protected override void DrawAdditionalGizmos()
@@ -118,63 +122,161 @@ public class Reconnaissance : DroneBase
         direction.Normalize();
 
         Gizmos.color = Color.green;
-        Gizmos.DrawLine(from, from + direction * maxFlightDistance);
+
+        if (curvedFlightEnabled)
+        {
+            Vector3 right = Vector3.Cross(Vector3.up, direction);
+
+            if (right.sqrMagnitude <= 0.0001f)
+                right = Vector3.right;
+
+            right.Normalize();
+
+            Vector3 previous = from;
+
+            for (int i = 1; i <= 24; i++)
+            {
+                float distance = i * 0.5f;
+                float offset = Mathf.Sin((distance / curvedFlightWaveLength) * Mathf.PI * 2f) * curvedFlightAmplitude;
+                Vector3 next = from + direction * distance + right * offset;
+
+                Gizmos.DrawLine(previous, next);
+                previous = next;
+            }
+        }
+        else
+        {
+            Gizmos.DrawLine(from, from + direction * 5f);
+        }
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(GetWallCollisionCheckPosition(transform.position), wallCollisionRadius);
     }
 
     private void MoveForward()
     {
         float moveDistance = flightSpeed * Time.deltaTime;
-        float remainingDistance = maxFlightDistance - traveledDistance;
 
-        if (remainingDistance <= 0f)
+        if (moveDistance <= 0f)
+            return;
+
+        if (!curvedFlightEnabled)
         {
-            FinishSkill();
+            MoveStep(moveDistance);
             return;
         }
 
-        moveDistance = Mathf.Min(moveDistance, remainingDistance);
+        float remainingDistance = moveDistance;
 
-        if (ShouldStopByObstacle(moveDistance))
+        while (remainingDistance > 0f)
         {
+            float stepDistance = Mathf.Min(remainingDistance, curvedFlightMaxStepDistance);
+
+            if (!MoveStep(stepDistance))
+                return;
+
+            remainingDistance -= stepDistance;
+        }
+    }
+
+    private bool MoveStep(float forwardMoveDistance)
+    {
+        Vector3 currentCenter = ObservationCenterPosition;
+        float nextForwardDistance = forwardDistance + forwardMoveDistance;
+
+        Vector3 nextCenter = curvedFlightEnabled
+            ? GetCurvedCenterPosition(nextForwardDistance)
+            : currentCenter + flightDirection * forwardMoveDistance;
+
+        if (ShouldStopByWall(currentCenter, nextCenter))
+        {
+            if (DebugLog)
+                Debug.Log("[Reconnaissance] Wall layer touched. Reconnaissance destroyed.");
+
             FinishSkill();
-            return;
+            return false;
         }
 
-        Vector3 nextCenter = ObservationCenterPosition + flightDirection * moveDistance;
-
-        traveledDistance += moveDistance;
+        forwardDistance = nextForwardDistance;
+        traveledDistance += forwardMoveDistance;
 
         SetObservationCenter(nextCenter);
         SetDroneVisualPositionFromCenter(nextCenter);
+        UpdateRotationByMovement(currentCenter, nextCenter);
 
-        if (traveledDistance >= maxFlightDistance)
-            FinishSkill();
+        return true;
     }
 
-    private bool ShouldStopByObstacle(float moveDistance)
+    private Vector3 GetCurvedCenterPosition(float distance)
     {
-        if (obstacleMask.value == 0)
+        float offset = Mathf.Sin((distance / curvedFlightWaveLength) * Mathf.PI * 2f) * curvedFlightAmplitude;
+
+        return startCenterPosition
+               + flightDirection * distance
+               + flightRight * offset;
+    }
+
+    private void UpdateRotationByMovement(Vector3 currentCenter, Vector3 nextCenter)
+    {
+        Vector3 moveDirection = nextCenter - currentCenter;
+        moveDirection.y = 0f;
+
+        if (moveDirection.sqrMagnitude <= 0.0001f)
+            return;
+
+        transform.rotation = Quaternion.LookRotation(moveDirection.normalized, Vector3.up);
+    }
+
+    private bool ShouldStopByWall(Vector3 currentCenter, Vector3 nextCenter)
+    {
+        if (wallLayerMask.value == 0)
             return false;
 
-        Vector3 origin = ObservationCenterPosition + Vector3.up * 0.2f;
-        float distance = Mathf.Max(0.01f, moveDistance);
+        if (Time.time < wallCollisionEnableTime)
+            return false;
 
-        return Physics.SphereCast(
-            origin,
-            Mathf.Max(0.01f, obstacleCheckRadius),
-            flightDirection,
+        Vector3 currentVisualPosition = GetDroneVisualPosition(currentCenter);
+        Vector3 nextVisualPosition = GetDroneVisualPosition(nextCenter);
+
+        Vector3 currentCheckPosition = GetWallCollisionCheckPosition(currentVisualPosition);
+        Vector3 nextCheckPosition = GetWallCollisionCheckPosition(nextVisualPosition);
+
+        Vector3 castDirection = nextCheckPosition - currentCheckPosition;
+        float castDistance = castDirection.magnitude;
+
+        if (castDistance <= 0.0001f)
+        {
+            return Physics.CheckSphere(
+                nextCheckPosition,
+                wallCollisionRadius,
+                wallLayerMask,
+                QueryTriggerInteraction.Ignore
+            );
+        }
+
+        bool hitDuringMove = Physics.SphereCast(
+            currentCheckPosition,
+            wallCollisionRadius,
+            castDirection.normalized,
             out _,
-            distance,
-            obstacleMask,
+            castDistance,
+            wallLayerMask,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (hitDuringMove)
+            return true;
+
+        return Physics.CheckSphere(
+            nextCheckPosition,
+            wallCollisionRadius,
+            wallLayerMask,
             QueryTriggerInteraction.Ignore
         );
     }
 
-    private float CalculateSafetyDuration()
+    private Vector3 GetWallCollisionCheckPosition(Vector3 visualPosition)
     {
-        float safeSpeed = Mathf.Max(0.01f, flightSpeed);
-        float flightDuration = maxFlightDistance / safeSpeed;
-
-        return flightDuration + revealHoldDuration + 0.5f;
+        return visualPosition + Vector3.up * wallCollisionYOffset;
     }
 }

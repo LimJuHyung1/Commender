@@ -19,11 +19,15 @@ public sealed class CommandValidator
     private const string SkillTrackingInstinct = "trackinginstinct";
 
     private const string SkillDrone = "drone";
+    private const string SkillReconnaissance = "reconnaissance";
+    private const string SkillObservationSupport = "observationsupport";
     private const string SkillPositionShareOn = "positionshare_on";
     private const string SkillPositionShareOff = "positionshare_off";
 
     private const string SkillBarricade = "barricade";
     private const string SkillStopSignal = "stopsignal";
+    private const string SkillDemolition = "demolition";
+    private const string SkillSafeZone = "safezone";
 
     private const string SkillNoiseMaker = "noisemaker";
     private const string SkillHologram = "hologram";
@@ -110,6 +114,30 @@ public sealed class CommandValidator
         "드론"
     };
 
+    private static readonly string[] ReconnaissanceInstructionKeywords =
+    {
+        "reconnaissance",
+        "recon",
+        "scout",
+        "정찰",
+        "정찰 드론",
+        "드론 정찰"
+    };
+
+    private static readonly string[] ObservationSupportInstructionKeywords =
+    {
+        "observationsupport",
+        "observation support",
+        "vision support",
+        "sight support",
+        "관측 지원",
+        "관측지원",
+        "시야 지원",
+        "시야지원",
+        "관측 보조",
+        "관측보조"
+    };
+
     private static readonly string[] PositionShareInstructionKeywords =
     {
         "positionshare",
@@ -180,6 +208,25 @@ public sealed class CommandValidator
         "구속 함정",
         "구속함정",
         "함정"
+    };
+
+    private static readonly string[] DemolitionInstructionKeywords =
+    {
+        "demolition",
+        "demolish",
+        "remove obstacle",
+        "remove obstacles",
+        "철거",
+        "장애물 철거"
+    };
+
+    private static readonly string[] SafeZoneInstructionKeywords =
+    {
+        "safezone",
+        "safe zone",
+        "safe_zone",
+        "안전 구역",
+        "안전구역"
     };
 
     private static readonly string[] NoiseMakerInstructionKeywords =
@@ -263,6 +310,12 @@ public sealed class CommandValidator
         if (TryResolvePositionShareSkill(normalizedInstruction, out string positionShareSkill))
             return positionShareSkill;
 
+        if (TryResolveReconnaissanceSkill(normalizedInstruction, normalizedSkill, out string reconnaissanceSkill))
+            return reconnaissanceSkill;
+
+        if (TryResolveObservationSupportSkill(normalizedInstruction, normalizedSkill, out string observationSupportSkill))
+            return observationSupportSkill;
+
         if (TryResolveDroneSkill(normalizedInstruction, normalizedSkill, out string droneSkill))
             return droneSkill;
 
@@ -283,6 +336,12 @@ public sealed class CommandValidator
 
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
+
+        if (IsDemolitionInstruction(normalizedInstruction))
+            return SkillDemolition;
+
+        if (IsSafeZoneInstruction(normalizedInstruction))
+            return SkillSafeZone;
 
         if (IsBarricadeInstruction(normalizedInstruction))
             return SkillBarricade;
@@ -306,6 +365,12 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedSkill, SkillSmoke))
             return MatchOrHold(normalizedInstruction, SmokeInstructionKeywords, SkillSmoke, aiSkill, originalInstruction);
 
+        if (ContainsAny(normalizedSkill, SkillReconnaissance, "recon", "scout"))
+            return MatchOrHold(normalizedInstruction, ReconnaissanceInstructionKeywords, SkillReconnaissance, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillObservationSupport, "observation support", "vision support"))
+            return MatchOrHold(normalizedInstruction, ObservationSupportInstructionKeywords, SkillObservationSupport, aiSkill, originalInstruction);
+
         if (ContainsAny(normalizedSkill, SkillDrone))
             return MatchOrHold(normalizedInstruction, DroneInstructionKeywords, SkillDrone, aiSkill, originalInstruction);
 
@@ -325,6 +390,12 @@ public sealed class CommandValidator
             Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
             return SkillHold;
         }
+
+        if (ContainsAny(normalizedSkill, SkillDemolition, "demolish", "remove obstacle"))
+            return MatchOrHold(normalizedInstruction, DemolitionInstructionKeywords, SkillDemolition, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillSafeZone, "safe zone", "safe_zone"))
+            return MatchOrHold(normalizedInstruction, SafeZoneInstructionKeywords, SkillSafeZone, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillBarricade))
             return MatchOrHold(normalizedInstruction, BarricadeInstructionKeywords, SkillBarricade, aiSkill, originalInstruction);
@@ -358,11 +429,23 @@ public sealed class CommandValidator
                 return SkillHold;
             }
 
+            if (IsReconnaissanceInstruction(normalizedInstruction))
+                return SkillReconnaissance;
+
+            if (IsObservationSupportInstruction(normalizedInstruction))
+                return SkillObservationSupport;
+
             if (IsLookAroundInstruction(normalizedInstruction))
                 return SkillLookAround;
 
             if (ContainsAny(normalizedInstruction, DroneInstructionKeywords))
                 return SkillDrone;
+
+            if (IsDemolitionInstruction(normalizedInstruction))
+                return SkillDemolition;
+
+            if (IsSafeZoneInstruction(normalizedInstruction))
+                return SkillSafeZone;
 
             if (IsBarricadeInstruction(normalizedInstruction))
                 return SkillBarricade;
@@ -404,6 +487,16 @@ public sealed class CommandValidator
         return ContainsAny(Normalize(source), TrackingInstinctInstructionKeywords);
     }
 
+    public bool IsReconnaissanceInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), ReconnaissanceInstructionKeywords);
+    }
+
+    public bool IsObservationSupportInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), ObservationSupportInstructionKeywords);
+    }
+
     public bool IsMovementInstruction(string source)
     {
         string normalized = Normalize(source);
@@ -422,6 +515,16 @@ public sealed class CommandValidator
     public bool IsStopSignalInstruction(string source)
     {
         return ContainsAny(Normalize(source), StopSignalInstructionKeywords);
+    }
+
+    public bool IsDemolitionInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), DemolitionInstructionKeywords);
+    }
+
+    public bool IsSafeZoneInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), SafeZoneInstructionKeywords);
     }
 
     public bool IsFakeBoxInstruction(string source)
@@ -569,6 +672,60 @@ public sealed class CommandValidator
         }
 
         skill = SkillDrone;
+        return true;
+    }
+
+    private bool TryResolveReconnaissanceSkill(
+        string normalizedInstruction,
+        string normalizedSkill,
+        out string skill)
+    {
+        skill = "";
+
+        bool instructionRequestsReconnaissance =
+            ContainsAny(normalizedInstruction, ReconnaissanceInstructionKeywords);
+
+        bool aiReturnedReconnaissance =
+            ContainsAny(normalizedSkill, SkillReconnaissance, "recon", "scout");
+
+        if (!instructionRequestsReconnaissance && !aiReturnedReconnaissance)
+            return false;
+
+        if (!instructionRequestsReconnaissance)
+        {
+            Debug.LogWarning($"[Commander] 원문에 정찰 요청이 없어 skill='{normalizedSkill}'를 무시합니다.");
+            skill = SkillHold;
+            return true;
+        }
+
+        skill = SkillReconnaissance;
+        return true;
+    }
+
+    private bool TryResolveObservationSupportSkill(
+        string normalizedInstruction,
+        string normalizedSkill,
+        out string skill)
+    {
+        skill = "";
+
+        bool instructionRequestsObservationSupport =
+            ContainsAny(normalizedInstruction, ObservationSupportInstructionKeywords);
+
+        bool aiReturnedObservationSupport =
+            ContainsAny(normalizedSkill, SkillObservationSupport, "observation support", "vision support");
+
+        if (!instructionRequestsObservationSupport && !aiReturnedObservationSupport)
+            return false;
+
+        if (!instructionRequestsObservationSupport)
+        {
+            Debug.LogWarning($"[Commander] 원문에 관측 지원 요청이 없어 skill='{normalizedSkill}'를 무시합니다.");
+            skill = SkillHold;
+            return true;
+        }
+
+        skill = SkillObservationSupport;
         return true;
     }
 

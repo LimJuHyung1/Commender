@@ -15,6 +15,8 @@ public class Engineer : AgentController, IUpgradeReceiver
 
     private const string SkillBarricade = "barricade";
     private const string SkillStopSignal = "stopsignal";
+    private const string SkillDemolition = "demolition";
+    private const string SkillSafeZone = "safezone";
 
     private const string UpgradeBarricadeLarge = "engineer_barricade_large";
     private const string UpgradeBarricadeMulti = "engineer_barricade_multi";
@@ -56,6 +58,18 @@ public class Engineer : AgentController, IUpgradeReceiver
     [SerializeField] private float stopSignalDuration = 2f;
     [SerializeField] private float stopSignalLifeTime = 12f;
 
+    [Header("철거 설정")]
+    [SerializeField] private float demolitionRadius = 3.5f;
+    [SerializeField] private LayerMask demolitionObstacleLayer;
+    [SerializeField] private string demolitionRootName = "ObstacleRoot";
+
+    [Header("안전 구역 설정")]
+    [SerializeField] private GameObject safeZonePrefab;
+    [SerializeField] private bool replaceExistingSafeZone = true;
+    [SerializeField] private Vector2 safeZoneSize = new Vector2(6f, 6f);
+    [SerializeField] private float safeZoneLifeTime = 15f;
+    [SerializeField] private float safeZoneGaugeRecoveryPerSecond = 4f;
+
     [Header("Upgrade - Engineer")]
     [SerializeField] private float largeBarricadeScaleMultiplier = 3f;
     [SerializeField] private int multiBarricadeCount = 3;
@@ -81,6 +95,7 @@ public class Engineer : AgentController, IUpgradeReceiver
 
     private readonly List<GameObject> currentBarricades = new List<GameObject>();
     private GameObject currentStopSignal;
+    private GameObject currentSafeZone;
 
     private float currentBarricadeScaleMultiplier = 1f;
     private int currentBarricadeSpawnCount = 1;
@@ -165,6 +180,13 @@ public class Engineer : AgentController, IUpgradeReceiver
         stopSignalDeployLockSeconds = Mathf.Max(0f, stopSignalDeployLockSeconds);
         stopSignalSpawnDelay = Mathf.Max(0f, stopSignalSpawnDelay);
 
+        demolitionRadius = Mathf.Max(0.1f, demolitionRadius);
+
+        safeZoneSize.x = Mathf.Max(0.1f, safeZoneSize.x);
+        safeZoneSize.y = Mathf.Max(0.1f, safeZoneSize.y);
+        safeZoneLifeTime = Mathf.Max(0.1f, safeZoneLifeTime);
+        safeZoneGaugeRecoveryPerSecond = Mathf.Max(0f, safeZoneGaugeRecoveryPerSecond);
+
         hitReactionLockSeconds = Mathf.Max(0f, hitReactionLockSeconds);
 
         CacheEngineerAnimationHashes();
@@ -217,9 +239,11 @@ public class Engineer : AgentController, IUpgradeReceiver
     {
         return new[]
         {
-            SkillBarricade,
-            SkillStopSignal
-        };
+        SkillBarricade,
+        SkillStopSignal,
+        SkillDemolition,
+        SkillSafeZone
+    };
     }
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
@@ -335,6 +359,18 @@ public class Engineer : AgentController, IUpgradeReceiver
             return;
         }
 
+        if (IsDemolitionSkill(skill))
+        {
+            TryDemolishObstacle();
+            return;
+        }
+
+        if (IsSafeZoneSkill(skill))
+        {
+            TryDeploySafeZone(targetPos);
+            return;
+        }
+
         Debug.LogWarning($"[Engineer {AgentID}] 알 수 없는 스킬입니다: {skillName}");
     }
 
@@ -438,6 +474,28 @@ public class Engineer : AgentController, IUpgradeReceiver
                skill.Contains("정지신호");
     }
 
+    private bool IsDemolitionSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains(SkillDemolition) ||
+               skill.Contains("demolish") ||
+               skill.Contains("철거");
+    }
+
+    private bool IsSafeZoneSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains(SkillSafeZone) ||
+               skill.Contains("safe zone") ||
+               skill.Contains("safe_zone") ||
+               skill.Contains("안전 구역") ||
+               skill.Contains("안전구역");
+    }
+
     private void TryDeployBarricade(Vector3 targetPos)
     {
         if (barricadePrefab == null)
@@ -502,6 +560,201 @@ public class Engineer : AgentController, IUpgradeReceiver
             navAgent.isStopped = false;
 
         UpdateAnimationState(true);
+    }
+
+    private void TryDemolishObstacle()
+    {
+        if (!TryFindNearestObstacle(out GameObject targetObject, out Vector3 targetPosition))
+        {
+            Debug.LogWarning($"[Engineer {AgentID}] 철거 가능한 Obstacle 레이어 오브젝트가 범위 안에 없습니다.");
+            return;
+        }
+
+        if (!TryConsumeSkillGaugeForSkill(SkillDemolition))
+            return;
+
+        if (stopWhenUseSkill)
+            ForceStopForSkill();
+
+        RequestInstalledObjectCameraAtPosition(targetPosition);
+
+        targetObject.SetActive(false);
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+            navAgent.isStopped = false;
+
+        UpdateAnimationState(true);
+
+        Debug.Log($"[Engineer {AgentID}] 철거 완료. 대상={targetObject.name}, 위치={targetPosition}");
+    }
+
+    private bool TryFindNearestObstacle(out GameObject targetObject, out Vector3 targetPosition)
+    {
+        targetObject = null;
+        targetPosition = transform.position;
+
+        int obstacleMask = GetDemolitionObstacleMask();
+
+        if (obstacleMask == 0)
+            return false;
+
+        Collider[] colliders = Physics.OverlapSphere(
+            transform.position,
+            demolitionRadius,
+            obstacleMask,
+            QueryTriggerInteraction.Collide
+        );
+
+        if (colliders == null || colliders.Length == 0)
+            return false;
+
+        float closestSqrDistance = float.MaxValue;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider candidateCollider = colliders[i];
+
+            if (candidateCollider == null)
+                continue;
+
+            GameObject candidateObject = ResolveDemolitionTargetObject(candidateCollider.transform);
+
+            if (candidateObject == null || !candidateObject.activeInHierarchy)
+                continue;
+
+            Vector3 closestPoint = candidateCollider.ClosestPoint(transform.position);
+            float sqrDistance = (closestPoint - transform.position).sqrMagnitude;
+
+            if (sqrDistance >= closestSqrDistance)
+                continue;
+
+            closestSqrDistance = sqrDistance;
+            targetObject = candidateObject;
+            targetPosition = closestPoint;
+        }
+
+        return targetObject != null;
+    }
+
+    private GameObject ResolveDemolitionTargetObject(Transform hitTransform)
+    {
+        if (hitTransform == null)
+            return null;
+
+        Transform obstacleRoot = FindAncestorByName(hitTransform, demolitionRootName);
+
+        if (obstacleRoot == null)
+            return hitTransform.gameObject;
+
+        Transform current = hitTransform;
+
+        while (current != null && current.parent != null)
+        {
+            if (current.parent == obstacleRoot)
+                return current.gameObject;
+
+            current = current.parent;
+        }
+
+        return hitTransform.gameObject;
+    }
+
+    private Transform FindAncestorByName(Transform startTransform, string targetName)
+    {
+        if (startTransform == null || string.IsNullOrWhiteSpace(targetName))
+            return null;
+
+        Transform current = startTransform;
+
+        while (current != null)
+        {
+            if (current.name == targetName)
+                return current;
+
+            current = current.parent;
+        }
+
+        return null;
+    }
+
+
+    private int GetDemolitionObstacleMask()
+    {
+        if (demolitionObstacleLayer.value != 0)
+            return demolitionObstacleLayer.value;
+
+        int obstacleLayer = LayerMask.NameToLayer("Obstacle");
+
+        if (obstacleLayer < 0)
+            return 0;
+
+        return 1 << obstacleLayer;
+    }
+
+    private void TryDeploySafeZone(Vector3 targetPos)
+    {
+        if (!TryConsumeSkillGaugeForSkill(SkillSafeZone))
+            return;
+
+        if (stopWhenUseSkill)
+            ForceStopForSkill();
+
+        DeploySafeZone(targetPos);
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+            navAgent.isStopped = false;
+
+        UpdateAnimationState(true);
+    }
+
+    private void DeploySafeZone(Vector3 targetPos)
+    {
+        Vector3 spawnPos = BuildSpawnPosition(targetPos);
+        Quaternion spawnRotation = Quaternion.identity;
+
+        if (replaceExistingSafeZone && currentSafeZone != null)
+        {
+            Destroy(currentSafeZone);
+            currentSafeZone = null;
+        }
+
+        GameObject spawnedSafeZone;
+
+        if (safeZonePrefab != null)
+        {
+            spawnedSafeZone = Instantiate(
+                safeZonePrefab,
+                spawnPos,
+                spawnRotation,
+                deployParent != null ? deployParent : null
+            );
+        }
+        else
+        {
+            spawnedSafeZone = new GameObject($"Engineer_{AgentID}_SafeZone");
+            spawnedSafeZone.transform.SetParent(deployParent != null ? deployParent : null);
+            spawnedSafeZone.transform.SetPositionAndRotation(spawnPos, spawnRotation);
+        }
+
+        EngineerSafeZone safeZone = spawnedSafeZone.GetComponent<EngineerSafeZone>();
+
+        if (safeZone == null)
+            safeZone = spawnedSafeZone.AddComponent<EngineerSafeZone>();
+
+        safeZone.Configure(
+            safeZoneSize,
+            safeZoneLifeTime,
+            safeZoneGaugeRecoveryPerSecond
+        );
+
+        currentSafeZone = spawnedSafeZone;
+
+        RequestInstalledObjectCamera(spawnedSafeZone.transform);
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 안전 구역 설치 완료. " +
+            $"Position={spawnPos}, Size={safeZoneSize}, LifeTime={safeZoneLifeTime}, RecoveryPerSecond={safeZoneGaugeRecoveryPerSecond}"
+        );
     }
 
     private IEnumerator BarricadeDeployRoutine(Vector3 targetPos)

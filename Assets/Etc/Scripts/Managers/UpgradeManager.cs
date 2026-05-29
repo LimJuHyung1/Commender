@@ -14,6 +14,24 @@ public class UpgradeManager : MonoBehaviour
     private const string ChaserTrackingInstinctMaxStack10 = "chaser_tracking_instinct_max_stack_10";
     private const string ChaserTrackingInstinctInstinctiveCharge = "chaser_tracking_instinct_instinctive_charge";
 
+    private const string ObserverUnlockReconnaissance = "observer_unlock_reconnaissance";
+    private const string ObserverUnlockObservationSupport = "observer_unlock_observation_support";
+
+    private const string ObserverReconnaissanceUpgradeModule = "observer_reconnaissance_upgrade_module";
+    private const string ObserverReconnaissanceSkilledPilot = "observer_reconnaissance_skilled_pilot";
+
+    private const string ObserverObservationSupportHawkeye = "observer_observation_support_hawkeye";
+    private const string ObserverObservationSupportEfficientObservation = "observer_observation_support_efficient_observation";
+
+    private const string EngineerUnlockDemolition = "engineer_unlock_demolition";
+    private const string EngineerUnlockSafeZone = "engineer_unlock_safe_zone";
+
+    private const string EngineerDemolitionWideArea = "engineer_demolition_wide_area";
+    private const string EngineerDemolitionMulti = "engineer_demolition_multi";
+
+    private const string EngineerSafeZoneExpanded = "engineer_safe_zone_expanded";
+    private const string EngineerSafeZoneEmergencyCharge = "engineer_safe_zone_emergency_charge";
+
     [Header("Database")]
     [SerializeField] private UpgradeDatabase upgradeDatabase;
 
@@ -310,6 +328,16 @@ public class UpgradeManager : MonoBehaviour
             return false;
         }
 
+        if (!CanAddObserverNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
+        {
+            return false;
+        }
+
+        if (!CanAddEngineerNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
+        {
+            return false;
+        }
+
         int currentStack = CountUpgrade(alreadySelectedUpgradeIds, upgrade.UpgradeId);
 
         if (!upgrade.Stackable && currentStack > 0)
@@ -372,6 +400,97 @@ public class UpgradeManager : MonoBehaviour
         return true;
     }
 
+    private bool CanAddObserverNewSkillUpgrade(
+        UpgradeDefinition upgrade,
+        List<string> alreadySelectedUpgradeIds)
+    {
+        if (upgrade == null)
+        {
+            return false;
+        }
+
+        string upgradeId = upgrade.UpgradeId;
+
+        bool hasReconnaissance = ContainsUpgrade(
+            alreadySelectedUpgradeIds,
+            ObserverUnlockReconnaissance
+        );
+
+        bool hasObservationSupport = ContainsUpgrade(
+            alreadySelectedUpgradeIds,
+            ObserverUnlockObservationSupport
+        );
+
+        if (upgradeId == ObserverUnlockReconnaissance && hasObservationSupport)
+        {
+            return false;
+        }
+
+        if (upgradeId == ObserverUnlockObservationSupport && hasReconnaissance)
+        {
+            return false;
+        }
+
+        if (IsReconnaissanceUpgrade(upgradeId) && !hasReconnaissance)
+        {
+            return false;
+        }
+
+        if (IsObservationSupportUpgrade(upgradeId) && !hasObservationSupport)
+        {
+            return false;
+        }
+
+        if (IsReconnaissanceUpgrade(upgradeId) && hasObservationSupport)
+        {
+            return false;
+        }
+
+        if (IsObservationSupportUpgrade(upgradeId) && hasReconnaissance)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool CanAddEngineerNewSkillUpgrade(
+    UpgradeDefinition upgrade,
+    List<string> alreadySelectedUpgradeIds)
+    {
+        if (upgrade == null)
+        {
+            return false;
+        }
+
+        string upgradeId = upgrade.UpgradeId;
+
+        bool hasDemolition = ContainsUpgrade(alreadySelectedUpgradeIds, EngineerUnlockDemolition);
+        bool hasSafeZone = ContainsUpgrade(alreadySelectedUpgradeIds, EngineerUnlockSafeZone);
+
+        if (upgradeId == EngineerUnlockDemolition && hasSafeZone)
+        {
+            return false;
+        }
+
+        if (upgradeId == EngineerUnlockSafeZone && hasDemolition)
+        {
+            return false;
+        }
+
+        if (IsDemolitionUpgrade(upgradeId) && !hasDemolition)
+        {
+            return false;
+        }
+
+        if (IsSafeZoneUpgrade(upgradeId) && !hasSafeZone)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private bool IsPatrolUpgrade(string upgradeId)
     {
         return upgradeId == ChaserPatrolPressureTracking ||
@@ -382,6 +501,77 @@ public class UpgradeManager : MonoBehaviour
     {
         return upgradeId == ChaserTrackingInstinctMaxStack10 ||
                upgradeId == ChaserTrackingInstinctInstinctiveCharge;
+    }
+
+    private bool IsReconnaissanceUpgrade(string upgradeId)
+    {
+        return upgradeId == ObserverReconnaissanceUpgradeModule ||
+               upgradeId == ObserverReconnaissanceSkilledPilot;
+    }
+
+    private bool IsObservationSupportUpgrade(string upgradeId)
+    {
+        return upgradeId == ObserverObservationSupportHawkeye ||
+               upgradeId == ObserverObservationSupportEfficientObservation;
+    }
+
+    private bool IsDemolitionUpgrade(string upgradeId)
+    {
+        return upgradeId == EngineerDemolitionWideArea ||
+               upgradeId == EngineerDemolitionMulti;
+    }
+
+    private bool IsSafeZoneUpgrade(string upgradeId)
+    {
+        return upgradeId == EngineerSafeZoneExpanded ||
+               upgradeId == EngineerSafeZoneEmergencyCharge;
+    }
+
+    public string GetUnlockedEngineerThirdSkillName()
+    {
+        if (HasAgentUpgrade(EngineerUnlockDemolition))
+        {
+            return "demolition";
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockSafeZone))
+        {
+            return "safezone";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockDemolition))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockSafeZone))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedEngineerThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedEngineerThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
     }
 
     private bool ContainsUpgrade(List<string> upgradeIds, string upgradeId)
@@ -474,10 +664,56 @@ public class UpgradeManager : MonoBehaviour
         return null;
     }
 
-
     public Sprite GetUnlockedChaserThirdSkillIcon()
     {
         UpgradeDefinition upgrade = GetUnlockedChaserThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
+    }
+
+    public string GetUnlockedObserverThirdSkillName()
+    {
+        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
+        {
+            return "reconnaissance";
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
+        {
+            return "observationsupport";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedObserverThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedObserverThirdSkillUpgrade();
 
         if (upgrade == null)
         {

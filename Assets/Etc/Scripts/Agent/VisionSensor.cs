@@ -48,17 +48,19 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
     private readonly RaycastHit[] rayHits = new RaycastHit[1];
 
     private float currentViewRadius;
+    private float currentViewAngle;
     private float smokeDebuffEndTime = -1f;
     private float smokeDebuffRadius = -1f;
 
     private readonly Dictionary<object, float> externalViewRadiusMultipliers = new();
+    private readonly Dictionary<object, float> externalViewAngleOffsets = new();
 
     public bool IsSeeingTarget => isSeeingTarget;
     public bool IsWallSightEnabled => wallSightEnabled;
     public Transform CurrentSeenTarget => currentSeenTarget;
     public Vector3 LastSeenPosition { get; private set; }
     public float CurrentViewRadius => currentViewRadius;
-    public float CurrentViewAngle => viewAngle;
+    public float CurrentViewAngle => currentViewAngle;
     public bool IsSmokeDebuffed => smokeDebuffEndTime > Time.time;
     public bool IsOperational => isActiveAndEnabled && gameObject.activeInHierarchy && owner != null;
 
@@ -77,6 +79,7 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
 
         viewRadius = Mathf.Max(minimumViewRadius, viewRadius);
         currentViewRadius = viewRadius;
+        currentViewAngle = Mathf.Clamp(viewAngle, 1f, 360f);
 
         targetResults = new Collider[maxTargets];
 
@@ -115,10 +118,15 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         viewAngle = stats.viewAngle;
 
         RefreshCurrentViewRadius();
+        RefreshCurrentViewAngle();
 
         if (debugLog)
         {
-            Debug.Log($"[{name}] Vision stats applied. baseRadius={viewRadius}, currentRadius={currentViewRadius}, angle={viewAngle}");
+            Debug.Log(
+                $"[{name}] Vision stats applied. " +
+                $"baseRadius={viewRadius}, currentRadius={currentViewRadius}, " +
+                $"baseAngle={viewAngle}, currentAngle={currentViewAngle}"
+            );
         }
 
         ForceEvaluateVision();
@@ -160,7 +168,10 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
 
         if (debugLog)
         {
-            Debug.Log($"[{name}] External view radius multiplier set. source={source}, multiplier={multiplier:F2}, currentRadius={currentViewRadius:F2}");
+            Debug.Log(
+                $"[{name}] External view radius multiplier set. " +
+                $"source={source}, multiplier={multiplier:F2}, currentRadius={currentViewRadius:F2}"
+            );
         }
     }
 
@@ -177,7 +188,49 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
 
         if (debugLog)
         {
-            Debug.Log($"[{name}] External view radius multiplier removed. source={source}, currentRadius={currentViewRadius:F2}");
+            Debug.Log(
+                $"[{name}] External view radius multiplier removed. " +
+                $"source={source}, currentRadius={currentViewRadius:F2}"
+            );
+        }
+    }
+
+    public void SetExternalViewAngleOffset(object source, float offset)
+    {
+        if (source == null)
+            return;
+
+        externalViewAngleOffsets[source] = offset;
+
+        RefreshCurrentViewAngle();
+        ForceEvaluateVision();
+
+        if (debugLog)
+        {
+            Debug.Log(
+                $"[{name}] External view angle offset set. " +
+                $"source={source}, offset={offset:F1}, currentAngle={currentViewAngle:F1}"
+            );
+        }
+    }
+
+    public void RemoveExternalViewAngleOffset(object source)
+    {
+        if (source == null)
+            return;
+
+        if (!externalViewAngleOffsets.Remove(source))
+            return;
+
+        RefreshCurrentViewAngle();
+        ForceEvaluateVision();
+
+        if (debugLog)
+        {
+            Debug.Log(
+                $"[{name}] External view angle offset removed. " +
+                $"source={source}, currentAngle={currentViewAngle:F1}"
+            );
         }
     }
 
@@ -294,6 +347,24 @@ public class VisionSensor : MonoBehaviour, ISmokeDebuffReceiver
         }
 
         return multiplier;
+    }
+
+    private void RefreshCurrentViewAngle()
+    {
+        float angleOffset = CalculateExternalViewAngleOffset();
+        currentViewAngle = Mathf.Clamp(viewAngle + angleOffset, 1f, 360f);
+    }
+
+    private float CalculateExternalViewAngleOffset()
+    {
+        float offset = 0f;
+
+        foreach (KeyValuePair<object, float> pair in externalViewAngleOffsets)
+        {
+            offset += pair.Value;
+        }
+
+        return offset;
     }
 
     private void UpdateLoseSightGrace()

@@ -116,6 +116,9 @@ public class AgentStatsSO : ScriptableObject
     [FormerlySerializedAs("slowTrapSkillGaugeMax")]
     public float stopSignalSkillGaugeMax = 80f;
 
+    public float demolitionSkillGaugeMax = 60f;
+    public float safeZoneSkillGaugeMax = 100f;
+    
     [Header("트릭스터 스킬 게이지")]
     public float fakeBoxSkillGaugeMax = 70f;
     public float jokerCardSkillGaugeMax = 100f;
@@ -220,6 +223,8 @@ public class AgentStatsSO : ScriptableObject
 
         barricadeSkillGaugeMax = Mathf.Max(0f, barricadeSkillGaugeMax);
         stopSignalSkillGaugeMax = Mathf.Max(0f, stopSignalSkillGaugeMax);
+        demolitionSkillGaugeMax = Mathf.Max(0f, demolitionSkillGaugeMax);
+        safeZoneSkillGaugeMax = Mathf.Max(0f, safeZoneSkillGaugeMax);
 
         fakeBoxSkillGaugeMax = Mathf.Max(0f, fakeBoxSkillGaugeMax);
         jokerCardSkillGaugeMax = Mathf.Max(0f, jokerCardSkillGaugeMax);
@@ -282,6 +287,12 @@ public class AgentStatsSO : ScriptableObject
         if (IsStopSignalSkill(skill))
             return Mathf.Max(0f, stopSignalSkillGaugeMax);
 
+        if (IsDemolitionSkill(skill))
+            return Mathf.Max(0f, demolitionSkillGaugeMax);
+
+        if (IsSafeZoneSkill(skill))
+            return Mathf.Max(0f, safeZoneSkillGaugeMax);
+
         if (IsFakeBoxSkill(skill))
             return Mathf.Max(0f, fakeBoxSkillGaugeMax);
 
@@ -327,7 +338,9 @@ public class AgentStatsSO : ScriptableObject
                 return Mathf.Max(
                     0f,
                     barricadeSkillGaugeMax,
-                    stopSignalSkillGaugeMax
+                    stopSignalSkillGaugeMax,
+                    demolitionSkillGaugeMax,
+                    safeZoneSkillGaugeMax
                 );
 
             case AgentRole.Trickster:
@@ -346,9 +359,11 @@ public class AgentStatsSO : ScriptableObject
                     droneSkillGaugeMax,
                     reconnaissanceSkillGaugeMax,
                     observationSupportSkillGaugeMax,
-                    barricadeSkillGaugeMax,
-                    stopSignalSkillGaugeMax,
-                    fakeBoxSkillGaugeMax,
+barricadeSkillGaugeMax,
+stopSignalSkillGaugeMax,
+demolitionSkillGaugeMax,
+safeZoneSkillGaugeMax,
+fakeBoxSkillGaugeMax,
                     jokerCardSkillGaugeMax,
                     noisemakerSkillGaugeMax,
                     hologramSkillGaugeMax
@@ -514,6 +529,28 @@ public class AgentStatsSO : ScriptableObject
                skill.Contains("통제신호") ||
                skill.Contains("통제 신호") ||
                IsLegacySlowTrapSkill(skill);
+    }
+
+    private bool IsDemolitionSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("demolition") ||
+               skill.Contains("demolish") ||
+               skill.Contains("철거");
+    }
+
+    private bool IsSafeZoneSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("safezone") ||
+               skill.Contains("safe zone") ||
+               skill.Contains("safe_zone") ||
+               skill.Contains("안전구역") ||
+               skill.Contains("안전 구역");
     }
 
     private bool IsFakeBoxSkill(string skill)
