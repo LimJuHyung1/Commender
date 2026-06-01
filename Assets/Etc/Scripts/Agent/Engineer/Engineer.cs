@@ -22,6 +22,10 @@ public class Engineer : AgentController, IUpgradeReceiver
     private const string UpgradeBarricadeMulti = "engineer_barricade_multi";
     private const string UpgradeStopSignalWideArea = "engineer_stop_signal_wide_area";
     private const string UpgradeStopSignalLongDuration = "engineer_stop_signal_long_duration";
+    private const string UpgradeDemolitionAllInRange = "engineer_demolition_all_in_range";
+    private const string UpgradeDemolitionAutoExecute = "engineer_demolition_auto_execute";
+    private const string UpgradeSafeZoneExpanded = "engineer_safe_zone_expanded";
+    private const string UpgradeSafeZoneFollowAgent = "engineer_safe_zone_follow_agent";
 
     private const string IsMovingParameter = "IsMoving";
     private const string MoveSpeedParameter = "MoveSpeed";
@@ -60,15 +64,26 @@ public class Engineer : AgentController, IUpgradeReceiver
 
     [Header("철거 설정")]
     [SerializeField] private float demolitionRadius = 3.5f;
+    [SerializeField] private float demolitionGaugeRequired = 60f;
+    [SerializeField] private float demolitionAllInRangeGaugeRequired = 120f;
     [SerializeField] private LayerMask demolitionObstacleLayer;
     [SerializeField] private string demolitionRootName = "ObstacleRoot";
+
+    [Header("철거 이펙트 설정")]
+    [SerializeField] private GameObject demolitionEffectPrefab;
+    [SerializeField] private float demolitionEffectLifeTime = 2f;
+    [SerializeField] private float demolitionEffectYOffset = 0.1f;
+    [SerializeField] private bool requestCameraOnDemolitionEffect = true;
 
     [Header("안전 구역 설정")]
     [SerializeField] private GameObject safeZonePrefab;
     [SerializeField] private bool replaceExistingSafeZone = true;
     [SerializeField] private Vector2 safeZoneSize = new Vector2(6f, 6f);
+    [SerializeField] private Vector2 expandedSafeZoneSize = new Vector2(8f, 8f);
     [SerializeField] private float safeZoneLifeTime = 15f;
     [SerializeField] private float safeZoneGaugeRecoveryPerSecond = 4f;
+    [SerializeField] private float safeZoneGaugeRequired = 100f;
+    [SerializeField] private float expandedSafeZoneGaugeRequired = 75f;
 
     [Header("Upgrade - Engineer")]
     [SerializeField] private float largeBarricadeScaleMultiplier = 3f;
@@ -102,6 +117,11 @@ public class Engineer : AgentController, IUpgradeReceiver
     private float currentStopSignalRadiusMultiplier = 1f;
     private float currentStopSignalDurationMultiplier = 1f;
     private float currentStopSignalLifeTimeMultiplier = 1f;
+
+    private bool isDemolitionAllInRangeEnabled;
+    private bool isDemolitionAutoExecuteEnabled;
+    private bool isSafeZoneExpandedEnabled;
+    private bool isSafeZoneFollowAgentEnabled;
 
     private Transform skillCameraFocusAnchor;
 
@@ -181,11 +201,19 @@ public class Engineer : AgentController, IUpgradeReceiver
         stopSignalSpawnDelay = Mathf.Max(0f, stopSignalSpawnDelay);
 
         demolitionRadius = Mathf.Max(0.1f, demolitionRadius);
+        demolitionGaugeRequired = Mathf.Max(0f, demolitionGaugeRequired);
+        demolitionAllInRangeGaugeRequired = Mathf.Max(demolitionGaugeRequired, demolitionAllInRangeGaugeRequired);
+        demolitionEffectLifeTime = Mathf.Max(0.1f, demolitionEffectLifeTime);
+        demolitionEffectYOffset = Mathf.Max(0f, demolitionEffectYOffset);
 
         safeZoneSize.x = Mathf.Max(0.1f, safeZoneSize.x);
         safeZoneSize.y = Mathf.Max(0.1f, safeZoneSize.y);
+        expandedSafeZoneSize.x = Mathf.Max(safeZoneSize.x, expandedSafeZoneSize.x);
+        expandedSafeZoneSize.y = Mathf.Max(safeZoneSize.y, expandedSafeZoneSize.y);
         safeZoneLifeTime = Mathf.Max(0.1f, safeZoneLifeTime);
         safeZoneGaugeRecoveryPerSecond = Mathf.Max(0f, safeZoneGaugeRecoveryPerSecond);
+        safeZoneGaugeRequired = Mathf.Max(0f, safeZoneGaugeRequired);
+        expandedSafeZoneGaugeRequired = Mathf.Clamp(expandedSafeZoneGaugeRequired, 0f, safeZoneGaugeRequired);
 
         hitReactionLockSeconds = Mathf.Max(0f, hitReactionLockSeconds);
 
@@ -233,17 +261,62 @@ public class Engineer : AgentController, IUpgradeReceiver
         }
 
         base.Update();
+
+        TryAutoExecuteDemolition();
     }
 
     protected override string[] GetCurrentAgentGaugeKeys()
     {
         return new[]
         {
-        SkillBarricade,
-        SkillStopSignal,
-        SkillDemolition,
-        SkillSafeZone
-    };
+            SkillBarricade,
+            SkillStopSignal,
+            SkillDemolition,
+            SkillSafeZone
+        };
+    }
+
+    public override float GetSkillGaugeMaxForSkill(string skillName)
+    {
+        if (IsDemolitionSkill(skillName))
+            return GetCurrentDemolitionGaugeRequired();
+
+        if (IsSafeZoneSkill(skillName))
+            return GetCurrentSafeZoneGaugeRequired();
+
+        return base.GetSkillGaugeMaxForSkill(skillName);
+    }
+
+    public override float GetSkillGaugeRequiredForSkill(string skillName)
+    {
+        if (IsDemolitionSkill(skillName))
+            return GetCurrentDemolitionGaugeRequired();
+
+        if (IsSafeZoneSkill(skillName))
+            return GetCurrentSafeZoneGaugeRequired();
+
+        return base.GetSkillGaugeRequiredForSkill(skillName);
+    }
+
+    private float GetCurrentDemolitionGaugeRequired()
+    {
+        return isDemolitionAllInRangeEnabled
+            ? demolitionAllInRangeGaugeRequired
+            : demolitionGaugeRequired;
+    }
+
+    private float GetCurrentSafeZoneGaugeRequired()
+    {
+        return isSafeZoneExpandedEnabled
+            ? expandedSafeZoneGaugeRequired
+            : safeZoneGaugeRequired;
+    }
+
+    private Vector2 GetCurrentSafeZoneSize()
+    {
+        return isSafeZoneExpandedEnabled
+            ? expandedSafeZoneSize
+            : safeZoneSize;
     }
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
@@ -272,6 +345,22 @@ public class Engineer : AgentController, IUpgradeReceiver
 
             case UpgradeStopSignalLongDuration:
                 ApplyLongStopSignalUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeDemolitionAllInRange:
+                ApplyDemolitionAllInRangeUpgrade();
+                break;
+
+            case UpgradeDemolitionAutoExecute:
+                ApplyDemolitionAutoExecuteUpgrade();
+                break;
+
+            case UpgradeSafeZoneExpanded:
+                ApplySafeZoneExpandedUpgrade();
+                break;
+
+            case UpgradeSafeZoneFollowAgent:
+                ApplySafeZoneFollowAgentUpgrade();
                 break;
 
             default:
@@ -332,6 +421,41 @@ public class Engineer : AgentController, IUpgradeReceiver
         );
     }
 
+    private void ApplyDemolitionAllInRangeUpgrade()
+    {
+        isDemolitionAllInRangeEnabled = true;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 전면 철거 강화 적용. " +
+            $"DemolitionGaugeRequired={GetCurrentDemolitionGaugeRequired():0.#}"
+        );
+    }
+
+    private void ApplyDemolitionAutoExecuteUpgrade()
+    {
+        isDemolitionAutoExecuteEnabled = true;
+
+        Debug.Log($"[Engineer {AgentID}] 자동 철거 장치 강화 적용.");
+    }
+
+    private void ApplySafeZoneExpandedUpgrade()
+    {
+        isSafeZoneExpandedEnabled = true;
+
+        Debug.Log(
+            $"[Engineer {AgentID}] 확장 안전 구역 강화 적용. " +
+            $"SafeZoneGaugeRequired={GetCurrentSafeZoneGaugeRequired():0.#}, " +
+            $"SafeZoneSize={GetCurrentSafeZoneSize()}"
+        );
+    }
+
+    private void ApplySafeZoneFollowAgentUpgrade()
+    {
+        isSafeZoneFollowAgentEnabled = true;
+
+        Debug.Log($"[Engineer {AgentID}] 이동 안전 구역 강화 적용.");
+    }
+
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -361,7 +485,7 @@ public class Engineer : AgentController, IUpgradeReceiver
 
         if (IsDemolitionSkill(skill))
         {
-            TryDemolishObstacle();
+            TryDemolishObstacle(false);
             return;
         }
 
@@ -562,11 +686,15 @@ public class Engineer : AgentController, IUpgradeReceiver
         UpdateAnimationState(true);
     }
 
-    private void TryDemolishObstacle()
+    private void TryDemolishObstacle(bool isAutoExecute)
     {
-        if (!TryFindNearestObstacle(out GameObject targetObject, out Vector3 targetPosition))
+        bool includeAllTargets = isDemolitionAllInRangeEnabled;
+
+        if (!TryFindDemolitionTargets(includeAllTargets, out List<GameObject> targetObjects, out List<Vector3> targetPositions))
         {
-            Debug.LogWarning($"[Engineer {AgentID}] 철거 가능한 Obstacle 레이어 오브젝트가 범위 안에 없습니다.");
+            if (!isAutoExecute)
+                Debug.LogWarning($"[Engineer {AgentID}] 철거 가능한 Obstacle 레이어 오브젝트가 범위 안에 없습니다.");
+
             return;
         }
 
@@ -576,22 +704,87 @@ public class Engineer : AgentController, IUpgradeReceiver
         if (stopWhenUseSkill)
             ForceStopForSkill();
 
-        RequestInstalledObjectCameraAtPosition(targetPosition);
+        List<Vector3> effectPositions = new List<Vector3>();
+        int demolishedCount = 0;
 
-        targetObject.SetActive(false);
+        for (int i = 0; i < targetObjects.Count; i++)
+        {
+            GameObject targetObject = targetObjects[i];
+
+            if (targetObject == null || !targetObject.activeInHierarchy)
+                continue;
+
+            Vector3 fallbackPosition = i < targetPositions.Count
+                ? targetPositions[i]
+                : targetObject.transform.position;
+
+            Vector3 effectPosition = GetDemolitionEffectPosition(targetObject, fallbackPosition);
+
+            effectPositions.Add(effectPosition);
+            SpawnDemolitionEffect(effectPosition);
+
+            targetObject.SetActive(false);
+            demolishedCount++;
+        }
+
+        if (effectPositions.Count > 0)
+        {
+            Vector3 cameraFocusPosition = GetAveragePosition(effectPositions);
+
+            if (requestCameraOnDemolitionEffect)
+                RequestInstalledObjectCameraAtPosition(cameraFocusPosition);
+            else
+                RequestInstalledObjectCameraAtPosition(effectPositions[0]);
+        }
 
         if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
             navAgent.isStopped = false;
 
         UpdateAnimationState(true);
 
-        Debug.Log($"[Engineer {AgentID}] 철거 완료. 대상={targetObject.name}, 위치={targetPosition}");
+        Debug.Log(
+            $"[Engineer {AgentID}] 철거 완료. " +
+            $"Auto={isAutoExecute}, AllInRange={isDemolitionAllInRangeEnabled}, " +
+            $"Count={demolishedCount}, Gauge={GetCurrentDemolitionGaugeRequired():0.#}"
+        );
     }
 
-    private bool TryFindNearestObstacle(out GameObject targetObject, out Vector3 targetPosition)
+    private void TryAutoExecuteDemolition()
     {
-        targetObject = null;
-        targetPosition = transform.position;
+        if (!isDemolitionAutoExecuteEnabled)
+            return;
+
+        if (isResultAnimationLocked || isHitReactionLocked || isBarricadeDeployLocked || isStopSignalDeployLocked)
+            return;
+
+        if (!CanReceivePlayerSkillCommand(false))
+            return;
+
+        if (!CanUseSkillGaugeForSkill(SkillDemolition, false))
+            return;
+
+        if (!HasDemolitionTargetInRange())
+            return;
+
+        TryDemolishObstacle(true);
+    }
+
+    private bool HasDemolitionTargetInRange()
+    {
+        return TryFindDemolitionTargets(
+            false,
+            out List<GameObject> targetObjects,
+            out List<Vector3> targetPositions
+        ) && targetObjects.Count > 0;
+    }
+
+    private bool TryFindDemolitionTargets(
+        bool includeAllTargets,
+        out List<GameObject> targetObjects,
+        out List<Vector3> targetPositions)
+    {
+        targetObjects = new List<GameObject>();
+        targetPositions = new List<Vector3>();
 
         int obstacleMask = GetDemolitionObstacleMask();
 
@@ -608,7 +801,8 @@ public class Engineer : AgentController, IUpgradeReceiver
         if (colliders == null || colliders.Length == 0)
             return false;
 
-        float closestSqrDistance = float.MaxValue;
+        Dictionary<GameObject, float> distanceByTarget = new Dictionary<GameObject, float>();
+        Dictionary<GameObject, Vector3> positionByTarget = new Dictionary<GameObject, Vector3>();
 
         for (int i = 0; i < colliders.Length; i++)
         {
@@ -625,15 +819,168 @@ public class Engineer : AgentController, IUpgradeReceiver
             Vector3 closestPoint = candidateCollider.ClosestPoint(transform.position);
             float sqrDistance = (closestPoint - transform.position).sqrMagnitude;
 
-            if (sqrDistance >= closestSqrDistance)
+            if (!distanceByTarget.ContainsKey(candidateObject))
+            {
+                distanceByTarget.Add(candidateObject, sqrDistance);
+                positionByTarget.Add(candidateObject, closestPoint);
+                continue;
+            }
+
+            if (sqrDistance >= distanceByTarget[candidateObject])
                 continue;
 
-            closestSqrDistance = sqrDistance;
-            targetObject = candidateObject;
-            targetPosition = closestPoint;
+            distanceByTarget[candidateObject] = sqrDistance;
+            positionByTarget[candidateObject] = closestPoint;
         }
 
-        return targetObject != null;
+        if (distanceByTarget.Count == 0)
+            return false;
+
+        List<GameObject> sortedTargets = new List<GameObject>(distanceByTarget.Keys);
+        sortedTargets.Sort((a, b) => distanceByTarget[a].CompareTo(distanceByTarget[b]));
+
+        int targetCount = includeAllTargets
+            ? sortedTargets.Count
+            : Mathf.Min(1, sortedTargets.Count);
+
+        for (int i = 0; i < targetCount; i++)
+        {
+            GameObject targetObject = sortedTargets[i];
+
+            targetObjects.Add(targetObject);
+            targetPositions.Add(positionByTarget[targetObject]);
+        }
+
+        return targetObjects.Count > 0;
+    }
+
+    private void SpawnDemolitionEffect(Vector3 position)
+    {
+        if (demolitionEffectPrefab == null)
+            return;
+
+        Vector3 spawnPosition = position + Vector3.up * demolitionEffectYOffset;
+
+        GameObject effectObject = Instantiate(
+            demolitionEffectPrefab,
+            spawnPosition,
+            Quaternion.identity,
+            deployParent != null ? deployParent : null
+        );
+
+        PlayParticleEffects(effectObject);
+
+        if (demolitionEffectLifeTime > 0f)
+            Destroy(effectObject, demolitionEffectLifeTime);
+    }
+
+    private void PlayParticleEffects(GameObject effectObject)
+    {
+        if (effectObject == null)
+            return;
+
+        ParticleSystem[] particleSystems = effectObject.GetComponentsInChildren<ParticleSystem>(true);
+
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            ParticleSystem particleSystem = particleSystems[i];
+
+            if (particleSystem == null)
+                continue;
+
+            particleSystem.Play(true);
+        }
+    }
+
+    private Vector3 GetDemolitionEffectPosition(GameObject targetObject, Vector3 fallbackPosition)
+    {
+        if (targetObject == null)
+            return fallbackPosition;
+
+        if (TryGetCombinedRendererBounds(targetObject, out Bounds rendererBounds))
+            return rendererBounds.center;
+
+        if (TryGetCombinedColliderBounds(targetObject, out Bounds colliderBounds))
+            return colliderBounds.center;
+
+        return targetObject.transform.position;
+    }
+
+    private bool TryGetCombinedRendererBounds(GameObject targetObject, out Bounds bounds)
+    {
+        bounds = default;
+
+        if (targetObject == null)
+            return false;
+
+        Renderer[] renderers = targetObject.GetComponentsInChildren<Renderer>(false);
+        bool hasBounds = false;
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer targetRenderer = renderers[i];
+
+            if (targetRenderer == null)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = targetRenderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(targetRenderer.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private bool TryGetCombinedColliderBounds(GameObject targetObject, out Bounds bounds)
+    {
+        bounds = default;
+
+        if (targetObject == null)
+            return false;
+
+        Collider[] colliders = targetObject.GetComponentsInChildren<Collider>(false);
+        bool hasBounds = false;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider targetCollider = colliders[i];
+
+            if (targetCollider == null)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = targetCollider.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(targetCollider.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private Vector3 GetAveragePosition(List<Vector3> positions)
+    {
+        if (positions == null || positions.Count == 0)
+            return transform.position;
+
+        Vector3 sum = Vector3.zero;
+
+        for (int i = 0; i < positions.Count; i++)
+        {
+            sum += positions[i];
+        }
+
+        return sum / positions.Count;
     }
 
     private GameObject ResolveDemolitionTargetObject(Transform hitTransform)
@@ -646,6 +993,9 @@ public class Engineer : AgentController, IUpgradeReceiver
         if (obstacleRoot == null)
             return hitTransform.gameObject;
 
+        if (hitTransform == obstacleRoot)
+            return null;
+
         Transform current = hitTransform;
 
         while (current != null && current.parent != null)
@@ -656,7 +1006,7 @@ public class Engineer : AgentController, IUpgradeReceiver
             current = current.parent;
         }
 
-        return hitTransform.gameObject;
+        return null;
     }
 
     private Transform FindAncestorByName(Transform startTransform, string targetName)
@@ -676,7 +1026,6 @@ public class Engineer : AgentController, IUpgradeReceiver
 
         return null;
     }
-
 
     private int GetDemolitionObstacleMask()
     {
@@ -736,15 +1085,23 @@ public class Engineer : AgentController, IUpgradeReceiver
             spawnedSafeZone.transform.SetPositionAndRotation(spawnPos, spawnRotation);
         }
 
-        EngineerSafeZone safeZone = spawnedSafeZone.GetComponent<EngineerSafeZone>();
+        SafeZone safeZone = spawnedSafeZone.GetComponent<SafeZone>();
 
         if (safeZone == null)
-            safeZone = spawnedSafeZone.AddComponent<EngineerSafeZone>();
+            safeZone = spawnedSafeZone.AddComponent<SafeZone>();
+
+        Vector2 currentSafeZoneSize = GetCurrentSafeZoneSize();
 
         safeZone.Configure(
-            safeZoneSize,
+            currentSafeZoneSize,
             safeZoneLifeTime,
             safeZoneGaugeRecoveryPerSecond
+        );
+
+        safeZone.SendMessage(
+            "SetFollowFirstEnteredAgent",
+            isSafeZoneFollowAgentEnabled,
+            SendMessageOptions.DontRequireReceiver
         );
 
         currentSafeZone = spawnedSafeZone;
@@ -753,7 +1110,8 @@ public class Engineer : AgentController, IUpgradeReceiver
 
         Debug.Log(
             $"[Engineer {AgentID}] 안전 구역 설치 완료. " +
-            $"Position={spawnPos}, Size={safeZoneSize}, LifeTime={safeZoneLifeTime}, RecoveryPerSecond={safeZoneGaugeRecoveryPerSecond}"
+            $"Position={spawnPos}, Size={currentSafeZoneSize}, LifeTime={safeZoneLifeTime}, " +
+            $"RecoveryPerSecond={safeZoneGaugeRecoveryPerSecond}, FollowAgent={isSafeZoneFollowAgentEnabled}"
         );
     }
 

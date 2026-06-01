@@ -49,6 +49,12 @@ public class CatchZone : MonoBehaviour
 
         LastCatchingAgent = GetComponentInParent<AgentController>();
 
+        if (LastCatchingAgent != null && !LastCatchingAgent.CanCatchTarget)
+        {
+            Debug.Log($"<color=orange>[CatchZone]</color> Agent {LastCatchingAgent.AgentID}은(는) 현재 포획할 수 없는 상태입니다.");
+            return;
+        }
+
         if (targetController != null)
         {
             targetController.MarkAsCaught();

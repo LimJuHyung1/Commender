@@ -35,6 +35,9 @@ public sealed class CommandValidator
     private const string SkillFakeBox = "fakebox";
     private const string SkillJokerCard = "jokercard";
 
+    private const string SkillVanishing = "vanishing";
+    private const string SkillMisdirection = "misdirection";
+
     private static readonly Regex CoordinateRegex =
         new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
@@ -272,6 +275,21 @@ public sealed class CommandValidator
         "조커카드"
     };
 
+    private static readonly string[] VanishingInstructionKeywords =
+{
+    "vanishing",
+    "vanish",
+    "배니싱"
+};
+
+    private static readonly string[] MisdirectionInstructionKeywords =
+    {
+    "misdirection",
+    "mis direction",
+    "미스디렉션",
+    "미스 디렉션"
+};
+
     private static readonly string[] LookAroundInstructionKeywords =
     {
         "주변",
@@ -359,6 +377,12 @@ public sealed class CommandValidator
             return SkillHold;
         }
 
+        if (IsVanishingInstruction(normalizedInstruction))
+            return SkillVanishing;
+
+        if (IsMisdirectionInstruction(normalizedInstruction))
+            return SkillMisdirection;
+
         if (ContainsAny(normalizedSkill, SkillDash))
             return MatchOrHold(normalizedInstruction, DashInstructionKeywords, SkillDash, aiSkill, originalInstruction);
 
@@ -405,6 +429,12 @@ public sealed class CommandValidator
 
         if (ContainsAny(normalizedSkill, SkillFakeBox, "fake box", "magic box"))
             return MatchOrHold(normalizedInstruction, FakeBoxInstructionKeywords, SkillFakeBox, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillVanishing, "vanish"))
+            return MatchOrHold(normalizedInstruction, VanishingInstructionKeywords, SkillVanishing, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillMisdirection, "mis direction"))
+            return MatchOrHold(normalizedInstruction, MisdirectionInstructionKeywords, SkillMisdirection, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillNoiseMaker, "noise"))
             return MatchOrHold(normalizedInstruction, NoiseMakerInstructionKeywords, SkillNoiseMaker, aiSkill, originalInstruction);
@@ -795,5 +825,15 @@ public sealed class CommandValidator
         }
 
         return false;
+    }
+
+    public bool IsVanishingInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), VanishingInstructionKeywords);
+    }
+
+    public bool IsMisdirectionInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), MisdirectionInstructionKeywords);
     }
 }

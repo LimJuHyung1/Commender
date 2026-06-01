@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: Test DataBase
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDatabase
   upgrades:
-  - {fileID: 11400000, guid: 03b5690e89949e443964418a31ac78fb, type: 2}
-  - {fileID: 11400000, guid: f8533e00baa797b42aebcd56aa49fdd9, type: 2}
-  - {fileID: 11400000, guid: 251aae49726bd6242a529749bf524888, type: 2}
-  - {fileID: 11400000, guid: 43a651d30af662147aec81ed79de6ba5, type: 2}
-  - {fileID: 11400000, guid: 9f414444b7eff8348a083659ef8ea6a7, type: 2}
-  - {fileID: 11400000, guid: 27ccece5160d89449932e26111a3c47b, type: 2}
+  - {fileID: 11400000, guid: ad6935812f7680a46adc78c685ef9db0, type: 2}
+  - {fileID: 11400000, guid: 9784d9eb968ccf549ab137b086c7e2ae, type: 2}
+  - {fileID: 11400000, guid: 90c50ea5990df0f42949b5c2733ef6bf, type: 2}
+  - {fileID: 11400000, guid: 040714c2ec6a2cc4f9f1a2c0b90073a4, type: 2}
+  - {fileID: 11400000, guid: f2ac31966e3376e4cb49c5574ef5da24, type: 2}
+  - {fileID: 11400000, guid: 0c48e0b865b676f4d85e010decdbe003, type: 2}

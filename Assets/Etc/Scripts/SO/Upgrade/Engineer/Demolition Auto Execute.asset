@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acba292d5e1b8654cbc2cb38cbe62d2a, type: 3}
+  m_Name: Demolition Auto Execute
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDefinition
+  upgradeId: engineer_demolition_auto_execute
+  displayName: "\uC790\uB3D9 \uCCA0\uAC70 \uC7A5\uCE58"
+  description: "\uCCA0\uAC70 \uC900\uBE44\uAC00 \uC644\uB8CC\uB41C \uC0C1\uD0DC\uC5D0\uC11C
+    \uC8FC\uBCC0\uC5D0 \uC7A5\uC560\uBB3C\uC774 \uC788\uC73C\uBA74 \uC790\uB3D9\uC73C\uB85C
+    \uCCA0\uAC70\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4."
+  icon: {fileID: 21300000, guid: 7f04b6c5ab288414a8774f9742eefbe3, type: 3}
+  ownerType: 0
+  agentType: 3
+  targetType: 0
+  skillId: demolition
+  effectType: 11
+  value: 1
+  minStage: 1
+  stackable: 0
+  maxStack: 1

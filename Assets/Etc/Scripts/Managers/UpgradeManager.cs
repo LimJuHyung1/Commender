@@ -26,11 +26,20 @@ public class UpgradeManager : MonoBehaviour
     private const string EngineerUnlockDemolition = "engineer_unlock_demolition";
     private const string EngineerUnlockSafeZone = "engineer_unlock_safe_zone";
 
-    private const string EngineerDemolitionWideArea = "engineer_demolition_wide_area";
-    private const string EngineerDemolitionMulti = "engineer_demolition_multi";
+    private const string EngineerDemolitionAllInRange = "engineer_demolition_all_in_range";
+    private const string EngineerDemolitionAutoExecute = "engineer_demolition_auto_execute";
 
     private const string EngineerSafeZoneExpanded = "engineer_safe_zone_expanded";
-    private const string EngineerSafeZoneEmergencyCharge = "engineer_safe_zone_emergency_charge";
+    private const string EngineerSafeZoneFollowAgent = "engineer_safe_zone_follow_agent";
+
+    private const string TricksterUnlockVanishing = "trickster_unlock_vanishing";
+    private const string TricksterUnlockMisdirection = "trickster_unlock_misdirection";
+
+    private const string TricksterVanishingStageTransition = "trickster_vanishing_stage_transition";
+    private const string TricksterVanishingSpotlight = "trickster_vanishing_spotlight";
+
+    private const string TricksterMisdirectionFlawlessActing = "trickster_misdirection_flawless_acting";
+    private const string TricksterMisdirectionPerfectGaze = "trickster_misdirection_perfect_gaze";
 
     [Header("Database")]
     [SerializeField] private UpgradeDatabase upgradeDatabase;
@@ -234,6 +243,194 @@ public class UpgradeManager : MonoBehaviour
         return ContainsUpgrade(selectedAgentUpgradeIds, upgradeId);
     }
 
+    public string GetUnlockedChaserThirdSkillName()
+    {
+        if (HasAgentUpgrade(ChaserUnlockPatrol))
+        {
+            return "patrol";
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+        {
+            return "trackinginstinct";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockPatrol))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
+        }
+
+        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedChaserThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedChaserThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
+    }
+
+    public string GetUnlockedObserverThirdSkillName()
+    {
+        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
+        {
+            return "reconnaissance";
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
+        {
+            return "observationsupport";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
+        }
+
+        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedObserverThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedObserverThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
+    }
+
+    public string GetUnlockedEngineerThirdSkillName()
+    {
+        if (HasAgentUpgrade(EngineerUnlockDemolition))
+        {
+            return "demolition";
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockSafeZone))
+        {
+            return "safezone";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockDemolition))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
+        }
+
+        if (HasAgentUpgrade(EngineerUnlockSafeZone))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedEngineerThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedEngineerThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
+    }
+
+    public string GetUnlockedTricksterThirdSkillName()
+    {
+        if (HasAgentUpgrade(TricksterUnlockVanishing))
+        {
+            return "vanishing";
+        }
+
+        if (HasAgentUpgrade(TricksterUnlockMisdirection))
+        {
+            return "misdirection";
+        }
+
+        return "";
+    }
+
+    public UpgradeDefinition GetUnlockedTricksterThirdSkillUpgrade()
+    {
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (HasAgentUpgrade(TricksterUnlockVanishing))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockVanishing);
+        }
+
+        if (HasAgentUpgrade(TricksterUnlockMisdirection))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockMisdirection);
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedTricksterThirdSkillIcon()
+    {
+        UpgradeDefinition upgrade = GetUnlockedTricksterThirdSkillUpgrade();
+
+        if (upgrade == null)
+        {
+            return null;
+        }
+
+        return upgrade.Icon;
+    }
+
     private void AddRandomTargetUpgrade(int stageNumber, CommanderTargetType targetType)
     {
         if (upgradeDatabase == null)
@@ -334,6 +531,11 @@ public class UpgradeManager : MonoBehaviour
         }
 
         if (!CanAddEngineerNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
+        {
+            return false;
+        }
+
+        if (!CanAddTricksterNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
         {
             return false;
         }
@@ -455,8 +657,8 @@ public class UpgradeManager : MonoBehaviour
     }
 
     private bool CanAddEngineerNewSkillUpgrade(
-    UpgradeDefinition upgrade,
-    List<string> alreadySelectedUpgradeIds)
+        UpgradeDefinition upgrade,
+        List<string> alreadySelectedUpgradeIds)
     {
         if (upgrade == null)
         {
@@ -484,6 +686,63 @@ public class UpgradeManager : MonoBehaviour
         }
 
         if (IsSafeZoneUpgrade(upgradeId) && !hasSafeZone)
+        {
+            return false;
+        }
+
+        if (IsDemolitionUpgrade(upgradeId) && hasSafeZone)
+        {
+            return false;
+        }
+
+        if (IsSafeZoneUpgrade(upgradeId) && hasDemolition)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool CanAddTricksterNewSkillUpgrade(
+        UpgradeDefinition upgrade,
+        List<string> alreadySelectedUpgradeIds)
+    {
+        if (upgrade == null)
+        {
+            return false;
+        }
+
+        string upgradeId = upgrade.UpgradeId;
+
+        bool hasVanishing = ContainsUpgrade(alreadySelectedUpgradeIds, TricksterUnlockVanishing);
+        bool hasMisdirection = ContainsUpgrade(alreadySelectedUpgradeIds, TricksterUnlockMisdirection);
+
+        if (upgradeId == TricksterUnlockVanishing && hasMisdirection)
+        {
+            return false;
+        }
+
+        if (upgradeId == TricksterUnlockMisdirection && hasVanishing)
+        {
+            return false;
+        }
+
+        if (IsVanishingUpgrade(upgradeId) && !hasVanishing)
+        {
+            return false;
+        }
+
+        if (IsMisdirectionUpgrade(upgradeId) && !hasMisdirection)
+        {
+            return false;
+        }
+
+        if (IsVanishingUpgrade(upgradeId) && hasMisdirection)
+        {
+            return false;
+        }
+
+        if (IsMisdirectionUpgrade(upgradeId) && hasVanishing)
         {
             return false;
         }
@@ -517,61 +776,26 @@ public class UpgradeManager : MonoBehaviour
 
     private bool IsDemolitionUpgrade(string upgradeId)
     {
-        return upgradeId == EngineerDemolitionWideArea ||
-               upgradeId == EngineerDemolitionMulti;
+        return upgradeId == EngineerDemolitionAllInRange ||
+               upgradeId == EngineerDemolitionAutoExecute;
     }
 
     private bool IsSafeZoneUpgrade(string upgradeId)
     {
         return upgradeId == EngineerSafeZoneExpanded ||
-               upgradeId == EngineerSafeZoneEmergencyCharge;
+               upgradeId == EngineerSafeZoneFollowAgent;
     }
 
-    public string GetUnlockedEngineerThirdSkillName()
+    private bool IsVanishingUpgrade(string upgradeId)
     {
-        if (HasAgentUpgrade(EngineerUnlockDemolition))
-        {
-            return "demolition";
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockSafeZone))
-        {
-            return "safezone";
-        }
-
-        return "";
+        return upgradeId == TricksterVanishingStageTransition ||
+               upgradeId == TricksterVanishingSpotlight;
     }
 
-    public UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
+    private bool IsMisdirectionUpgrade(string upgradeId)
     {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockDemolition))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockSafeZone))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
-        }
-
-        return null;
-    }
-
-    public Sprite GetUnlockedEngineerThirdSkillIcon()
-    {
-        UpgradeDefinition upgrade = GetUnlockedEngineerThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
+        return upgradeId == TricksterMisdirectionFlawlessActing ||
+               upgradeId == TricksterMisdirectionPerfectGaze;
     }
 
     private bool ContainsUpgrade(List<string> upgradeIds, string upgradeId)
@@ -627,99 +851,5 @@ public class UpgradeManager : MonoBehaviour
             list[i] = list[randomIndex];
             list[randomIndex] = temp;
         }
-    }
-
-    public string GetUnlockedChaserThirdSkillName()
-    {
-        if (HasAgentUpgrade(ChaserUnlockPatrol))
-        {
-            return "patrol";
-        }
-
-        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
-        {
-            return "trackinginstinct";
-        }
-
-        return "";
-    }
-
-    public UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
-    {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(ChaserUnlockPatrol))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
-        }
-
-        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
-        }
-
-        return null;
-    }
-
-    public Sprite GetUnlockedChaserThirdSkillIcon()
-    {
-        UpgradeDefinition upgrade = GetUnlockedChaserThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
-    }
-
-    public string GetUnlockedObserverThirdSkillName()
-    {
-        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
-        {
-            return "reconnaissance";
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
-        {
-            return "observationsupport";
-        }
-
-        return "";
-    }
-
-    public UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
-    {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
-        }
-
-        return null;
-    }
-
-    public Sprite GetUnlockedObserverThirdSkillIcon()
-    {
-        UpgradeDefinition upgrade = GetUnlockedObserverThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
     }
 }

@@ -349,10 +349,24 @@ public class CommanderCommandProcessor : MonoBehaviour
                 {
                     validatedSkill = "fakebox";
                 }
+                else if (commandValidator.IsVanishingInstruction(originalInstruction))
+                {
+                    validatedSkill = "vanishing";
+                }
+                else if (commandValidator.IsMisdirectionInstruction(originalInstruction))
+                {
+                    validatedSkill = "misdirection";
+                }
                 else if (commandValidator.IsMovementInstruction(originalInstruction))
                 {
                     validatedSkill = "";
                 }
+            }
+
+            if (validatedSkill == "vanishing" && !commandValidator.ContainsCoordinate(originalInstruction))
+            {
+                Debug.LogWarning($"[Commander] 배니싱 명령에는 좌표가 필요합니다. 예: 10,5 배니싱 / 원문: {originalInstruction}");
+                return false;
             }
 
             if (!IsSkillAllowedForAgent(targetAgent, validatedSkill))
@@ -476,12 +490,21 @@ public class CommanderCommandProcessor : MonoBehaviour
         {
             return commonRules +
                    "11. This agent is the Magician-type Trickster agent.\n" +
-                   "12. The only manually commanded skill for this agent is \"fakebox\".\n" +
+                   "12. Allowed manually commanded skills for this agent are \"fakebox\", \"vanishing\", and \"misdirection\".\n" +
                    "13. Use \"fakebox\" ONLY when the instruction explicitly asks for fakebox, fake box, magic box, 페이크 박스, 페이크박스, 마술 상자, 마술상자, 가짜 상자, or 가짜상자.\n" +
-                   "14. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command.\n" +
-                   "15. If the user asks to use Joker Card, output skill \"hold\".\n\n" +
+                   "14. Use \"vanishing\" ONLY when the instruction explicitly asks for 배니싱, vanishing, or vanish. Vanishing requires coordinates.\n" +
+                   "15. Use \"misdirection\" ONLY when the instruction explicitly asks for 미스디렉션, 미스 디렉션, or misdirection. Misdirection does not require coordinates, so use pos {\"x\":0.0,\"z\":0.0}.\n" +
+                   "16. Joker Card is an automatic gauge-based skill. Never output \"jokercard\" as a command.\n" +
+                   "17. If the user asks to use Joker Card, output skill \"hold\".\n\n" +
                    "OUTPUT FORMAT:\n" +
-                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }";
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 10,5에 페이크 박스\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 10.0, \"z\": 5.0}}, \"skill\": \"fakebox\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 10,5에 배니싱\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 10.0, \"z\": 5.0}}, \"skill\": \"vanishing\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 미스디렉션\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"misdirection\" }} ] }}";
         }
 
         return commonRules;
@@ -526,7 +549,11 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (agent is Trickster)
         {
-            return skill == "fakebox";
+            Trickster trickster = agent as Trickster;
+
+            return skill == "fakebox" ||
+                   (skill == "vanishing" && trickster != null && trickster.CanUseVanishingSkill) ||
+                   (skill == "misdirection" && trickster != null && trickster.CanUseMisdirectionSkill);
         }
 
         return true;
@@ -752,6 +779,12 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (commandValidator.IsJokerCardInstruction(source))
             return true;
 
+        if (commandValidator.IsVanishingInstruction(source))
+            return true;
+
+        if (commandValidator.IsMisdirectionInstruction(source))
+            return true;
+
         string normalized = source.Trim().ToLower();
 
         return ContainsAnyKeyword(
@@ -889,7 +922,16 @@ public class CommanderCommandProcessor : MonoBehaviour
             "jokercard",
             "joker card",
             "조커 카드",
-            "조커카드"
+            "조커카드",
+
+            "vanishing",
+"vanish",
+"배니싱",
+
+"misdirection",
+"mis direction",
+"미스디렉션",
+"미스 디렉션"
         );
     }
 

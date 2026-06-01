@@ -1,15 +1,22 @@
 using UnityEngine;
 
-public class EngineerSafeZone : MonoBehaviour
+public class SafeZone : MonoBehaviour
 {
     [Header("Safe Zone")]
-    [SerializeField] private Vector2 areaSize = new Vector2(6f, 6f);
+    [SerializeField] private Vector2 areaSize = new Vector2(4f, 4f);
     [SerializeField] private float lifeTime = 15f;
     [SerializeField] private float gaugeRecoveryPerSecond = 4f;
     [SerializeField] private float agentSearchInterval = 0.1f;
 
+    [Header("Follow Upgrade")]
+    [SerializeField] private bool followFirstEnteredAgent;
+    [SerializeField] private bool keepOriginalY = true;
+    [SerializeField] private float followMoveSpeed = 20f;
+
     private float elapsedTime;
     private float searchTimer;
+    private float originalY;
+    private Transform followTarget;
 
     public void Configure(Vector2 newAreaSize, float newLifeTime, float newGaugeRecoveryPerSecond)
     {
@@ -20,8 +27,23 @@ public class EngineerSafeZone : MonoBehaviour
 
         elapsedTime = 0f;
         searchTimer = 0f;
+        followTarget = null;
+        originalY = transform.position.y;
 
         UpdateVisualScale();
+    }
+
+    public void SetFollowFirstEnteredAgent(bool enabled)
+    {
+        followFirstEnteredAgent = enabled;
+
+        if (!followFirstEnteredAgent)
+            followTarget = null;
+    }
+
+    private void Awake()
+    {
+        originalY = transform.position.y;
     }
 
     private void OnValidate()
@@ -31,6 +53,7 @@ public class EngineerSafeZone : MonoBehaviour
         lifeTime = Mathf.Max(0.1f, lifeTime);
         gaugeRecoveryPerSecond = Mathf.Max(0f, gaugeRecoveryPerSecond);
         agentSearchInterval = Mathf.Max(0.02f, agentSearchInterval);
+        followMoveSpeed = Mathf.Max(0f, followMoveSpeed);
 
         UpdateVisualScale();
     }
@@ -47,6 +70,8 @@ public class EngineerSafeZone : MonoBehaviour
             return;
         }
 
+        UpdateFollowTargetPosition(deltaTime);
+
         searchTimer -= deltaTime;
 
         if (searchTimer > 0f)
@@ -55,6 +80,32 @@ public class EngineerSafeZone : MonoBehaviour
         searchTimer = agentSearchInterval;
 
         RecoverAgentGauges(agentSearchInterval);
+    }
+
+    private void UpdateFollowTargetPosition(float deltaTime)
+    {
+        if (!followFirstEnteredAgent)
+            return;
+
+        if (followTarget == null)
+            return;
+
+        Vector3 targetPosition = followTarget.position;
+
+        if (keepOriginalY)
+            targetPosition.y = originalY;
+
+        if (followMoveSpeed <= 0f)
+        {
+            transform.position = targetPosition;
+            return;
+        }
+
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            targetPosition,
+            followMoveSpeed * deltaTime
+        );
     }
 
     private void RecoverAgentGauges(float deltaTime)
@@ -76,8 +127,23 @@ public class EngineerSafeZone : MonoBehaviour
             if (!IsInsideArea(agent.transform.position))
                 continue;
 
+            TrySetFollowTarget(agent);
             agent.AddSkillGauge(recoveryAmount);
         }
+    }
+
+    private void TrySetFollowTarget(AgentController agent)
+    {
+        if (!followFirstEnteredAgent)
+            return;
+
+        if (followTarget != null)
+            return;
+
+        if (agent == null)
+            return;
+
+        followTarget = agent.transform;
     }
 
     private bool IsInsideArea(Vector3 worldPosition)

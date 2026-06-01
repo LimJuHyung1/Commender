@@ -15,6 +15,8 @@ public sealed class CommandExecutor
     private const string SkillDemolition = "demolition";
     private const string SkillSafeZone = "safezone";
 
+    private const string SkillMisdirection = "misdirection";
+
     private TargetSkillController targetSkillController;
 
     public CommandExecutor()
@@ -75,6 +77,7 @@ public sealed class CommandExecutor
             case SkillPositionShareOn:
             case SkillPositionShareOff:
             case SkillDemolition:
+            case SkillMisdirection:
                 ExecuteNoPositionSkill(targetAgent, agentId, validatedSkill);
                 return;
 

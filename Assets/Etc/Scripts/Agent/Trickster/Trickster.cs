@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class Trickster : AgentController, IUpgradeReceiver
 {
@@ -14,16 +15,28 @@ public class Trickster : AgentController, IUpgradeReceiver
 
     private const string SkillFakeBox = "fakebox";
     private const string SkillJokerCard = "jokercard";
+    private const string SkillVanishing = "vanishing";
+    private const string SkillMisdirection = "misdirection";
 
     private const string UpgradeFakeBoxMultiTrick = "trickster_fake_box_multi_trick";
     private const string UpgradeFakeBoxReverseRoute = "trickster_fake_box_reverse_route";
     private const string UpgradeJokerCardWildJoker = "trickster_joker_card_wild_joker";
     private const string UpgradeJokerCardStageControl = "trickster_joker_card_stage_control";
 
+    private const string UpgradeUnlockVanishing = "trickster_unlock_vanishing";
+    private const string UpgradeUnlockMisdirection = "trickster_unlock_misdirection";
+
+    private const string UpgradeVanishingStageTransition = "trickster_vanishing_stage_transition";
+    private const string UpgradeVanishingSpotlight = "trickster_vanishing_spotlight";
+    private const string UpgradeMisdirectionFlawlessActing = "trickster_misdirection_flawless_acting";
+    private const string UpgradeMisdirectionPerfectGaze = "trickster_misdirection_perfect_gaze";
+
     private const string IsMovingParameter = "IsMoving";
     private const string MoveSpeedParameter = "MoveSpeed";
     private const string MoveModeParameter = "MoveMode";
     private const string FakeBoxTriggerName = "FakeBox";
+    private const string VanishingStartTriggerName = "VanishingStart";
+    private const string VanishingSuccessTriggerName = "VanishingSuccess";
     private const string HitReactionTriggerName = "HitReaction";
     private const string VictoryTriggerName = "Victory";
     private const string DefeatTriggerName = "Defeat";
@@ -40,11 +53,45 @@ public class Trickster : AgentController, IUpgradeReceiver
     [SerializeField] private float deployYOffset = 0f;
     [SerializeField] private bool replaceExistingFakeBox = true;
 
+    [Header("Vanishing")]
+    [SerializeField] private GameObject vanishingCurtainPrefab;
+    [SerializeField] private Transform vanishingEffectParent;
+    [SerializeField] private float vanishingCastTime = 5f;
+    [SerializeField] private float vanishingRecoveryLockSeconds = 5f;
+    [SerializeField] private float vanishingNavMeshSampleDistance = 0.35f;
+    [SerializeField] private float vanishingEffectLifetime = 2.5f;
+    [SerializeField] private bool spawnCurtainAtStart = true;
+    [SerializeField] private bool spawnCurtainAtEnd = true;
+
+    [Header("Vanishing Camera")]
+    [SerializeField] private bool requestCameraOnVanishingStart = true;
+    [SerializeField] private bool requestCameraOnVanishingSuccess = true;
+
+    [Header("Vanishing Spotlight Upgrade")]
+    [SerializeField] private GameObject spotlightEffectPrefab;
+    [SerializeField] private float vanishingSpotlightDuration = 5f;
+    [SerializeField] private Vector3 spotlightEffectLocalOffset = Vector3.zero;
+
+    [Header("Misdirection")]
+    [SerializeField] private float misdirectionDuration = 10f;
+
+    [Header("Misdirection Visual")]
+    [SerializeField] private Transform misdirectionMaterialRoot;
+    [SerializeField] private string misdirectionMaterialRootName = "char1";
+    [SerializeField] private Material misdirectionMaterial;
+    [SerializeField] private bool autoFindMisdirectionMaterialRoot = true;
+    [SerializeField] private bool applyMisdirectionMaterialToChildren = true;
+    [SerializeField] private bool replaceAllMisdirectionMaterials = true;
+
     [Header("Upgrade - Trickster")]
     [SerializeField] private float multiFakeBoxGaugeCostMultiplier = 0.5f;
     [SerializeField] private int multiFakeBoxMaxActiveCount = 3;
     [SerializeField] private float wildJokerDurationMultiplier = 2f;
     [SerializeField] private float wildJokerBuffEffectMultiplier = 1.5f;
+    [SerializeField] private float stageTransitionVanishingTimeMultiplier = 0.5f;
+    [SerializeField] private float flawlessActingMoveSpeedMultiplier = 1.5f;
+    [SerializeField] private float perfectGazeDurationMultiplier = 1.5f;
+    [SerializeField] private float perfectGazeGaugeCostMultiplier = 0.75f;
 
     [Header("Joker Card Effect")]
     [SerializeField] private JokerCard jokerCardEffectInstance;
@@ -67,9 +114,15 @@ public class Trickster : AgentController, IUpgradeReceiver
 
     private FakeBox currentFakeBox;
     private Coroutine jokerCardRoutine;
+    private Coroutine vanishingRoutine;
+    private Coroutine misdirectionRoutine;
+    private Coroutine vanishingSpotlightRoutine;
     private JokerCard currentJokerCardEffect;
 
     private bool isJokerCardActive;
+    private bool isVanishing;
+    private bool isVanishingRecoveryLocked;
+    private bool isMisdirectionActive;
     private bool hasCachedJokerCardValues;
 
     private float currentFakeBoxGaugeCostMultiplier = 1f;
@@ -79,6 +132,25 @@ public class Trickster : AgentController, IUpgradeReceiver
     private float currentJokerCardDurationMultiplier = 1f;
     private float currentJokerCardBuffEffectMultiplier = 1f;
     private bool currentJokerCardDebuffImmunity;
+
+    private float currentVanishingCastTimeMultiplier = 1f;
+    private float currentVanishingRecoveryLockMultiplier = 1f;
+    private bool currentVanishingSpotlightEnabled;
+
+    private float currentMisdirectionMoveSpeedMultiplier = 1f;
+    private float currentMisdirectionDurationMultiplier = 1f;
+    private float currentMisdirectionGaugeCostMultiplier = 1f;
+
+    private bool hasMisdirectionSpeedSnapshot;
+    private float misdirectionSpeedSnapshot;
+
+    private Renderer[] misdirectionRenderers;
+    private Material[][] originalMisdirectionMaterials;
+    private bool hasCachedMisdirectionMaterials;
+    private bool isMisdirectionMaterialApplied;
+
+    private GameObject currentSpotlightEffectInstance;
+    private TargetController currentSpotlightTarget;
 
     private float originalMoveSpeed;
     private float originalSpotLightRange;
@@ -91,6 +163,8 @@ public class Trickster : AgentController, IUpgradeReceiver
     private int moveSpeedHash;
     private int moveModeHash;
     private int fakeBoxHash;
+    private int vanishingStartHash;
+    private int vanishingSuccessHash;
     private int hitReactionHash;
     private int victoryHash;
     private int defeatHash;
@@ -99,6 +173,8 @@ public class Trickster : AgentController, IUpgradeReceiver
     private bool hasMoveSpeedParameter;
     private bool hasMoveModeParameter;
     private bool hasFakeBoxTrigger;
+    private bool hasVanishingStartTrigger;
+    private bool hasVanishingSuccessTrigger;
     private bool hasHitReactionTrigger;
     private bool hasVictoryTrigger;
     private bool hasDefeatTrigger;
@@ -115,6 +191,15 @@ public class Trickster : AgentController, IUpgradeReceiver
 
     public bool IsResultAnimationLocked => isResultAnimationLocked;
     public bool IsJokerCardIgnoringDebuffs => IsJokerCardDebuffImmunityActive;
+    public bool IsVanishing => isVanishing;
+    public bool IsVanishingRecoveryLocked => isVanishingRecoveryLocked;
+    public bool IsVanishingMovementLocked => isVanishing || isVanishingRecoveryLocked;
+    public bool IsMisdirectionActive => isMisdirectionActive;
+    public bool CanUseVanishingSkill => IsAgentUpgradeUnlocked(UpgradeUnlockVanishing);
+    public bool CanUseMisdirectionSkill => IsAgentUpgradeUnlocked(UpgradeUnlockMisdirection);
+
+    public override bool CanCatchTarget => !isMisdirectionActive;
+    public override bool CanBeDetectedByTarget => !isMisdirectionActive;
 
     protected override bool ShouldIgnoreDebuffStateIcon => IsJokerCardDebuffImmunityActive;
 
@@ -133,6 +218,8 @@ public class Trickster : AgentController, IUpgradeReceiver
 
         CacheTricksterAnimatorParameters();
         AutoCacheJokerCardEffectReferences();
+        AutoCacheMisdirectionMaterialReferences();
+        CacheOriginalMisdirectionMaterials();
 
         if (jokerCardEffectInstance != null)
             currentJokerCardEffect = jokerCardEffectInstance;
@@ -150,8 +237,9 @@ public class Trickster : AgentController, IUpgradeReceiver
             return;
         }
 
-        if (isHitReactionLocked || isSkillAnimationLocked)
+        if (isHitReactionLocked || isSkillAnimationLocked || IsVanishingMovementLocked)
         {
+            KeepStoppedForLockedAnimation();
             UpdateAnimationState();
             MaintainJokerCardDebuffImmunity();
             return;
@@ -167,6 +255,9 @@ public class Trickster : AgentController, IUpgradeReceiver
         StopJokerCard(true);
         StopFakeBoxRoutine();
         StopHitReactionRoutine();
+        StopVanishingRoutine();
+        StopMisdirectionRoutine();
+        StopVanishingSpotlightReveal();
 
         isSkillAnimationLocked = false;
         isHitReactionLocked = false;
@@ -186,6 +277,17 @@ public class Trickster : AgentController, IUpgradeReceiver
         multiFakeBoxMaxActiveCount = Mathf.Max(2, multiFakeBoxMaxActiveCount);
         wildJokerDurationMultiplier = Mathf.Max(1f, wildJokerDurationMultiplier);
         wildJokerBuffEffectMultiplier = Mathf.Max(1f, wildJokerBuffEffectMultiplier);
+        stageTransitionVanishingTimeMultiplier = Mathf.Clamp(stageTransitionVanishingTimeMultiplier, 0.01f, 1f);
+        flawlessActingMoveSpeedMultiplier = Mathf.Max(1f, flawlessActingMoveSpeedMultiplier);
+        perfectGazeDurationMultiplier = Mathf.Max(1f, perfectGazeDurationMultiplier);
+        perfectGazeGaugeCostMultiplier = Mathf.Clamp(perfectGazeGaugeCostMultiplier, 0.01f, 1f);
+
+        vanishingCastTime = Mathf.Max(0f, vanishingCastTime);
+        vanishingRecoveryLockSeconds = Mathf.Max(0f, vanishingRecoveryLockSeconds);
+        vanishingNavMeshSampleDistance = Mathf.Max(0.01f, vanishingNavMeshSampleDistance);
+        vanishingEffectLifetime = Mathf.Max(0f, vanishingEffectLifetime);
+        vanishingSpotlightDuration = Mathf.Max(0f, vanishingSpotlightDuration);
+        misdirectionDuration = Mathf.Max(0f, misdirectionDuration);
 
         tricksterMovingThreshold = Mathf.Max(0f, tricksterMovingThreshold);
         animationStopDelay = Mathf.Max(0f, animationStopDelay);
@@ -197,6 +299,12 @@ public class Trickster : AgentController, IUpgradeReceiver
 
         CacheTricksterAnimationHashes();
         AutoCacheJokerCardEffectReferences();
+
+        if (Application.isPlaying)
+        {
+            AutoCacheMisdirectionMaterialReferences();
+            CacheOriginalMisdirectionMaterials();
+        }
     }
 
     public override void ExecuteSkill(string skillName, Vector3 targetPos)
@@ -204,7 +312,7 @@ public class Trickster : AgentController, IUpgradeReceiver
         if (string.IsNullOrWhiteSpace(skillName))
             return;
 
-        if (isResultAnimationLocked || isHitReactionLocked || isSkillAnimationLocked)
+        if (isResultAnimationLocked || isHitReactionLocked || isSkillAnimationLocked || IsVanishingMovementLocked)
             return;
 
         if (!CanReceivePlayerSkillCommand(true))
@@ -217,6 +325,18 @@ public class Trickster : AgentController, IUpgradeReceiver
         if (IsFakeBoxSkill(skill))
         {
             ExecuteFakeBox(targetPos);
+            return;
+        }
+
+        if (IsVanishingSkill(skill))
+        {
+            ExecuteVanishing(targetPos);
+            return;
+        }
+
+        if (IsMisdirectionSkill(skill))
+        {
+            ExecuteMisdirection();
             return;
         }
 
@@ -340,6 +460,9 @@ public class Trickster : AgentController, IUpgradeReceiver
 
         StopFakeBoxRoutine();
         StopHitReactionRoutine();
+        StopVanishingRoutine();
+        StopMisdirectionRoutine();
+        StopVanishingSpotlightReveal();
 
         if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
             navAgent.isStopped = false;
@@ -354,16 +477,27 @@ public class Trickster : AgentController, IUpgradeReceiver
         if (IsFakeBoxSkill(skillName))
             requiredGauge *= currentFakeBoxGaugeCostMultiplier;
 
+        if (IsMisdirectionSkill(skillName))
+            requiredGauge *= currentMisdirectionGaugeCostMultiplier;
+
         return Mathf.Max(0f, requiredGauge);
     }
 
     protected override string[] GetCurrentAgentGaugeKeys()
     {
-        return new[]
+        List<string> gaugeKeys = new List<string>
         {
             SkillFakeBox,
             SkillJokerCard
         };
+
+        if (CanUseVanishingSkill)
+            gaugeKeys.Add(SkillVanishing);
+
+        if (CanUseMisdirectionSkill)
+            gaugeKeys.Add(SkillMisdirection);
+
+        return gaugeKeys.ToArray();
     }
 
     public override void AddSkillCommandBlocker(object source)
@@ -379,10 +513,49 @@ public class Trickster : AgentController, IUpgradeReceiver
 
     public override bool CanReceivePlayerSkillCommand(bool showWarning = false)
     {
+        if (IsVanishingMovementLocked)
+        {
+            if (showWarning)
+                Debug.LogWarning($"[Trickster {AgentID}] 배니싱 중이거나 배니싱 직후 경직 상태라 명령을 받을 수 없습니다.");
+
+            return false;
+        }
+
         if (IsJokerCardDebuffImmunityActive)
             return true;
 
         return base.CanReceivePlayerSkillCommand(showWarning);
+    }
+
+    public override void MoveTo(Vector3 destination)
+    {
+        if (IsVanishingMovementLocked)
+        {
+            Debug.Log($"[Trickster {AgentID}] 배니싱 중이거나 배니싱 직후 경직 상태라 이동 명령을 무시합니다. destination={destination}");
+
+            ForceStopForSkill();
+            UpdateAnimationState(true);
+            UpdateStateIcon();
+            return;
+        }
+
+        base.MoveTo(destination);
+    }
+
+    public override void SetChaseTarget(Transform target)
+    {
+        if (IsVanishingMovementLocked)
+        {
+            if (target != null)
+                Debug.Log($"[Trickster {AgentID}] 배니싱 중이거나 배니싱 직후 경직 상태라 타겟을 봐도 추격하지 않습니다. target={target.name}");
+
+            ForceStopForSkill();
+            UpdateAnimationState(true);
+            UpdateStateIcon();
+            return;
+        }
+
+        base.SetChaseTarget(target);
     }
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
@@ -411,6 +584,22 @@ public class Trickster : AgentController, IUpgradeReceiver
 
             case UpgradeJokerCardStageControl:
                 ApplyStageControlUpgrade(upgrade);
+                break;
+
+            case UpgradeVanishingStageTransition:
+                ApplyVanishingStageTransitionUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeVanishingSpotlight:
+                ApplyVanishingSpotlightUpgrade(upgrade);
+                break;
+
+            case UpgradeMisdirectionFlawlessActing:
+                ApplyMisdirectionFlawlessActingUpgrade(upgrade.Value);
+                break;
+
+            case UpgradeMisdirectionPerfectGaze:
+                ApplyMisdirectionPerfectGazeUpgrade(upgrade.Value);
                 break;
 
             default:
@@ -485,6 +674,393 @@ public class Trickster : AgentController, IUpgradeReceiver
             $"[Trickster {AgentID}] 무대 장악 강화 적용. " +
             "조커 카드 지속시간 동안 디버프를 무효화합니다."
         );
+    }
+
+    private void ApplyVanishingStageTransitionUpgrade(float value)
+    {
+        float multiplier = value > 0f
+            ? Mathf.Clamp(value, 0.01f, 1f)
+            : stageTransitionVanishingTimeMultiplier;
+
+        currentVanishingCastTimeMultiplier = multiplier;
+        currentVanishingRecoveryLockMultiplier = multiplier;
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 무대 전환 강화 적용. " +
+            $"VanishingCastTimeMultiplier={currentVanishingCastTimeMultiplier:F2}, " +
+            $"RecoveryLockMultiplier={currentVanishingRecoveryLockMultiplier:F2}"
+        );
+    }
+
+    private void ApplyVanishingSpotlightUpgrade(UpgradeDefinition upgrade)
+    {
+        if (upgrade == null)
+            return;
+
+        if (upgrade.EffectType != UpgradeEffectType.BoolEnable)
+        {
+            Debug.LogWarning(
+                $"[Trickster {AgentID}] 스포트라이트 강화의 Effect Type은 BoolEnable을 권장합니다. " +
+                $"CurrentType={upgrade.EffectType}"
+            );
+        }
+
+        if (upgrade.Value <= 0f)
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 스포트라이트 강화 Value가 0 이하입니다. BoolEnable 강화는 Value를 1로 설정하세요.");
+            return;
+        }
+
+        currentVanishingSpotlightEnabled = true;
+        Debug.Log($"[Trickster {AgentID}] 스포트라이트 강화 적용. 배니싱 성공 시 타겟 위치를 표시합니다.");
+    }
+
+    private void ApplyMisdirectionFlawlessActingUpgrade(float value)
+    {
+        currentMisdirectionMoveSpeedMultiplier = value > 0f
+            ? Mathf.Max(1f, value)
+            : flawlessActingMoveSpeedMultiplier;
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 빈틈 없는 연기 강화 적용. " +
+            $"MoveSpeedMultiplier={currentMisdirectionMoveSpeedMultiplier:F2}"
+        );
+    }
+
+    private void ApplyMisdirectionPerfectGazeUpgrade(float value)
+    {
+        currentMisdirectionDurationMultiplier = perfectGazeDurationMultiplier;
+        currentMisdirectionGaugeCostMultiplier = value > 0f
+            ? Mathf.Clamp(value, 0.01f, 1f)
+            : perfectGazeGaugeCostMultiplier;
+
+        Debug.Log(
+            $"[Trickster {AgentID}] 완벽한 시선 유도 강화 적용. " +
+            $"DurationMultiplier={currentMisdirectionDurationMultiplier:F2}, " +
+            $"GaugeCostMultiplier={currentMisdirectionGaugeCostMultiplier:F2}"
+        );
+    }
+
+    private void ExecuteVanishing(Vector3 targetPos)
+    {
+        if (!CanUseVanishingSkill)
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 아직 배니싱 스킬을 사용할 수 없습니다.");
+            return;
+        }
+
+        if (IsVanishingMovementLocked)
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 이미 배니싱 중이거나 배니싱 직후 경직 상태입니다.");
+            return;
+        }
+
+        if (!TryResolveVanishingPosition(targetPos, out Vector3 warpPosition))
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 배니싱 취소. 지정 좌표가 NavMesh 위가 아닙니다. Target={targetPos}");
+            return;
+        }
+
+        if (!TryConsumeSkillGaugeForSkill(SkillVanishing))
+            return;
+
+        ForceStopForSkill();
+
+        if (vanishingRoutine != null)
+            StopCoroutine(vanishingRoutine);
+
+        vanishingRoutine = StartCoroutine(VanishingRoutine(warpPosition));
+    }
+
+    private IEnumerator VanishingRoutine(Vector3 warpPosition)
+    {
+        isVanishing = true;
+        isVanishingRecoveryLocked = false;
+        isSkillAnimationLocked = true;
+
+        ForceStopForSkill();
+        UpdateAnimationState(true);
+
+        PlayVanishingStartAnimation();
+        RequestVanishingStartCamera();
+
+        if (spawnCurtainAtStart)
+            SpawnVanishingCurtain(transform.position);
+
+        float castTime = stats != null ? stats.vanishingCastTime : vanishingCastTime;
+        castTime *= currentVanishingCastTimeMultiplier;
+        castTime = Mathf.Max(0f, castTime);
+
+        Debug.Log($"[Trickster {AgentID}] 배니싱 시전 시작. CastTime={castTime:0.##}");
+
+        if (castTime > 0f)
+            yield return new WaitForSeconds(castTime);
+
+        WarpToVanishingPosition(warpPosition);
+
+        PlayVanishingSuccessAnimation();
+        RequestVanishingSuccessCamera();
+
+        if (spawnCurtainAtEnd)
+            SpawnVanishingCurtain(warpPosition);
+
+        if (currentVanishingSpotlightEnabled)
+            StartVanishingSpotlightReveal();
+
+        isVanishing = false;
+        isVanishingRecoveryLocked = true;
+
+        ForceStopForSkill();
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+
+        float recoveryLockSeconds = stats != null
+            ? stats.vanishingRecoveryLockSeconds
+            : vanishingRecoveryLockSeconds;
+
+        recoveryLockSeconds *= currentVanishingRecoveryLockMultiplier;
+        recoveryLockSeconds = Mathf.Max(0f, recoveryLockSeconds);
+
+        Debug.Log($"[Trickster {AgentID}] 배니싱 성공. {recoveryLockSeconds:0.##}초 동안 이동/명령/추격이 제한됩니다. Position={warpPosition}");
+
+        if (recoveryLockSeconds > 0f)
+            yield return new WaitForSeconds(recoveryLockSeconds);
+
+        isVanishingRecoveryLocked = false;
+        isSkillAnimationLocked = false;
+        vanishingRoutine = null;
+
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+        {
+            navAgent.isStopped = false;
+            navAgent.velocity = Vector3.zero;
+            navAgent.ResetPath();
+        }
+
+        UpdateAnimationState(true);
+        UpdateStateIcon();
+
+        Debug.Log($"[Trickster {AgentID}] 배니싱 후 경직 종료.");
+    }
+
+    private bool TryResolveVanishingPosition(Vector3 targetPos, out Vector3 warpPosition)
+    {
+        warpPosition = targetPos;
+
+        if (navAgent == null)
+            return false;
+
+        float sampleDistance = Mathf.Max(0.01f, vanishingNavMeshSampleDistance);
+
+        if (!NavMesh.SamplePosition(targetPos, out NavMeshHit hit, sampleDistance, navAgent.areaMask))
+            return false;
+
+        warpPosition = hit.position;
+        return true;
+    }
+
+    private void WarpToVanishingPosition(Vector3 warpPosition)
+    {
+        if (navAgent != null && navAgent.isActiveAndEnabled && navAgent.isOnNavMesh)
+        {
+            navAgent.Warp(warpPosition);
+            navAgent.velocity = Vector3.zero;
+            navAgent.ResetPath();
+            return;
+        }
+
+        transform.position = warpPosition;
+    }
+
+    private void SpawnVanishingCurtain(Vector3 position)
+    {
+        if (vanishingCurtainPrefab == null)
+            return;
+
+        Transform parent = vanishingEffectParent != null ? vanishingEffectParent : null;
+        GameObject curtain = Instantiate(vanishingCurtainPrefab, position, Quaternion.identity, parent);
+
+        if (vanishingEffectLifetime > 0f)
+            Destroy(curtain, vanishingEffectLifetime);
+    }
+
+    private void RequestVanishingStartCamera()
+    {
+        if (!requestCameraOnVanishingStart)
+            return;
+
+        RequestFollowUserSkillCamera();
+    }
+
+    private void RequestVanishingSuccessCamera()
+    {
+        if (!requestCameraOnVanishingSuccess)
+            return;
+
+        RequestFollowUserSkillCamera();
+    }
+
+    private void StartVanishingSpotlightReveal()
+    {
+        StopVanishingSpotlightReveal();
+
+        TargetController target = FindFirstObjectByType<TargetController>();
+
+        if (target == null)
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 스포트라이트 대상을 찾지 못했습니다.");
+            return;
+        }
+
+        vanishingSpotlightRoutine = StartCoroutine(VanishingSpotlightRevealRoutine(target));
+    }
+
+    private IEnumerator VanishingSpotlightRevealRoutine(TargetController target)
+    {
+        currentSpotlightTarget = target;
+
+        if (currentSpotlightTarget != null)
+            currentSpotlightTarget.AddReconReveal();
+
+        SpawnSpotlightEffect(currentSpotlightTarget);
+
+        float duration = Mathf.Max(0f, vanishingSpotlightDuration);
+
+        Debug.Log($"[Trickster {AgentID}] 스포트라이트 시작. Duration={duration:0.##}");
+
+        if (duration > 0f)
+            yield return new WaitForSeconds(duration);
+
+        ClearVanishingSpotlightState();
+        vanishingSpotlightRoutine = null;
+    }
+
+    private void SpawnSpotlightEffect(TargetController target)
+    {
+        if (spotlightEffectPrefab == null || target == null)
+            return;
+
+        if (currentSpotlightEffectInstance != null)
+            Destroy(currentSpotlightEffectInstance);
+
+        currentSpotlightEffectInstance = Instantiate(spotlightEffectPrefab, target.transform);
+        currentSpotlightEffectInstance.transform.localPosition = spotlightEffectLocalOffset;
+        currentSpotlightEffectInstance.transform.localRotation = Quaternion.identity;
+        currentSpotlightEffectInstance.transform.localScale = Vector3.one;
+    }
+
+    private void StopVanishingSpotlightReveal()
+    {
+        if (vanishingSpotlightRoutine != null)
+        {
+            StopCoroutine(vanishingSpotlightRoutine);
+            vanishingSpotlightRoutine = null;
+        }
+
+        ClearVanishingSpotlightState();
+    }
+
+    private void ClearVanishingSpotlightState()
+    {
+        if (currentSpotlightTarget != null)
+        {
+            currentSpotlightTarget.RemoveReconReveal();
+            currentSpotlightTarget = null;
+        }
+
+        if (currentSpotlightEffectInstance != null)
+        {
+            Destroy(currentSpotlightEffectInstance);
+            currentSpotlightEffectInstance = null;
+        }
+    }
+
+    private void ExecuteMisdirection()
+    {
+        if (!CanUseMisdirectionSkill)
+        {
+            Debug.LogWarning($"[Trickster {AgentID}] 아직 미스디렉션 스킬을 사용할 수 없습니다.");
+            return;
+        }
+
+        if (!TryConsumeSkillGaugeForSkill(SkillMisdirection))
+            return;
+
+        if (misdirectionRoutine != null)
+        {
+            StopCoroutine(misdirectionRoutine);
+            misdirectionRoutine = null;
+            EndMisdirectionState();
+        }
+
+        misdirectionRoutine = StartCoroutine(MisdirectionRoutine());
+    }
+
+    private IEnumerator MisdirectionRoutine()
+    {
+        BeginMisdirectionState();
+
+        float duration = stats != null ? stats.misdirectionDuration : misdirectionDuration;
+        duration *= currentMisdirectionDurationMultiplier;
+        duration = Mathf.Max(0f, duration);
+
+        Debug.Log($"[Trickster {AgentID}] 미스디렉션 시작. Duration={duration:0.##}, 충돌 유지, 포획 불가");
+
+        if (duration > 0f)
+            yield return new WaitForSeconds(duration);
+
+        EndMisdirectionState();
+        misdirectionRoutine = null;
+
+        Debug.Log($"[Trickster {AgentID}] 미스디렉션 종료.");
+    }
+
+    private void BeginMisdirectionState()
+    {
+        isMisdirectionActive = true;
+
+        ApplyMisdirectionMoveSpeedBoost();
+        ApplyMisdirectionMaterial();
+
+        UpdateStateIcon();
+        RequestFollowUserSkillCamera();
+    }
+
+    private void EndMisdirectionState()
+    {
+        isMisdirectionActive = false;
+
+        RestoreMisdirectionMoveSpeed();
+        RestoreMisdirectionMaterial();
+
+        UpdateStateIcon();
+    }
+
+    private void ApplyMisdirectionMoveSpeedBoost()
+    {
+        if (currentMisdirectionMoveSpeedMultiplier <= 1f)
+            return;
+
+        if (navAgent == null)
+            return;
+
+        if (hasMisdirectionSpeedSnapshot)
+            return;
+
+        misdirectionSpeedSnapshot = navAgent.speed;
+        hasMisdirectionSpeedSnapshot = true;
+        navAgent.speed = misdirectionSpeedSnapshot * currentMisdirectionMoveSpeedMultiplier;
+    }
+
+    private void RestoreMisdirectionMoveSpeed()
+    {
+        if (!hasMisdirectionSpeedSnapshot)
+            return;
+
+        if (navAgent != null)
+            navAgent.speed = misdirectionSpeedSnapshot;
+
+        hasMisdirectionSpeedSnapshot = false;
     }
 
     private void ExecuteFakeBox(Vector3 targetPos)
@@ -607,6 +1183,129 @@ public class Trickster : AgentController, IUpgradeReceiver
             if (oldestFakeBox != null)
                 Destroy(oldestFakeBox.gameObject);
         }
+    }
+
+    private void AutoCacheMisdirectionMaterialReferences()
+    {
+        if (!autoFindMisdirectionMaterialRoot)
+            return;
+
+        if (misdirectionMaterialRoot != null)
+            return;
+
+        Transform foundRoot = FindChildRecursive(transform, misdirectionMaterialRootName);
+
+        if (foundRoot != null)
+            misdirectionMaterialRoot = foundRoot;
+    }
+
+    private void CacheOriginalMisdirectionMaterials()
+    {
+        AutoCacheMisdirectionMaterialReferences();
+
+        Transform root = misdirectionMaterialRoot != null ? misdirectionMaterialRoot : transform;
+
+        misdirectionRenderers = applyMisdirectionMaterialToChildren
+            ? root.GetComponentsInChildren<Renderer>(true)
+            : root.GetComponents<Renderer>();
+
+        if (misdirectionRenderers == null || misdirectionRenderers.Length == 0)
+        {
+            hasCachedMisdirectionMaterials = false;
+            originalMisdirectionMaterials = null;
+            return;
+        }
+
+        originalMisdirectionMaterials = new Material[misdirectionRenderers.Length][];
+
+        for (int i = 0; i < misdirectionRenderers.Length; i++)
+        {
+            Renderer targetRenderer = misdirectionRenderers[i];
+
+            if (targetRenderer == null)
+                continue;
+
+            originalMisdirectionMaterials[i] = targetRenderer.sharedMaterials;
+        }
+
+        hasCachedMisdirectionMaterials = true;
+    }
+
+    private void ApplyMisdirectionMaterial()
+    {
+        if (misdirectionMaterial == null)
+            return;
+
+        if (!hasCachedMisdirectionMaterials || misdirectionRenderers == null)
+            CacheOriginalMisdirectionMaterials();
+
+        if (misdirectionRenderers == null || misdirectionRenderers.Length == 0)
+            return;
+
+        for (int i = 0; i < misdirectionRenderers.Length; i++)
+        {
+            Renderer targetRenderer = misdirectionRenderers[i];
+
+            if (targetRenderer == null)
+                continue;
+
+            Material[] currentMaterials = targetRenderer.sharedMaterials;
+
+            if (currentMaterials == null || currentMaterials.Length == 0)
+                continue;
+
+            Material[] newMaterials = new Material[currentMaterials.Length];
+
+            if (replaceAllMisdirectionMaterials)
+            {
+                for (int j = 0; j < newMaterials.Length; j++)
+                    newMaterials[j] = misdirectionMaterial;
+            }
+            else
+            {
+                for (int j = 0; j < newMaterials.Length; j++)
+                    newMaterials[j] = currentMaterials[j];
+
+                newMaterials[0] = misdirectionMaterial;
+            }
+
+            targetRenderer.sharedMaterials = newMaterials;
+        }
+
+        isMisdirectionMaterialApplied = true;
+    }
+
+    private void RestoreMisdirectionMaterial()
+    {
+        if (!isMisdirectionMaterialApplied)
+            return;
+
+        if (!hasCachedMisdirectionMaterials ||
+            misdirectionRenderers == null ||
+            originalMisdirectionMaterials == null)
+        {
+            isMisdirectionMaterialApplied = false;
+            return;
+        }
+
+        int count = Mathf.Min(misdirectionRenderers.Length, originalMisdirectionMaterials.Length);
+
+        for (int i = 0; i < count; i++)
+        {
+            Renderer targetRenderer = misdirectionRenderers[i];
+
+            if (targetRenderer == null)
+                continue;
+
+            Material[] originalMaterials = originalMisdirectionMaterials[i];
+
+            if (originalMaterials == null)
+                continue;
+
+            targetRenderer.sharedMaterials = originalMaterials;
+        }
+
+        isMisdirectionMaterialApplied = false;
     }
 
     private void MaintainJokerCardDebuffImmunity()
@@ -1108,6 +1807,16 @@ public class Trickster : AgentController, IUpgradeReceiver
         PlayAnimatorTrigger(fakeBoxHash, hasFakeBoxTrigger, "FakeBox");
     }
 
+    private void PlayVanishingStartAnimation()
+    {
+        PlayAnimatorTrigger(vanishingStartHash, hasVanishingStartTrigger, VanishingStartTriggerName);
+    }
+
+    private void PlayVanishingSuccessAnimation()
+    {
+        PlayAnimatorTrigger(vanishingSuccessHash, hasVanishingSuccessTrigger, VanishingSuccessTriggerName);
+    }
+
     private void PlayResultAnimation(int triggerHash, bool hasTrigger, string triggerName)
     {
         if (animator == null)
@@ -1128,6 +1837,9 @@ public class Trickster : AgentController, IUpgradeReceiver
 
         StopFakeBoxRoutine();
         StopHitReactionRoutine();
+        StopVanishingRoutine();
+        StopMisdirectionRoutine();
+        StopVanishingSpotlightReveal();
 
         currentTarget = null;
         isManualMoving = false;
@@ -1181,6 +1893,12 @@ public class Trickster : AgentController, IUpgradeReceiver
         if (hasFakeBoxTrigger)
             animator.ResetTrigger(fakeBoxHash);
 
+        if (hasVanishingStartTrigger)
+            animator.ResetTrigger(vanishingStartHash);
+
+        if (hasVanishingSuccessTrigger)
+            animator.ResetTrigger(vanishingSuccessHash);
+
         if (hasHitReactionTrigger)
             animator.ResetTrigger(hitReactionHash);
 
@@ -1209,12 +1927,37 @@ public class Trickster : AgentController, IUpgradeReceiver
         hitReactionRoutine = null;
     }
 
+    private void StopVanishingRoutine()
+    {
+        if (vanishingRoutine != null)
+        {
+            StopCoroutine(vanishingRoutine);
+            vanishingRoutine = null;
+        }
+
+        isVanishing = false;
+        isVanishingRecoveryLocked = false;
+    }
+
+    private void StopMisdirectionRoutine()
+    {
+        if (misdirectionRoutine != null)
+        {
+            StopCoroutine(misdirectionRoutine);
+            misdirectionRoutine = null;
+        }
+
+        EndMisdirectionState();
+    }
+
     private void CacheTricksterAnimationHashes()
     {
         isMovingHash = Animator.StringToHash(IsMovingParameter);
         moveSpeedHash = Animator.StringToHash(MoveSpeedParameter);
         moveModeHash = Animator.StringToHash(MoveModeParameter);
         fakeBoxHash = Animator.StringToHash(FakeBoxTriggerName);
+        vanishingStartHash = Animator.StringToHash(VanishingStartTriggerName);
+        vanishingSuccessHash = Animator.StringToHash(VanishingSuccessTriggerName);
         hitReactionHash = Animator.StringToHash(HitReactionTriggerName);
         victoryHash = Animator.StringToHash(VictoryTriggerName);
         defeatHash = Animator.StringToHash(DefeatTriggerName);
@@ -1226,6 +1969,8 @@ public class Trickster : AgentController, IUpgradeReceiver
         hasMoveSpeedParameter = HasAnimatorParameter(MoveSpeedParameter, AnimatorControllerParameterType.Float);
         hasMoveModeParameter = HasAnimatorParameter(MoveModeParameter, AnimatorControllerParameterType.Int);
         hasFakeBoxTrigger = HasAnimatorParameter(FakeBoxTriggerName, AnimatorControllerParameterType.Trigger);
+        hasVanishingStartTrigger = HasAnimatorParameter(VanishingStartTriggerName, AnimatorControllerParameterType.Trigger);
+        hasVanishingSuccessTrigger = HasAnimatorParameter(VanishingSuccessTriggerName, AnimatorControllerParameterType.Trigger);
         hasHitReactionTrigger = HasAnimatorParameter(HitReactionTriggerName, AnimatorControllerParameterType.Trigger);
         hasVictoryTrigger = HasAnimatorParameter(VictoryTriggerName, AnimatorControllerParameterType.Trigger);
         hasDefeatTrigger = HasAnimatorParameter(DefeatTriggerName, AnimatorControllerParameterType.Trigger);
@@ -1274,6 +2019,40 @@ public class Trickster : AgentController, IUpgradeReceiver
                skill.Contains("joker card") ||
                skill.Contains("조커카드") ||
                skill.Contains("조커 카드");
+    }
+
+    private bool IsVanishingSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("vanishing") ||
+               skill.Contains("vanish") ||
+               skill.Contains("배니싱");
+    }
+
+    private bool IsMisdirectionSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("misdirection") ||
+               skill.Contains("mis direction") ||
+               skill.Contains("미스디렉션") ||
+               skill.Contains("미스 디렉션");
+    }
+
+    private bool IsAgentUpgradeUnlocked(string upgradeId)
+    {
+        if (string.IsNullOrWhiteSpace(upgradeId))
+            return false;
+
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return false;
+
+        return upgradeManager.HasAgentUpgrade(upgradeId);
     }
 
     private sealed class FloatMemberSnapshot

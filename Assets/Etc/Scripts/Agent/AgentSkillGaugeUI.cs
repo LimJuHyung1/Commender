@@ -27,6 +27,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string SkillFakeBox = "fakebox";
     private const string SkillJokerCard = "jokercard";
+    private const string SkillVanishing = "vanishing";
+    private const string SkillMisdirection = "misdirection";
 
     private const string LegacySkillNoisemaker = "noisemaker";
     private const string LegacySkillHologram = "hologram";
@@ -39,6 +41,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string EngineerUnlockDemolition = "engineer_unlock_demolition";
     private const string EngineerUnlockSafeZone = "engineer_unlock_safe_zone";
+
+    private const string TricksterUnlockVanishing = "trickster_unlock_vanishing";
+    private const string TricksterUnlockMisdirection = "trickster_unlock_misdirection";
 
     private enum GaugeFillDirection
     {
@@ -82,8 +87,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private CommanderUIController commanderUIController;
     [SerializeField] private bool pasteSkillNameOnFunctionKeyClick = true;
     [SerializeField] private bool pasteOnlyWhenFunctionKeyInputMatchesClickedAgent = true;
+    [SerializeField] private bool pasteSkillNameOnDoubleClick = true;
+    [SerializeField] private float doubleClickMaxInterval = 0.3f;
     [SerializeField] private bool showGaugeInfoAfterSkillPaste = false;
     [SerializeField] private bool autoFindCommanderUIController = true;
+
+    private AgentSkillSlotUI lastClickedSkillSlot;
+    private float lastSkillClickTime = -999f;
 
     private string gaugeInfoLabelText = "";
     private Vector2 gaugeInfoLabelScreenPosition;
@@ -153,6 +163,8 @@ public class AgentSkillGaugeUI : MonoBehaviour
         gaugeInfoLabelDuration = Mathf.Max(0f, gaugeInfoLabelDuration);
         gaugeInfoLabelSize.x = Mathf.Max(1f, gaugeInfoLabelSize.x);
         gaugeInfoLabelSize.y = Mathf.Max(1f, gaugeInfoLabelSize.y);
+
+        doubleClickMaxInterval = Mathf.Max(0.05f, doubleClickMaxInterval);
 
         toggleSkillOnFillAmount = Mathf.Clamp01(toggleSkillOnFillAmount);
         toggleSkillOffFillAmount = Mathf.Clamp01(toggleSkillOffFillAmount);
@@ -467,6 +479,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return GetUnlockedEngineerThirdSkillUpgrade();
         }
 
+        if (IsTricksterAgent())
+        {
+            return GetUnlockedTricksterThirdSkillUpgrade();
+        }
+
         return null;
     }
 
@@ -557,6 +574,35 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return null;
     }
 
+    private UpgradeDefinition GetUnlockedTricksterThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+        {
+            return null;
+        }
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+        {
+            return null;
+        }
+
+        if (upgradeManager.HasAgentUpgrade(TricksterUnlockVanishing))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockVanishing);
+        }
+
+        if (upgradeManager.HasAgentUpgrade(TricksterUnlockMisdirection))
+        {
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockMisdirection);
+        }
+
+        return null;
+    }
+
     private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
     {
         if (upgrade == null)
@@ -597,6 +643,16 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (upgrade.UpgradeId == EngineerUnlockSafeZone)
         {
             return SkillSafeZone;
+        }
+
+        if (upgrade.UpgradeId == TricksterUnlockVanishing)
+        {
+            return SkillVanishing;
+        }
+
+        if (upgrade.UpgradeId == TricksterUnlockMisdirection)
+        {
+            return SkillMisdirection;
         }
 
         return "";
@@ -647,9 +703,26 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return agentId == 2;
     }
 
+    private bool IsTricksterAgent()
+    {
+        if (targetAgent != null)
+        {
+            if (targetAgent.Stats != null)
+            {
+                return targetAgent.Stats.role == AgentRole.Trickster;
+            }
+
+            return targetAgent.AgentID == 3;
+        }
+
+        return agentId == 3;
+    }
+
     private void HandleSkillGaugeInfoClick()
     {
-        if (!showGaugeInfoOnSkillClick && !pasteSkillNameOnFunctionKeyClick)
+        if (!showGaugeInfoOnSkillClick &&
+            !pasteSkillNameOnFunctionKeyClick &&
+            !pasteSkillNameOnDoubleClick)
         {
             return;
         }
@@ -670,22 +743,21 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (IsSlotClicked(skill1Slot, mousePosition))
         {
-            HandleSkillIconClick(skill1Name, mousePosition);
+            HandleSkillIconClick(skill1Slot, skill1Name, mousePosition);
             return;
         }
 
         if (IsSlotClicked(skill2Slot, mousePosition))
         {
-            HandleSkillIconClick(skill2Name, mousePosition);
+            HandleSkillIconClick(skill2Slot, skill2Name, mousePosition);
             return;
         }
 
         if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
         {
-            HandleSkillIconClick(skill3Name, mousePosition);
+            HandleSkillIconClick(skill3Slot, skill3Name, mousePosition);
         }
     }
-
     private bool IsSlotClicked(AgentSkillSlotUI slot, Vector2 screenPosition)
     {
         if (slot == null)
@@ -707,9 +779,20 @@ public class AgentSkillGaugeUI : MonoBehaviour
         );
     }
 
-    private void HandleSkillIconClick(string skillName, Vector2 mousePosition)
+    private void HandleSkillIconClick(AgentSkillSlotUI clickedSlot, string skillName, Vector2 mousePosition)
     {
-        bool pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
+        bool pasted = false;
+
+        if (IsSkillIconDoubleClick(clickedSlot))
+        {
+            pasted = TryPasteSkillNameToOwnInput(skillName);
+            ResetLastSkillIconClick();
+        }
+        else
+        {
+            RegisterSkillIconClick(clickedSlot);
+            pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
+        }
 
         if (pasted && !showGaugeInfoAfterSkillPaste)
         {
@@ -720,6 +803,83 @@ public class AgentSkillGaugeUI : MonoBehaviour
         {
             ShowGaugeInfoLabel(skillName, mousePosition);
         }
+    }
+
+    private bool IsSkillIconDoubleClick(AgentSkillSlotUI clickedSlot)
+    {
+        if (!pasteSkillNameOnDoubleClick)
+        {
+            return false;
+        }
+
+        if (clickedSlot == null)
+        {
+            return false;
+        }
+
+        if (lastClickedSkillSlot != clickedSlot)
+        {
+            return false;
+        }
+
+        float elapsedTime = Time.unscaledTime - lastSkillClickTime;
+        return elapsedTime <= doubleClickMaxInterval;
+    }
+
+    private void RegisterSkillIconClick(AgentSkillSlotUI clickedSlot)
+    {
+        lastClickedSkillSlot = clickedSlot;
+        lastSkillClickTime = Time.unscaledTime;
+    }
+
+    private void ResetLastSkillIconClick()
+    {
+        lastClickedSkillSlot = null;
+        lastSkillClickTime = -999f;
+    }
+
+    private bool TryPasteSkillNameToOwnInput(string skillName)
+    {
+        if (!pasteSkillNameOnDoubleClick)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsAutoActivatedSkill(normalizedSkillName))
+        {
+            return false;
+        }
+
+        if (commanderUIController == null && autoFindCommanderUIController)
+        {
+            TryCacheCommanderUIController();
+        }
+
+        if (commanderUIController == null)
+        {
+            return false;
+        }
+
+        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
+
+        if (clickedAgentId < 0)
+        {
+            return false;
+        }
+
+        string displayName = GetSkillDisplayName(normalizedSkillName);
+
+        return commanderUIController.TryPasteSkillDisplayNameToAgentInput(
+            clickedAgentId,
+            displayName
+        );
     }
 
     private bool TryPasteSkillNameToFunctionKeyInput(string skillName)
@@ -1116,6 +1276,16 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return SkillDrone;
         }
 
+        if (IsVanishingSkill(skill))
+        {
+            return SkillVanishing;
+        }
+
+        if (IsMisdirectionSkill(skill))
+        {
+            return SkillMisdirection;
+        }
+
         return skill;
     }
 
@@ -1306,6 +1476,37 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("안전 구역");
     }
 
+    private bool IsVanishingSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillVanishing ||
+               skill.Contains("vanishing") ||
+               skill.Contains("vanish") ||
+               skill.Contains("배니싱");
+    }
+
+    private bool IsMisdirectionSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+        {
+            return false;
+        }
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillMisdirection ||
+               skill.Contains("misdirection") ||
+               skill.Contains("mis direction") ||
+               skill.Contains("미스디렉션") ||
+               skill.Contains("미스 디렉션");
+    }
+
     private bool IsLegacySlowTrapSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -1444,6 +1645,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case SkillJokerCard:
                 return "조커 카드";
+
+            case SkillVanishing:
+                return "배니싱";
+
+            case SkillMisdirection:
+                return "미스디렉션";
 
             default:
                 return skillName;

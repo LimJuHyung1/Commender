@@ -17,6 +17,7 @@ public class CommanderUIController : MonoBehaviour
 
     [Header("Skill Name Paste")]
     [SerializeField] private bool addSpaceBeforePastedSkillName = true;
+    [SerializeField] private bool clearFocusAfterPastedSkillName = true;
 
     [Header("Communication Jam")]
     [SerializeField] private string jammedPlaceholderText = "통신 방해 중... 명령 버튼을 눌러 해제";
@@ -200,7 +201,15 @@ public class CommanderUIController : MonoBehaviour
             return false;
 
         PasteSkillNameToInput(input, skillDisplayName.Trim());
-        FocusInputField(inputIndex);
+
+        if (clearFocusAfterPastedSkillName)
+        {
+            ClearCurrentInputFocus();
+        }
+        else
+        {
+            FocusInputField(inputIndex);
+        }
 
         return true;
     }
@@ -1103,16 +1112,16 @@ public class CommanderUIController : MonoBehaviour
         switch (role)
         {
             case AgentRole.Chaser:
-                return "체이서 EX) (좌표) 출입 통제, 도주 제지";
+                return "EX) (좌표) 출입 통제, 도주 제지";
 
             case AgentRole.Observer:
-                return "옵저버 EX) (좌표) 드론, 위치 공유 꺼";
+                return "EX) (좌표) 드론, 위치 공유 꺼";
 
             case AgentRole.Engineer:
-                return "엔지니어 EX) 철거, (좌표) 바리케이드, (좌표) 정지 신호, (좌표) 안전 구역";
+                return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
 
             case AgentRole.Trickster:
-                return "트릭스터 EX) (좌표) 페이크 박스";
+                return "EX) (좌표) 페이크 박스";
         }
 
         return "";
@@ -1179,5 +1188,18 @@ public class CommanderUIController : MonoBehaviour
         }
 
         Debug.LogWarning("[CommanderUI] 통신 방해 테스트 실패: 방해 가능한 에이전트가 없습니다.");
+    }
+
+    public bool TryPasteSkillDisplayNameToAgentInput(int clickedAgentId, string skillDisplayName)
+    {
+        if (!TryGetInputIndexByAgentId(clickedAgentId, out int inputIndex))
+            return false;
+
+        return TryPasteSkillDisplayNameToInputIndex(
+            inputIndex,
+            clickedAgentId,
+            skillDisplayName,
+            true
+        );
     }
 }

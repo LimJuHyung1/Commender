@@ -118,16 +118,25 @@ public class AgentStatsSO : ScriptableObject
 
     public float demolitionSkillGaugeMax = 60f;
     public float safeZoneSkillGaugeMax = 100f;
-    
+
     [Header("트릭스터 스킬 게이지")]
     public float fakeBoxSkillGaugeMax = 70f;
     public float jokerCardSkillGaugeMax = 100f;
+    public float vanishingSkillGaugeMax = 90f;
+    public float misdirectionSkillGaugeMax = 80f;
 
     [Header("트릭스터 조커 카드 설정")]
     public float jokerCardDuration = 10f;
     public float jokerCardMoveSpeedMultiplier = 1.5f;
     public float jokerCardViewRadiusMultiplier = 1.25f;
     public float jokerCardViewAngleBonus = 30f;
+
+    [Header("트릭스터 배니싱 설정")]
+    public float vanishingCastTime = 5f;
+    public float vanishingRecoveryLockSeconds = 5f;
+
+    [Header("트릭스터 미스디렉션 설정")]
+    public float misdirectionDuration = 10f;
 
     [Header("Legacy Trickster Settings")]
     [HideInInspector] public float decoyDuration = 5f;
@@ -228,11 +237,17 @@ public class AgentStatsSO : ScriptableObject
 
         fakeBoxSkillGaugeMax = Mathf.Max(0f, fakeBoxSkillGaugeMax);
         jokerCardSkillGaugeMax = Mathf.Max(0f, jokerCardSkillGaugeMax);
+        vanishingSkillGaugeMax = Mathf.Max(0f, vanishingSkillGaugeMax);
+        misdirectionSkillGaugeMax = Mathf.Max(0f, misdirectionSkillGaugeMax);
 
         jokerCardDuration = Mathf.Max(0f, jokerCardDuration);
         jokerCardMoveSpeedMultiplier = Mathf.Max(0f, jokerCardMoveSpeedMultiplier);
         jokerCardViewRadiusMultiplier = Mathf.Max(0f, jokerCardViewRadiusMultiplier);
         jokerCardViewAngleBonus = Mathf.Max(0f, jokerCardViewAngleBonus);
+
+        vanishingCastTime = Mathf.Max(0f, vanishingCastTime);
+        vanishingRecoveryLockSeconds = Mathf.Max(0f, vanishingRecoveryLockSeconds);
+        misdirectionDuration = Mathf.Max(0f, misdirectionDuration);
 
         decoyDuration = Mathf.Max(0f, decoyDuration);
         phantomDuration = Mathf.Max(0f, phantomDuration);
@@ -299,6 +314,12 @@ public class AgentStatsSO : ScriptableObject
         if (IsJokerCardSkill(skill))
             return Mathf.Max(0f, jokerCardSkillGaugeMax);
 
+        if (IsVanishingSkill(skill))
+            return Mathf.Max(0f, vanishingSkillGaugeMax);
+
+        if (IsMisdirectionSkill(skill))
+            return Mathf.Max(0f, misdirectionSkillGaugeMax);
+
         if (IsNoisemakerSkill(skill))
             return Mathf.Max(0f, noisemakerSkillGaugeMax);
 
@@ -347,7 +368,9 @@ public class AgentStatsSO : ScriptableObject
                 return Mathf.Max(
                     0f,
                     fakeBoxSkillGaugeMax,
-                    jokerCardSkillGaugeMax
+                    jokerCardSkillGaugeMax,
+                    vanishingSkillGaugeMax,
+                    misdirectionSkillGaugeMax
                 );
 
             default:
@@ -359,12 +382,14 @@ public class AgentStatsSO : ScriptableObject
                     droneSkillGaugeMax,
                     reconnaissanceSkillGaugeMax,
                     observationSupportSkillGaugeMax,
-barricadeSkillGaugeMax,
-stopSignalSkillGaugeMax,
-demolitionSkillGaugeMax,
-safeZoneSkillGaugeMax,
-fakeBoxSkillGaugeMax,
+                    barricadeSkillGaugeMax,
+                    stopSignalSkillGaugeMax,
+                    demolitionSkillGaugeMax,
+                    safeZoneSkillGaugeMax,
+                    fakeBoxSkillGaugeMax,
                     jokerCardSkillGaugeMax,
+                    vanishingSkillGaugeMax,
+                    misdirectionSkillGaugeMax,
                     noisemakerSkillGaugeMax,
                     hologramSkillGaugeMax
                 );
@@ -577,6 +602,27 @@ fakeBoxSkillGaugeMax,
                skill.Contains("joker card") ||
                skill.Contains("조커카드") ||
                skill.Contains("조커 카드");
+    }
+
+    private bool IsVanishingSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("vanishing") ||
+               skill.Contains("vanish") ||
+               skill.Contains("배니싱");
+    }
+
+    private bool IsMisdirectionSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("misdirection") ||
+               skill.Contains("mis direction") ||
+               skill.Contains("미스디렉션") ||
+               skill.Contains("미스 디렉션");
     }
 
     private bool IsLegacySlowTrapSkill(string skill)

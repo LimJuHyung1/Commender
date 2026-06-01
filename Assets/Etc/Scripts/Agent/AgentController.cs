@@ -58,6 +58,8 @@ public abstract class AgentController : MonoBehaviour
     private const string SkillSafeZoneKey = "safezone";
     private const string SkillFakeBoxKey = "fakebox";
     private const string SkillJokerCardKey = "jokercard";
+    private const string SkillVanishingKey = "vanishing";
+    private const string SkillMisdirectionKey = "misdirection";
     private const string SkillNoisemakerKey = "noisemaker";
     private const string SkillHologramKey = "hologram";
     private const string SkillDashKey = "dash";
@@ -111,6 +113,9 @@ public abstract class AgentController : MonoBehaviour
     public bool IsSmokeDebuffed => visionSensor != null && visionSensor.IsSmokeDebuffed;
     public VisionSensor VisionSensor => visionSensor;
     public bool IsSkillCommandBlocked => skillCommandBlockers.Count > 0;
+
+    public virtual bool CanCatchTarget => true;
+    public virtual bool CanBeDetectedByTarget => true;
 
     protected virtual bool ShouldIgnoreDebuffStateIcon => false;
     protected virtual float SkillGaugeChargeMultiplier => 1f;
@@ -621,6 +626,8 @@ public abstract class AgentController : MonoBehaviour
         lastSkillGaugePosition = transform.position;
     }
 
+
+
     public virtual void AddSkillGauge(float amount)
     {
         if (amount <= 0f)
@@ -724,6 +731,12 @@ public abstract class AgentController : MonoBehaviour
         if (IsJokerCardSkill(skill))
             return SkillJokerCardKey;
 
+        if (IsVanishingSkill(skill))
+            return SkillVanishingKey;
+
+        if (IsMisdirectionSkill(skill))
+            return SkillMisdirectionKey;
+
         if (IsNoisemakerSkill(skill))
             return SkillNoisemakerKey;
 
@@ -775,9 +788,11 @@ public abstract class AgentController : MonoBehaviour
             case AgentRole.Trickster:
                 return new[]
                 {
-                    SkillFakeBoxKey,
-                    SkillJokerCardKey
-                };
+        SkillFakeBoxKey,
+        SkillJokerCardKey,
+        SkillVanishingKey,
+        SkillMisdirectionKey
+    };
 
             default:
                 return new[]
@@ -886,6 +901,21 @@ public abstract class AgentController : MonoBehaviour
                skill.Contains("joker card") ||
                skill.Contains("조커카드") ||
                skill.Contains("조커 카드");
+    }
+
+    private bool IsVanishingSkill(string skill)
+    {
+        return skill.Contains("vanishing") ||
+               skill.Contains("vanish") ||
+               skill.Contains("배니싱");
+    }
+
+    private bool IsMisdirectionSkill(string skill)
+    {
+        return skill.Contains("misdirection") ||
+               skill.Contains("mis direction") ||
+               skill.Contains("미스디렉션") ||
+               skill.Contains("미스 디렉션");
     }
 
     private bool IsNoisemakerSkill(string skill)

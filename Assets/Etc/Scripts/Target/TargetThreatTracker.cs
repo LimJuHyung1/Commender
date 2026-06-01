@@ -721,6 +721,12 @@ public class TargetThreatTracker : MonoBehaviour
                 continue;
             }
 
+            if (ShouldIgnoreAgentThreat(agent))
+            {
+                RemoveThreatCompletely(agent);
+                continue;
+            }
+
             RememberThreat(agent);
         }
 
@@ -728,14 +734,19 @@ public class TargetThreatTracker : MonoBehaviour
         {
             RememberedThreat threat = rememberedThreats[i];
 
-            if (threat == null)
+            if (threat == null || threat.target == null)
             {
                 rememberedThreats.RemoveAt(i);
                 continue;
             }
 
-            if (threat.target != null)
-                threat.lastPosition = threat.target.position;
+            if (ShouldIgnoreAgentThreat(threat.target))
+            {
+                rememberedThreats.RemoveAt(i);
+                continue;
+            }
+
+            threat.lastPosition = threat.target.position;
 
             if (Time.time > threat.expireTime)
                 rememberedThreats.RemoveAt(i);
@@ -747,7 +758,15 @@ public class TargetThreatTracker : MonoBehaviour
         if (threat == null)
             return;
 
-        RememberedThreat remembered = FindRememberedThreat(threat);
+        if (ShouldIgnoreAgentThreat(threat))
+        {
+            RemoveThreatCompletely(threat);
+            return;
+        }
+
+        Transform threatRoot = ResolveAgentRootTransform(threat);
+
+        RememberedThreat remembered = FindRememberedThreat(threatRoot);
 
         if (remembered == null)
         {
@@ -755,22 +774,92 @@ public class TargetThreatTracker : MonoBehaviour
             rememberedThreats.Add(remembered);
         }
 
-        remembered.target = threat;
-        remembered.lastPosition = threat.position;
+        remembered.target = threatRoot;
+        remembered.lastPosition = threatRoot.position;
         remembered.expireTime = Time.time + pursuitMemoryDuration;
     }
 
     private RememberedThreat FindRememberedThreat(Transform threat)
     {
+        if (threat == null)
+            return null;
+
         for (int i = 0; i < rememberedThreats.Count; i++)
         {
             RememberedThreat remembered = rememberedThreats[i];
 
-            if (remembered != null && remembered.target == threat)
+            if (remembered == null || remembered.target == null)
+                continue;
+
+            if (IsSameAgentThreat(remembered.target, threat))
                 return remembered;
         }
 
         return null;
+    }
+
+    private AgentController ResolveAgentController(Transform source)
+    {
+        if (source == null)
+            return null;
+
+        return source.GetComponentInParent<AgentController>();
+    }
+
+    private Transform ResolveAgentRootTransform(Transform source)
+    {
+        AgentController agent = ResolveAgentController(source);
+
+        if (agent != null)
+            return agent.transform;
+
+        return source;
+    }
+
+    private bool ShouldIgnoreAgentThreat(Transform source)
+    {
+        AgentController agent = ResolveAgentController(source);
+
+        if (agent == null)
+            return false;
+
+        return !agent.CanBeDetectedByTarget;
+    }
+
+    private bool IsSameAgentThreat(Transform a, Transform b)
+    {
+        if (a == null || b == null)
+            return false;
+
+        AgentController agentA = ResolveAgentController(a);
+        AgentController agentB = ResolveAgentController(b);
+
+        if (agentA != null && agentB != null)
+            return agentA == agentB;
+
+        return a == b;
+    }
+
+    private void RemoveThreatCompletely(Transform source)
+    {
+        if (source == null)
+            return;
+
+        for (int i = nearbyAgents.Count - 1; i >= 0; i--)
+        {
+            Transform agent = nearbyAgents[i];
+
+            if (agent == null || IsSameAgentThreat(agent, source))
+                nearbyAgents.RemoveAt(i);
+        }
+
+        for (int i = rememberedThreats.Count - 1; i >= 0; i--)
+        {
+            RememberedThreat threat = rememberedThreats[i];
+
+            if (threat == null || threat.target == null || IsSameAgentThreat(threat.target, source))
+                rememberedThreats.RemoveAt(i);
+        }
     }
 
     private void UpdatePlayerRevealVisual()
@@ -784,7 +873,13 @@ public class TargetThreatTracker : MonoBehaviour
         if (((1 << other.gameObject.layer) & agentLayer) == 0)
             return;
 
-        Transform agent = other.transform;
+        Transform agent = ResolveAgentRootTransform(other.transform);
+
+        if (ShouldIgnoreAgentThreat(agent))
+        {
+            RemoveThreatCompletely(agent);
+            return;
+        }
 
         if (!nearbyAgents.Contains(agent))
             nearbyAgents.Add(agent);
@@ -797,7 +892,13 @@ public class TargetThreatTracker : MonoBehaviour
         if (((1 << other.gameObject.layer) & agentLayer) == 0)
             return;
 
-        Transform agent = other.transform;
+        Transform agent = ResolveAgentRootTransform(other.transform);
+
+        if (ShouldIgnoreAgentThreat(agent))
+        {
+            RemoveThreatCompletely(agent);
+            return;
+        }
 
         if (!nearbyAgents.Contains(agent))
             nearbyAgents.Add(agent);
@@ -810,10 +911,12 @@ public class TargetThreatTracker : MonoBehaviour
         if (((1 << other.gameObject.layer) & agentLayer) == 0)
             return;
 
-        Transform agent = other.transform;
+        Transform agent = ResolveAgentRootTransform(other.transform);
 
-        if (nearbyAgents.Contains(agent))
-            nearbyAgents.Remove(agent);
+        RemoveThreatCompletely(agent);
+
+        if (ShouldIgnoreAgentThreat(agent))
+            return;
 
         RememberThreat(agent);
     }
