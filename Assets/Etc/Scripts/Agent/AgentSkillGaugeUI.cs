@@ -92,6 +92,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
     [SerializeField] private bool showGaugeInfoAfterSkillPaste = false;
     [SerializeField] private bool autoFindCommanderUIController = true;
 
+    [Header("Skill Description Popup")]
+    [SerializeField] private SkillDescriptionPopupUI skillDescriptionPopupUI;
+    [SerializeField] private SkillDatabaseSO skillDatabase;
+    [SerializeField] private bool showSkillDescriptionOnRightClick = true;
+    [SerializeField] private bool autoFindSkillDescriptionPopupUI = true;
+
     private AgentSkillSlotUI lastClickedSkillSlot;
     private float lastSkillClickTime = -999f;
 
@@ -156,6 +162,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         Refresh();
         HandleSkillGaugeInfoClick();
+        HandleSkillDescriptionRightClick();
     }
 
     private void OnValidate()
@@ -176,6 +183,90 @@ public class AgentSkillGaugeUI : MonoBehaviour
         CacheSlotsByComponent();
         ConfigureSlotGauges();
     }
+
+    private void HandleSkillDescriptionRightClick()
+    {
+        if (!showSkillDescriptionOnRightClick)
+            return;
+
+        Mouse mouse = Mouse.current;
+
+        if (mouse == null)
+            return;
+
+        if (!mouse.rightButton.wasReleasedThisFrame)
+            return;
+
+        Vector2 mousePosition = mouse.position.ReadValue();
+
+        if (IsSlotClicked(skill1Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill1Name, mousePosition);
+            return;
+        }
+
+        if (IsSlotClicked(skill2Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill2Name, mousePosition);
+            return;
+        }
+
+        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill3Name, mousePosition);
+        }
+    }
+
+    private void ShowSkillDescriptionPopup(string skillName, Vector2 mousePosition)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return;
+
+        if (skillDescriptionPopupUI == null && autoFindSkillDescriptionPopupUI)
+            skillDescriptionPopupUI = FindFirstObjectByType<SkillDescriptionPopupUI>(FindObjectsInactive.Include);
+
+        if (skillDescriptionPopupUI == null)
+            return;
+
+        if (TryGetSkillDefinitionForPopup(skillName, out SkillDefinitionSO skillDefinition))
+        {
+            skillDescriptionPopupUI.Show(skillDefinition, mousePosition);
+            return;
+        }
+
+        Debug.LogWarning($"[AgentSkillGaugeUI] SkillDefinitionSO를 찾을 수 없습니다. SkillName: {skillName}");
+
+        skillDescriptionPopupUI.Show(
+            skillName,
+            "스킬 설명 데이터를 찾을 수 없습니다.",
+            mousePosition
+        );
+    }
+
+    private bool TryGetSkillDefinitionForPopup(string skillName, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (skillDatabase == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (skillDatabase.TryGetSkillByRuntimeKey(normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (skillDatabase.TryGetSkillById(normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (skillDatabase.TryGetSkillByCommandKeyword(skillName, out skillDefinition))
+            return true;
+
+        return false;
+    }
+
 
     public void Bind(AgentController agent)
     {
@@ -874,7 +965,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             return false;
         }
 
-        string displayName = GetSkillDisplayName(normalizedSkillName);
+        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
 
         return commanderUIController.TryPasteSkillDisplayNameToAgentInput(
             clickedAgentId,
@@ -917,7 +1008,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
-        string displayName = GetSkillDisplayName(normalizedSkillName);
+        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
 
         return commanderUIController.TryPasteSkillDisplayNameToInputIndex(
             inputIndex,
@@ -1594,67 +1685,18 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("조커 카드");
     }
 
-    private string GetSkillDisplayName(string skillName)
+    private string GetSkillDisplayNameForUI(string skillName)
     {
-        switch (NormalizeSkillName(skillName))
+        if (string.IsNullOrWhiteSpace(skillName))
+            return "";
+
+        if (TryGetSkillDefinitionForPopup(skillName, out SkillDefinitionSO skillDefinition))
         {
-            case SkillDash:
-                return "대시";
-
-            case SkillSmoke:
-                return "연막";
-
-            case SkillAccessControl:
-                return "출입 통제";
-
-            case SkillEscapeBlock:
-                return "도주 제지";
-
-            case SkillPatrol:
-                return "순찰";
-
-            case SkillTrackingInstinct:
-                return "추적 본능";
-
-            case SkillDrone:
-                return "드론";
-
-            case SkillReconnaissance:
-                return "정찰";
-
-            case SkillObservationSupport:
-                return "관측 지원";
-
-            case SkillPositionShare:
-                return "위치 공유";
-
-            case SkillBarricade:
-                return "바리케이드";
-
-            case SkillStopSignal:
-                return "정지 신호";
-
-            case SkillDemolition:
-                return "철거";
-
-            case SkillSafeZone:
-                return "안전 구역";
-
-            case SkillFakeBox:
-                return "페이크 박스";
-
-            case SkillJokerCard:
-                return "조커 카드";
-
-            case SkillVanishing:
-                return "배니싱";
-
-            case SkillMisdirection:
-                return "미스디렉션";
-
-            default:
-                return skillName;
+            if (!string.IsNullOrWhiteSpace(skillDefinition.DisplayName))
+                return skillDefinition.DisplayName;
         }
+
+        return skillName;
     }
 
     private void ShowGaugeInfoLabel(string skillName, Vector2 mousePosition)
@@ -1669,45 +1711,36 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private string GetGaugeInfoText(string skillName)
     {
         if (targetAgent == null)
-        {
             return "에이전트 연결 없음";
-        }
 
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return "스킬 정보 없음";
-        }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
+        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
 
         if (IsPositionShareSkill(normalizedSkillName))
         {
             Observer observer = targetAgent as Observer;
 
             if (observer == null)
-            {
-                return $"{GetSkillDisplayName(normalizedSkillName)}: 사용 불가";
-            }
+                return $"{displayName}: 사용 불가";
 
             string stateText = observer.IsTargetPositionShareEnabled ? "켜짐" : "꺼짐";
-            return $"{GetSkillDisplayName(normalizedSkillName)}: {stateText}";
+            return $"{displayName}: {stateText}";
         }
 
         float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
 
         if (requiredGauge <= 0f)
-        {
-            return $"{GetSkillDisplayName(normalizedSkillName)}: 게이지 필요 없음";
-        }
+            return $"{displayName}: 게이지 필요 없음";
 
         float currentGauge = targetAgent.GetSkillGaugeCurrentForSkill(normalizedSkillName);
 
         if (IsAutoActivatedSkill(normalizedSkillName))
-        {
-            return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#} 자동 발동";
-        }
+            return $"{displayName}: {currentGauge:0.#} / {requiredGauge:0.#} 자동 발동";
 
-        return $"{GetSkillDisplayName(normalizedSkillName)}: {currentGauge:0.#} / {requiredGauge:0.#}";
+        return $"{displayName}: {currentGauge:0.#} / {requiredGauge:0.#}";
     }
 
     private bool IsGaugeInfoLabelVisible()
