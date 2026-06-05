@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 152479f4254f13447a5480917d58508f, type: 3}
+  m_Name: DronePilot_AgentDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::AgentDefinitionSO
+  agentId: dronepilot_agentdefinition
+  displayName: DronePilot_AgentDefinition
+  description: "\uB4DC\uB860\uC744 \uD1B5\uD574 \uD0C0\uAC9F\uC758 \uC704\uCE58\uB97C
+    \uD30C\uC545\uD558\uB294 \uAD00\uCE21\uD615 \uC5D0\uC774\uC804\uD2B8"
+  icon: {fileID: 0}
+  themeColor: {r: 0.56078434, g: 0.7372549, b: 0.56078434, a: 1}
+  agentPrefab: {fileID: 1743076492469176088, guid: 8001915b202fc9343a24aba698c23c9a, type: 3}
+  stats: {fileID: 11400000, guid: 942af302a1431e943acc037a124c5cb1, type: 2}
+  basicSkills:
+  - {fileID: 11400000, guid: 93008891fa903db4fadb7654181f95e8, type: 2}
+  - {fileID: 11400000, guid: d1c890b5bd04acc48a0fd8d09b3818e0, type: 2}
+  unlockableSkills:
+  - {fileID: 11400000, guid: 08ff6ec60ec76f34b93d5c7b8757ea33, type: 2}
+  - {fileID: 11400000, guid: 29fb898017765394f83c9c31348beda7, type: 2}

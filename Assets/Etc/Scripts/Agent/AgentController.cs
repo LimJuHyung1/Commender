@@ -8,6 +8,7 @@ public abstract class AgentController : MonoBehaviour
 {
     [Header("Agent Common Settings")]
     [SerializeField] protected int agentID;
+    [SerializeField] private AgentDefinitionSO agentDefinition;
     [SerializeField] protected LayerMask targetLayer;
     [SerializeField] protected AgentStatsSO stats;
 
@@ -104,6 +105,49 @@ public abstract class AgentController : MonoBehaviour
     public string CommandSystemPromptOverride => commandSystemPromptOverride;
 
     public int AgentID => agentID;
+    public AgentDefinitionSO AgentDefinition => agentDefinition;
+
+    public string AgentId
+    {
+        get
+        {
+            if (agentDefinition == null)
+                return "";
+
+            return agentDefinition.AgentId;
+        }
+    }
+
+    public string AgentDisplayName
+    {
+        get
+        {
+            if (agentDefinition == null)
+                return $"Agent {agentID}";
+
+            return agentDefinition.GetSafeDisplayName();
+        }
+    }
+
+    public Color AgentThemeColor
+    {
+        get
+        {
+            if (agentDefinition == null)
+                return Color.white;
+
+            return agentDefinition.ThemeColor;
+        }
+    }
+
+    public bool HasAgentDefinition
+    {
+        get
+        {
+            return agentDefinition != null && agentDefinition.HasValidId;
+        }
+    }
+
     public Transform CurrentTarget => currentTarget;
     public bool IsManualMoving => isManualMoving;
     public bool IsChasing => currentTarget != null;
@@ -256,6 +300,8 @@ public abstract class AgentController : MonoBehaviour
         if (stateIconController == null)
             stateIconController = GetComponentInChildren<AgentStateController>(true);
 
+        ResolveStatsFromAgentDefinition();
+
         CacheAnimatorParameterHashes();
         ApplyCommonStats();
         UpdateAnimationState(true);
@@ -289,7 +335,68 @@ public abstract class AgentController : MonoBehaviour
         chaseRepathInterval = Mathf.Max(0.01f, chaseRepathInterval);
         chaseDestinationThreshold = Mathf.Max(0f, chaseDestinationThreshold);
 
+        ResolveStatsFromAgentDefinition();
         CacheAnimatorParameterHashes();
+    }
+
+    protected virtual void ResolveStatsFromAgentDefinition()
+    {
+        if (stats != null)
+            return;
+
+        if (agentDefinition == null)
+            return;
+
+        if (agentDefinition.Stats == null)
+            return;
+
+        stats = agentDefinition.Stats;
+    }
+
+    public bool TryGetSkillDefinitionById(string skillId, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (agentDefinition == null)
+            return false;
+
+        return agentDefinition.TryGetSkillById(skillId, out skillDefinition);
+    }
+
+    public bool TryGetSkillDefinitionByRuntimeKey(string runtimeSkillKey, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (agentDefinition == null)
+            return false;
+
+        return agentDefinition.TryGetSkillByRuntimeKey(runtimeSkillKey, out skillDefinition);
+    }
+
+    public bool TryGetSkillDefinitionByCommandKeyword(string commandKeyword, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (agentDefinition == null)
+            return false;
+
+        return agentDefinition.TryGetSkillByCommandKeyword(commandKeyword, out skillDefinition);
+    }
+
+    protected bool CanApplyUpgradeByAgentDefinitionOrLegacy(
+    UpgradeDefinition upgrade,
+    CommanderAgentType legacyAgentType)
+    {
+        if (upgrade == null)
+            return false;
+
+        if (!upgrade.IsAgentUpgrade)
+            return false;
+
+        if (AgentDefinition != null && upgrade.IsRelatedToAgentDefinition(AgentDefinition))
+            return true;
+
+        return upgrade.MatchesAgent(legacyAgentType);
     }
 
     protected virtual void ApplyCommonStats()
@@ -754,12 +861,17 @@ public abstract class AgentController : MonoBehaviour
 
     protected virtual string[] GetCurrentAgentGaugeKeys()
     {
+        string[] definitionGaugeKeys = GetGaugeKeysFromAgentDefinition();
+
+        if (definitionGaugeKeys.Length > 0)
+            return definitionGaugeKeys;
+
         if (stats == null)
         {
             return new[]
             {
-                SkillGaugeDefaultKey
-            };
+            SkillGaugeDefaultKey
+        };
         }
 
         switch (stats.role)
@@ -767,48 +879,112 @@ public abstract class AgentController : MonoBehaviour
             case AgentRole.Chaser:
                 return new[]
                 {
-                    SkillAccessControlKey
-                };
+                SkillAccessControlKey
+            };
 
             case AgentRole.Observer:
                 return new[]
                 {
-                    SkillDroneKey
-                };
+                SkillDroneKey
+            };
 
             case AgentRole.Engineer:
                 return new[]
                 {
-        SkillBarricadeKey,
-        SkillStopSignalKey,
-        SkillDemolitionKey,
-        SkillSafeZoneKey
-    };
+                SkillBarricadeKey,
+                SkillStopSignalKey,
+                SkillDemolitionKey,
+                SkillSafeZoneKey
+            };
 
             case AgentRole.Trickster:
                 return new[]
                 {
-        SkillFakeBoxKey,
-        SkillJokerCardKey,
-        SkillVanishingKey,
-        SkillMisdirectionKey
-    };
+                SkillFakeBoxKey,
+                SkillJokerCardKey,
+                SkillVanishingKey,
+                SkillMisdirectionKey
+            };
 
             default:
                 return new[]
                 {
-                    SkillAccessControlKey,
-                    SkillDroneKey,
-                    SkillBarricadeKey,
-                    SkillStopSignalKey,
-                    SkillFakeBoxKey,
-                    SkillJokerCardKey,
-                    SkillNoisemakerKey,
-                    SkillHologramKey,
-                    SkillDashKey,
-                    SkillSmokeKey
-                };
+                SkillAccessControlKey,
+                SkillDroneKey,
+                SkillBarricadeKey,
+                SkillStopSignalKey,
+                SkillFakeBoxKey,
+                SkillJokerCardKey,
+                SkillNoisemakerKey,
+                SkillHologramKey,
+                SkillDashKey,
+                SkillSmokeKey
+            };
         }
+    }
+
+    private string[] GetGaugeKeysFromAgentDefinition()
+    {
+        if (agentDefinition == null)
+            return new string[0];
+
+        List<string> gaugeKeys = new List<string>();
+
+        AddGaugeKeysFromSkillDefinitions(agentDefinition.BasicSkills, gaugeKeys);
+        AddGaugeKeysFromSkillDefinitions(agentDefinition.UnlockableSkills, gaugeKeys);
+
+        return gaugeKeys.ToArray();
+    }
+
+    private void AddGaugeKeysFromSkillDefinitions(
+        IReadOnlyList<SkillDefinitionSO> skillDefinitions,
+        List<string> gaugeKeys)
+    {
+        if (skillDefinitions == null || gaugeKeys == null)
+            return;
+
+        for (int i = 0; i < skillDefinitions.Count; i++)
+        {
+            SkillDefinitionSO skillDefinition = skillDefinitions[i];
+
+            if (skillDefinition == null)
+                continue;
+
+            string sourceKey = GetSkillGaugeSourceKey(skillDefinition);
+
+            if (string.IsNullOrWhiteSpace(sourceKey))
+                continue;
+
+            string gaugeKey = GetSkillGaugeKey(sourceKey);
+
+            if (string.IsNullOrWhiteSpace(gaugeKey))
+                continue;
+
+            if (gaugeKeys.Contains(gaugeKey))
+                continue;
+
+            gaugeKeys.Add(gaugeKey);
+        }
+    }
+
+    private string GetSkillGaugeSourceKey(SkillDefinitionSO skillDefinition)
+    {
+        if (skillDefinition == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.RuntimeSkillKey))
+            return skillDefinition.RuntimeSkillKey;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.SkillId))
+            return skillDefinition.SkillId;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.CommandKeyword))
+            return skillDefinition.CommandKeyword;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.DisplayName))
+            return skillDefinition.DisplayName;
+
+        return "";
     }
 
     private bool IsAccessControlSkill(string skill)
@@ -1446,6 +1622,7 @@ public abstract class AgentController : MonoBehaviour
 
     public virtual void ReapplyStats()
     {
+        ResolveStatsFromAgentDefinition();
         ApplyCommonStats();
         UpdateStateIcon();
     }

@@ -433,7 +433,10 @@ public class Chaser : AgentController, IUpgradeReceiver
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
     {
-        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Chaser);
+        return CanApplyUpgradeByAgentDefinitionOrLegacy(
+            upgrade,
+            CommanderAgentType.Chaser
+        );
     }
 
     public void ApplyUpgrade(UpgradeDefinition upgrade)

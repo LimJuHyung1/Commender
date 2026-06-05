@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -247,13 +248,25 @@ public class AgentSkillGaugeUI : MonoBehaviour
     {
         skillDefinition = null;
 
-        if (skillDatabase == null)
-            return false;
-
         if (string.IsNullOrWhiteSpace(skillName))
             return false;
 
         string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (targetAgent != null)
+        {
+            if (targetAgent.TryGetSkillDefinitionByRuntimeKey(normalizedSkillName, out skillDefinition))
+                return true;
+
+            if (targetAgent.TryGetSkillDefinitionById(normalizedSkillName, out skillDefinition))
+                return true;
+
+            if (targetAgent.TryGetSkillDefinitionByCommandKeyword(skillName, out skillDefinition))
+                return true;
+        }
+
+        if (skillDatabase == null)
+            return false;
 
         if (skillDatabase.TryGetSkillByRuntimeKey(normalizedSkillName, out skillDefinition))
             return true;
@@ -405,23 +418,44 @@ public class AgentSkillGaugeUI : MonoBehaviour
     public bool CanUseSkill(string skillName)
     {
         if (targetAgent == null)
-        {
             return false;
-        }
 
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string normalizedSkillName = NormalizeSkillName(skillName);
 
         if (IsPositionShareSkill(normalizedSkillName))
         {
+            if (TargetAgentHasSkill(normalizedSkillName))
+                return true;
+
             return targetAgent is Observer;
         }
 
         return targetAgent.CanUseSkillGaugeForSkill(normalizedSkillName);
+    }
+
+    private bool TargetAgentHasSkill(string skillName)
+    {
+        if (targetAgent == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (targetAgent.TryGetSkillDefinitionByRuntimeKey(normalizedSkillName, out _))
+            return true;
+
+        if (targetAgent.TryGetSkillDefinitionById(normalizedSkillName, out _))
+            return true;
+
+        if (targetAgent.TryGetSkillDefinitionByCommandKeyword(skillName, out _))
+            return true;
+
+        return false;
     }
 
     private void CacheSlotsByComponent()
@@ -520,7 +554,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void RefreshThirdSkillSlot()
     {
         if (skill3Slot == null)
+            return;
+
+        if (ShouldUseAgentDefinitionUnlockableSkills())
         {
+            RefreshThirdSkillSlotByAgentDefinition();
             return;
         }
 
@@ -528,10 +566,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (unlockedUpgrade == null)
         {
-            skill3Name = "";
-            skill3Slot.SetGaugeAmount(0f);
-            skill3Slot.ClearIcon();
-            skill3Slot.SetVisible(false);
+            ClearThirdSkillSlot();
             return;
         }
 
@@ -539,10 +574,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (string.IsNullOrWhiteSpace(unlockedSkillName))
         {
-            skill3Name = "";
-            skill3Slot.SetGaugeAmount(0f);
-            skill3Slot.ClearIcon();
-            skill3Slot.SetVisible(false);
+            ClearThirdSkillSlot();
             return;
         }
 
@@ -551,6 +583,125 @@ public class AgentSkillGaugeUI : MonoBehaviour
         skill3Slot.SetVisible(true);
         skill3Slot.SetIcon(unlockedUpgrade.Icon);
         UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private bool ShouldUseAgentDefinitionUnlockableSkills()
+    {
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
+
+        return unlockableSkills != null && unlockableSkills.Count > 0;
+    }
+
+    private void RefreshThirdSkillSlotByAgentDefinition()
+    {
+        if (!TryGetUnlockedSkillFromAgentDefinition(
+                out SkillDefinitionSO unlockedSkill,
+                out UpgradeDefinition unlockedUpgrade))
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        string unlockedSkillName = GetRuntimeSkillNameFromDefinition(unlockedSkill);
+
+        if (string.IsNullOrWhiteSpace(unlockedSkillName))
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        skill3Name = NormalizeSkillName(unlockedSkillName);
+
+        skill3Slot.SetVisible(true);
+
+        Sprite icon = GetThirdSkillIcon(unlockedSkill, unlockedUpgrade);
+
+        if (icon != null)
+            skill3Slot.SetIcon(icon);
+        else
+            skill3Slot.ClearIcon();
+
+        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private bool TryGetUnlockedSkillFromAgentDefinition(
+        out SkillDefinitionSO unlockedSkill,
+        out UpgradeDefinition unlockedUpgrade)
+    {
+        unlockedSkill = null;
+        unlockedUpgrade = null;
+
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
+
+        if (unlockableSkills == null || unlockableSkills.Count <= 0)
+            return false;
+
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return false;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        for (int i = 0; i < unlockableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = unlockableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            if (!skill.HasUnlockUpgradeId)
+                continue;
+
+            string unlockUpgradeId = skill.UnlockUpgradeId;
+
+            if (!upgradeManager.HasAgentUpgrade(unlockUpgradeId))
+                continue;
+
+            unlockedSkill = skill;
+
+            if (upgradeDatabase != null)
+                unlockedUpgrade = upgradeDatabase.GetUpgradeOrNull(unlockUpgradeId);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private Sprite GetThirdSkillIcon(SkillDefinitionSO skillDefinition, UpgradeDefinition upgradeDefinition)
+    {
+        if (skillDefinition != null && skillDefinition.Icon != null)
+            return skillDefinition.Icon;
+
+        if (upgradeDefinition != null && upgradeDefinition.Icon != null)
+            return upgradeDefinition.Icon;
+
+        return null;
+    }
+
+    private void ClearThirdSkillSlot()
+    {
+        skill3Name = "";
+        skill3Slot.SetGaugeAmount(0f);
+        skill3Slot.ClearIcon();
+        skill3Slot.SetVisible(false);
     }
 
     private UpgradeDefinition GetUnlockedThirdSkillUpgrade()
@@ -1129,9 +1280,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void SetupSkillNamesByAgent(AgentController agent)
     {
         if (agent == null)
-        {
             return;
-        }
+
+        if (TrySetupSkillNamesByAgentDefinition(agent))
+            return;
 
         if (agent.Stats != null)
         {
@@ -1140,6 +1292,64 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         SetupSkillNamesByAgentId(agent.AgentID);
+    }
+
+    private bool TrySetupSkillNamesByAgentDefinition(AgentController agent)
+    {
+        if (agent == null)
+            return false;
+
+        AgentDefinitionSO definition = agent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> basicSkills = definition.BasicSkills;
+
+        if (basicSkills == null || basicSkills.Count <= 0)
+            return false;
+
+        skill1Name = GetRuntimeSkillNameFromDefinition(GetSkillAt(basicSkills, 0));
+        skill2Name = GetRuntimeSkillNameFromDefinition(GetSkillAt(basicSkills, 1));
+
+        skill1Name = NormalizeSkillName(skill1Name);
+        skill2Name = NormalizeSkillName(skill2Name);
+
+        skill3Name = "";
+
+        return !string.IsNullOrWhiteSpace(skill1Name) ||
+               !string.IsNullOrWhiteSpace(skill2Name);
+    }
+
+    private SkillDefinitionSO GetSkillAt(IReadOnlyList<SkillDefinitionSO> skills, int index)
+    {
+        if (skills == null)
+            return null;
+
+        if (index < 0 || index >= skills.Count)
+            return null;
+
+        return skills[index];
+    }
+
+    private string GetRuntimeSkillNameFromDefinition(SkillDefinitionSO skillDefinition)
+    {
+        if (skillDefinition == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.RuntimeSkillKey))
+            return skillDefinition.RuntimeSkillKey;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.SkillId))
+            return skillDefinition.SkillId;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.CommandKeyword))
+            return skillDefinition.CommandKeyword;
+
+        if (!string.IsNullOrWhiteSpace(skillDefinition.DisplayName))
+            return skillDefinition.DisplayName;
+
+        return "";
     }
 
     private void SetupSkillNamesByRole(AgentRole role)

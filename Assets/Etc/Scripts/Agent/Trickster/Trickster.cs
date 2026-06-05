@@ -560,7 +560,10 @@ public class Trickster : AgentController, IUpgradeReceiver
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
     {
-        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Trickster);
+        return CanApplyUpgradeByAgentDefinitionOrLegacy(
+            upgrade,
+            CommanderAgentType.Trickster
+        );
     }
 
     public void ApplyUpgrade(UpgradeDefinition upgrade)

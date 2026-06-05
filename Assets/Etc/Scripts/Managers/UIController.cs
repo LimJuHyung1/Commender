@@ -8,8 +8,13 @@ using UnityEngine.UI;
 public class UIController : MonoBehaviour
 {
     [Header("Stage UI")]
-    [SerializeField] private Text missionText;
     [SerializeField] private Text timerText;
+
+    [Header("Mission UI")]
+    [SerializeField] private StyleManager missionStyle;
+    [SerializeField] private string missionTextItemID = "";
+    [SerializeField] private float missionDisplaySeconds = 5f;
+    [SerializeField] private bool useUnscaledTimeForMission = true;
 
     [Header("Result UI")]
     [SerializeField] private Transform resultRoot;
@@ -20,9 +25,27 @@ public class UIController : MonoBehaviour
     [SerializeField] private bool useMichskyResultUI = true;
     [SerializeField] private StyleManager successResultStyle;
     [SerializeField] private StyleManager failureResultStyle;
-    [SerializeField] private string resultTextItemID = "Main Text";
     [SerializeField] private bool useUnscaledTimeForResult = true;
     [SerializeField] private bool hideResultRootOnHide = false;
+
+    [Header("Result Text Item IDs")]
+    [SerializeField] private string resultFirstTextItemID = "First Text";
+    [SerializeField] private string resultSecondTextItemID = "Second Text";
+    [SerializeField] private string resultThirdTextItemID = "Thid Text";
+    [SerializeField] private string resultThirdTextFallbackItemID = "Third Text";
+
+    [Header("Success Result Text")]
+    [SerializeField] private string successFirstText = "성공";
+    [SerializeField] private string successSecondText = "TARGET\nCAPTURED!";
+    [SerializeField] private string successThirdText = "다음 스테이지로\n->";
+
+    [Header("Failure Result Text")]
+    [SerializeField] private string failureFirstText = "실패";
+    [SerializeField] private string failureSecondText = "MISSION\nFAILED!";
+    [SerializeField] private string failureThirdText = "다시 시도\n->";
+
+    [Header("Result Detail")]
+    [SerializeField] private bool showResultDetailMessageInFirstText = false;
 
     [Header("Option UI")]
     [SerializeField] private Transform optionsRoot;
@@ -44,15 +67,43 @@ public class UIController : MonoBehaviour
     private float previousTimeScale = 1f;
     private Coroutine closeOptionCoroutine;
     private Coroutine pauseAfterOpenCoroutine;
+    private Coroutine missionStyleCoroutine;
 
     private void Awake()
     {
+        CacheMissionReferences();
         CacheResultReferences();
         CacheOptionReferences();
         CacheOptionAnimations();
 
+        InitializeMissionState();
         HideResultPanel();
         InitializeOptionState();
+    }
+
+    private void CacheMissionReferences()
+    {
+        if (missionStyle != null)
+            return;
+
+        Transform foundMissionStyle = FindChildRecursive(transform, "MTP-3");
+
+        if (foundMissionStyle != null)
+            missionStyle = foundMissionStyle.GetComponent<StyleManager>();
+    }
+
+    private void InitializeMissionState()
+    {
+        if (missionStyle == null)
+            return;
+
+        missionStyle.playOnEnable = false;
+        missionStyle.playOutAnimation = false;
+        missionStyle.loopAnimations = false;
+        missionStyle.showFor = missionDisplaySeconds;
+        missionStyle.UseUnscaledTime = useUnscaledTimeForMission;
+
+        missionStyle.gameObject.SetActive(false);
     }
 
     private void CacheResultReferences()
@@ -73,6 +124,22 @@ public class UIController : MonoBehaviour
 
         if (resultRoot == null)
             return;
+
+        if (successResultStyle == null)
+        {
+            Transform successStyleTransform = FindChildRecursive(resultRoot, "MTP-13");
+
+            if (successStyleTransform != null)
+                successResultStyle = successStyleTransform.GetComponent<StyleManager>();
+        }
+
+        if (failureResultStyle == null)
+        {
+            Transform failureStyleTransform = FindChildRecursive(resultRoot, "MTP-20");
+
+            if (failureStyleTransform != null)
+                failureResultStyle = failureStyleTransform.GetComponent<StyleManager>();
+        }
 
         if (resultPanelObject == null)
         {
@@ -195,10 +262,127 @@ public class UIController : MonoBehaviour
 
     public void SetMissionText(string missionDescription)
     {
-        if (missionText == null)
+        string message = string.IsNullOrWhiteSpace(missionDescription)
+            ? string.Empty
+            : missionDescription;
+
+        if (string.IsNullOrEmpty(message))
+        {
+            StopMissionStyleImmediate();
+            return;
+        }
+
+        PlayMissionStyle(message);
+    }
+
+    private void PlayMissionStyle(string message)
+    {
+        if (missionStyle == null)
             return;
 
-        missionText.text = missionDescription;
+        if (missionStyleCoroutine != null)
+        {
+            StopCoroutine(missionStyleCoroutine);
+            missionStyleCoroutine = null;
+        }
+
+        missionStyle.playOnEnable = false;
+        missionStyle.playOutAnimation = false;
+        missionStyle.loopAnimations = false;
+        missionStyle.showFor = missionDisplaySeconds;
+        missionStyle.UseUnscaledTime = useUnscaledTimeForMission;
+
+        if (!missionStyle.gameObject.activeSelf)
+            missionStyle.gameObject.SetActive(true);
+
+        ApplyTextToStyle(missionStyle, message, missionTextItemID, true);
+        PrepareStyleAnimator(missionStyle, useUnscaledTimeForMission);
+
+        missionStyleCoroutine = StartCoroutine(PlayMissionStyleCoroutine(missionStyle));
+    }
+
+    private IEnumerator PlayMissionStyleCoroutine(StyleManager styleManager)
+    {
+        if (styleManager == null)
+        {
+            missionStyleCoroutine = null;
+            yield break;
+        }
+
+        styleManager.PlayIn();
+        ForceAnimatorUpdate(styleManager);
+
+        float inDuration = GetStyleAnimationDuration(styleManager, styleManager.inAnim);
+
+        if (inDuration > 0f)
+            yield return WaitForStyleSeconds(inDuration, useUnscaledTimeForMission);
+
+        if (missionDisplaySeconds > 0f)
+            yield return WaitForStyleSeconds(missionDisplaySeconds, useUnscaledTimeForMission);
+
+        if (styleManager != null && styleManager.gameObject.activeInHierarchy)
+        {
+            styleManager.PlayOut();
+            ForceAnimatorUpdate(styleManager);
+
+            float outDuration = GetStyleAnimationDuration(styleManager, styleManager.outAnim);
+
+            if (outDuration > 0f)
+                yield return WaitForStyleSeconds(outDuration, useUnscaledTimeForMission);
+
+            if (styleManager != null && styleManager.disableOnOut)
+                styleManager.gameObject.SetActive(false);
+        }
+
+        missionStyleCoroutine = null;
+    }
+
+    private void StopMissionStyleImmediate()
+    {
+        if (missionStyleCoroutine != null)
+        {
+            StopCoroutine(missionStyleCoroutine);
+            missionStyleCoroutine = null;
+        }
+
+        if (missionStyle != null)
+            missionStyle.Stop();
+    }
+
+    private IEnumerator WaitForStyleSeconds(float seconds, bool useUnscaledTime)
+    {
+        if (seconds <= 0f)
+            yield break;
+
+        if (useUnscaledTime)
+            yield return new WaitForSecondsRealtime(seconds);
+        else
+            yield return new WaitForSeconds(seconds);
+    }
+
+    private float GetStyleAnimationDuration(StyleManager styleManager, AnimationClip clip)
+    {
+        if (clip == null)
+            return 0f;
+
+        float speed = 1f;
+
+        if (styleManager != null)
+            speed = Mathf.Max(0.01f, Mathf.Abs(styleManager.AnimationSpeed));
+
+        return clip.length / speed;
+    }
+
+    private void ForceAnimatorUpdate(StyleManager styleManager)
+    {
+        if (styleManager == null)
+            return;
+
+        if (styleManager.styleAnimator == null)
+            styleManager.styleAnimator = styleManager.GetComponent<Animator>();
+
+        if (styleManager.styleAnimator != null)
+            styleManager.styleAnimator.Update(0f);
     }
 
     public void SetTimerVisible(bool visible)
@@ -235,18 +419,20 @@ public class UIController : MonoBehaviour
         if (resultPanelObject != null)
             resultPanelObject.SetActive(true);
 
-        string resultMessage = isSuccess
-            ? $"성공\n{message}"
-            : $"실패\n{message}";
-
         if (useMichskyResultUI)
         {
-            PlayResultStyle(isSuccess, resultMessage);
+            PlayResultStyle(isSuccess, message);
             return;
         }
 
         if (resultText != null)
+        {
+            string resultMessage = isSuccess
+                ? $"성공\n{message}"
+                : $"실패\n{message}";
+
             resultText.text = resultMessage;
+        }
     }
 
     private void PlayResultStyle(bool isSuccess, string message)
@@ -260,7 +446,13 @@ public class UIController : MonoBehaviour
         if (targetStyle == null)
         {
             if (resultText != null)
-                resultText.text = message;
+            {
+                string fallbackMessage = isSuccess
+                    ? $"성공\n{message}"
+                    : $"실패\n{message}";
+
+                resultText.text = fallbackMessage;
+            }
 
             return;
         }
@@ -268,16 +460,80 @@ public class UIController : MonoBehaviour
         if (!targetStyle.gameObject.activeSelf)
             targetStyle.gameObject.SetActive(true);
 
-        ApplyTextToStyle(targetStyle, message);
-        PrepareStyleAnimator(targetStyle);
+        ResultTextSet resultTextSet = CreateResultTextSet(isSuccess, message);
 
+        ApplyResultTextsToStyle(
+            targetStyle,
+            resultTextSet.firstText,
+            resultTextSet.secondText,
+            resultTextSet.thirdText
+        );
+
+        PrepareStyleAnimator(targetStyle, useUnscaledTimeForResult);
         targetStyle.Play();
     }
 
-    private void ApplyTextToStyle(StyleManager styleManager, string message)
+    private ResultTextSet CreateResultTextSet(bool isSuccess, string message)
+    {
+        string firstText = isSuccess ? successFirstText : failureFirstText;
+        string secondText = isSuccess ? successSecondText : failureSecondText;
+        string thirdText = isSuccess ? successThirdText : failureThirdText;
+
+        if (showResultDetailMessageInFirstText && !string.IsNullOrWhiteSpace(message))
+            firstText = $"{firstText}\n{message}";
+
+        return new ResultTextSet(firstText, secondText, thirdText);
+    }
+
+    private void ApplyResultTextsToStyle(
+        StyleManager styleManager,
+        string firstText,
+        string secondText,
+        string thirdText)
     {
         if (styleManager == null || styleManager.textItems == null)
             return;
+
+        SetTextItemByIDOrIndex(styleManager, resultFirstTextItemID, 0, firstText);
+        SetTextItemByIDOrIndex(styleManager, resultSecondTextItemID, 1, secondText);
+
+        bool thirdApplied = SetTextItemByIDOrIndex(styleManager, resultThirdTextItemID, 2, thirdText);
+
+        if (!thirdApplied)
+            SetTextItemByIDOrIndex(styleManager, resultThirdTextFallbackItemID, 2, thirdText);
+    }
+
+    private bool SetTextItemByIDOrIndex(
+        StyleManager styleManager,
+        string textItemID,
+        int fallbackIndex,
+        string message)
+    {
+        if (styleManager == null || styleManager.textItems == null)
+            return false;
+
+        TextItem targetTextItem = FindTextItemByID(styleManager, textItemID);
+
+        if (targetTextItem == null)
+        {
+            if (fallbackIndex >= 0 && fallbackIndex < styleManager.textItems.Count)
+                targetTextItem = styleManager.textItems[fallbackIndex];
+        }
+
+        if (targetTextItem == null)
+            return false;
+
+        UpdateTextItem(targetTextItem, message);
+        return true;
+    }
+
+    private TextItem FindTextItemByID(StyleManager styleManager, string textItemID)
+    {
+        if (styleManager == null || styleManager.textItems == null)
+            return null;
+
+        if (string.IsNullOrEmpty(textItemID))
+            return null;
 
         for (int i = 0; i < styleManager.textItems.Count; i++)
         {
@@ -286,36 +542,86 @@ public class UIController : MonoBehaviour
             if (textItem == null)
                 continue;
 
-            if (!string.IsNullOrEmpty(resultTextItemID) && textItem.itemID != resultTextItemID)
-                continue;
-
-            textItem.text = message;
-
-            if (textItem.textObject == null)
-                textItem.textObject = textItem.GetComponent<TMPro.TextMeshProUGUI>();
-
-            textItem.UpdateText();
-            return;
+            if (textItem.itemID == textItemID)
+                return textItem;
         }
+
+        return null;
     }
 
-    private void PrepareStyleAnimator(StyleManager styleManager)
+    private void ApplyTextToStyle(
+        StyleManager styleManager,
+        string message,
+        string textItemID,
+        bool applyToAllMatched)
+    {
+        if (styleManager == null || styleManager.textItems == null)
+            return;
+
+        bool hasTextItemID = !string.IsNullOrEmpty(textItemID);
+        bool applied = false;
+        TextItem firstValidTextItem = null;
+
+        for (int i = 0; i < styleManager.textItems.Count; i++)
+        {
+            TextItem textItem = styleManager.textItems[i];
+
+            if (textItem == null)
+                continue;
+
+            if (firstValidTextItem == null)
+                firstValidTextItem = textItem;
+
+            if (hasTextItemID && textItem.itemID != textItemID)
+                continue;
+
+            UpdateTextItem(textItem, message);
+            applied = true;
+
+            if (!applyToAllMatched)
+                return;
+        }
+
+        if (!applied && firstValidTextItem != null)
+            UpdateTextItem(firstValidTextItem, message);
+    }
+
+    private void UpdateTextItem(TextItem textItem, string message)
+    {
+        if (textItem == null)
+            return;
+
+        textItem.text = message;
+
+        if (textItem.textObject == null)
+            textItem.textObject = textItem.GetComponent<TMPro.TextMeshProUGUI>();
+
+        if (textItem.textObject == null)
+            return;
+
+        textItem.UpdateText();
+    }
+
+    private void PrepareStyleAnimator(StyleManager styleManager, bool useUnscaledTime)
     {
         if (styleManager == null)
             return;
 
         styleManager.playOnEnable = false;
+        styleManager.UseUnscaledTime = useUnscaledTime;
+        styleManager.InitializeSpeed(styleManager.AnimationSpeed);
 
-        if (useUnscaledTimeForResult)
-            styleManager.UseUnscaledTime = true;
+        if (styleManager.styleAnimator == null)
+            styleManager.styleAnimator = styleManager.GetComponent<Animator>();
 
-        Animator animator = styleManager.GetComponent<Animator>();
+        Animator animator = styleManager.styleAnimator;
 
         if (animator == null)
             return;
 
-        if (useUnscaledTimeForResult)
-            animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+        animator.updateMode = useUnscaledTime
+            ? AnimatorUpdateMode.UnscaledTime
+            : AnimatorUpdateMode.Normal;
 
         animator.Rebind();
         animator.Update(0f);
@@ -600,8 +906,8 @@ public class UIController : MonoBehaviour
 
     public void SetStageHudVisible(bool visible)
     {
-        if (missionText != null)
-            missionText.gameObject.SetActive(visible);
+        if (!visible)
+            StopMissionStyleImmediate();
 
         if (timerText != null)
             timerText.gameObject.SetActive(visible);
@@ -613,5 +919,19 @@ public class UIController : MonoBehaviour
             return;
 
         optionButton.gameObject.SetActive(visible);
+    }
+
+    private readonly struct ResultTextSet
+    {
+        public readonly string firstText;
+        public readonly string secondText;
+        public readonly string thirdText;
+
+        public ResultTextSet(string firstText, string secondText, string thirdText)
+        {
+            this.firstText = firstText;
+            this.secondText = secondText;
+            this.thirdText = thirdText;
+        }
     }
 }

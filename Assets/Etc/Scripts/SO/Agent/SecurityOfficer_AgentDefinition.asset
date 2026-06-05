@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 152479f4254f13447a5480917d58508f, type: 3}
+  m_Name: SecurityOfficer_AgentDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::AgentDefinitionSO
+  agentId: securityofficer_agentdefinition
+  displayName: SecurityOfficer_AgentDefinition
+  description: "\uD0C0\uAC9F\uC744 \uC555\uBC15\uD558\uACE0 \uC774\uB3D9\uC744 \uD1B5\uC81C\uD558\uB294
+    \uD604\uC7A5 \uB300\uC751 \uC5D0\uC774\uC804\uD2B8"
+  icon: {fileID: 0}
+  themeColor: {r: 0, g: 0.54509807, b: 0.54509807, a: 1}
+  agentPrefab: {fileID: 1041310230159831287, guid: b687c238f0dd8694c9e68f970e834302, type: 3}
+  stats: {fileID: 11400000, guid: 3385e65afe98c644fbf697f6facfb007, type: 2}
+  basicSkills:
+  - {fileID: 11400000, guid: 0b9471d947fa42540b6bd44c54d8f979, type: 2}
+  - {fileID: 11400000, guid: 7b4969fdb834aac4aa7e8e8ea1b36653, type: 2}
+  unlockableSkills:
+  - {fileID: 11400000, guid: 95d9c8ea24270d4469f8cd1db9544ded, type: 2}
+  - {fileID: 11400000, guid: f7b4461c720d9bf4aa78ed9d27a12311, type: 2}

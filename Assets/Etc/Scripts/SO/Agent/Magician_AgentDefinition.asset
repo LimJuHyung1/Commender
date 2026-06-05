@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 152479f4254f13447a5480917d58508f, type: 3}
+  m_Name: Magician_AgentDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::AgentDefinitionSO
+  agentId: magician_agentdefinition
+  displayName: Magician_AgentDefinition
+  description: "\uC18D\uC784\uC218\uC640 \uD2B9\uC218 \uB2A5\uB825\uC744 \uC0AC\uC6A9\uD558\uB294
+    \uC5D0\uC774\uC804\uD2B8"
+  icon: {fileID: 0}
+  themeColor: {r: 0.28235295, g: 0.81960785, b: 0.8, a: 1}
+  agentPrefab: {fileID: 6147273873899107480, guid: c11627e4c2d92ea49a67f5ba547a8923, type: 3}
+  stats: {fileID: 11400000, guid: fab994a426af9994faabebfa8d27065f, type: 2}
+  basicSkills:
+  - {fileID: 11400000, guid: 6838baa967b31c74e9f27f7e2f9a87d0, type: 2}
+  - {fileID: 11400000, guid: ec6a0555c421b5043a0d714cc6fd169a, type: 2}
+  unlockableSkills:
+  - {fileID: 11400000, guid: d945773537a48084a8e07f2b72b48658, type: 2}
+  - {fileID: 11400000, guid: f91311d3b0325ff49ad1426708b54c5c, type: 2}

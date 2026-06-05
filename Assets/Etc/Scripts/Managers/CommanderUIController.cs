@@ -1087,6 +1087,9 @@ public class CommanderUIController : MonoBehaviour
         if (agent == null)
             return "";
 
+        if (TryGetSkillPlaceholderTextByAgentDefinition(agent, out string definitionPlaceholder))
+            return definitionPlaceholder;
+
         if (agent.Stats != null)
             return GetSkillPlaceholderTextByRole(agent.Stats.role);
 
@@ -1105,6 +1108,150 @@ public class CommanderUIController : MonoBehaviour
             return GetSkillPlaceholderTextByRole(AgentRole.Trickster);
 
         return GetSkillPlaceholderTextByAgentId(agent.AgentID);
+    }
+
+    private bool TryGetSkillPlaceholderTextByAgentDefinition(
+        AgentController agent,
+        out string placeholderText)
+    {
+        placeholderText = "";
+
+        if (agent == null)
+            return false;
+
+        AgentDefinitionSO definition = agent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        List<string> skillTexts = GetSkillPlaceholderTextsFromDefinition(definition);
+
+        if (skillTexts.Count <= 0)
+            return false;
+
+        placeholderText = "EX) " + string.Join(", ", skillTexts);
+        return true;
+    }
+
+    private List<string> GetSkillPlaceholderTextsFromDefinition(AgentDefinitionSO definition)
+    {
+        List<string> result = new List<string>();
+
+        if (definition == null)
+            return result;
+
+        AddPlaceholderSkillTexts(definition.BasicSkills, result, false);
+        AddPlaceholderSkillTexts(definition.UnlockableSkills, result, true);
+
+        return result;
+    }
+
+    private void AddPlaceholderSkillTexts(
+        IReadOnlyList<SkillDefinitionSO> skills,
+        List<string> result,
+        bool requireUnlocked)
+    {
+        if (skills == null || result == null)
+            return;
+
+        for (int i = 0; i < skills.Count; i++)
+        {
+            SkillDefinitionSO skill = skills[i];
+
+            if (skill == null)
+                continue;
+
+            if (requireUnlocked && !IsUnlockableSkillUnlocked(skill))
+                continue;
+
+            if (!ShouldShowSkillInPlaceholder(skill))
+                continue;
+
+            string skillText = GetPlaceholderTextFromSkill(skill);
+
+            if (string.IsNullOrWhiteSpace(skillText))
+                continue;
+
+            if (ContainsSamePlaceholderText(result, skillText))
+                continue;
+
+            result.Add(skillText);
+        }
+    }
+
+    private bool IsUnlockableSkillUnlocked(SkillDefinitionSO skill)
+    {
+        if (skill == null)
+            return false;
+
+        if (!skill.HasUnlockUpgradeId)
+            return false;
+
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return false;
+
+        return upgradeManager.HasAgentUpgrade(skill.UnlockUpgradeId);
+    }
+
+    private bool ShouldShowSkillInPlaceholder(SkillDefinitionSO skill)
+    {
+        if (skill == null)
+            return false;
+
+        return skill.IsCommandSkill || skill.IsToggleSkill;
+    }
+
+    private string GetPlaceholderTextFromSkill(SkillDefinitionSO skill)
+    {
+        if (skill == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(skill.UsageText))
+            return skill.UsageText.Trim();
+
+        if (!string.IsNullOrWhiteSpace(skill.CommandKeyword))
+            return skill.CommandKeyword.Trim();
+
+        if (!string.IsNullOrWhiteSpace(skill.DisplayName))
+            return skill.DisplayName.Trim();
+
+        if (!string.IsNullOrWhiteSpace(skill.SkillId))
+            return skill.SkillId.Trim();
+
+        return skill.name;
+    }
+
+    private bool ContainsSamePlaceholderText(List<string> values, string text)
+    {
+        if (values == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        string normalizedText = NormalizePlaceholderText(text);
+
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (NormalizePlaceholderText(values[i]) == normalizedText)
+                return true;
+        }
+
+        return false;
+    }
+
+    private string NormalizePlaceholderText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim()
+            .ToLowerInvariant()
+            .Replace(" ", "")
+            .Replace("_", "")
+            .Replace("-", "");
     }
 
     private string GetSkillPlaceholderTextByRole(AgentRole role)

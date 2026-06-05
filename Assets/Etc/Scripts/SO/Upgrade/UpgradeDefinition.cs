@@ -60,11 +60,19 @@ public class UpgradeDefinition : ScriptableObject
     [Header("Category")]
     [SerializeField] private UpgradeCategory upgradeCategory = UpgradeCategory.BasicSkillUpgrade;
 
-    [Header("Target Info")]
+    [Header("Owner Info")]
     [SerializeField] private UpgradeOwnerType ownerType;
-    [SerializeField] private CommanderAgentType agentType = CommanderAgentType.None;
+
+    [Tooltip("새 에이전트 구조에서 사용하는 에이전트 ID입니다. 예: security_officer, drone_pilot, safety_manager, magician")]
+    [SerializeField] private string agentId;
+
     [SerializeField] private CommanderTargetType targetType = CommanderTargetType.None;
 
+    [Header("Legacy Agent Info")]
+    [Tooltip("기존 4직군 구조와의 호환용 필드입니다. 새 에이전트 구조에서는 Agent Id를 우선 사용하세요.")]
+    [SerializeField] private CommanderAgentType agentType = CommanderAgentType.None;
+
+    [Header("Skill Info")]
     [Tooltip("강화 대상 스킬 ID입니다. 예: access_control, escape_block, patrol")]
     [SerializeField] private string skillId;
 
@@ -107,6 +115,8 @@ public class UpgradeDefinition : ScriptableObject
     public UpgradeCategory UpgradeCategory => upgradeCategory;
 
     public UpgradeOwnerType OwnerType => ownerType;
+
+    public string AgentId => agentId;
     public CommanderAgentType AgentType => agentType;
     public CommanderTargetType TargetType => targetType;
 
@@ -135,6 +145,14 @@ public class UpgradeDefinition : ScriptableObject
     public bool IsUnlockSkillUpgrade => upgradeCategory == UpgradeCategory.UnlockSkill;
     public bool IsNewSkillUpgrade => upgradeCategory == UpgradeCategory.NewSkillUpgrade;
     public bool IsTargetSkillUpgrade => upgradeCategory == UpgradeCategory.TargetUpgrade;
+
+    public bool HasAgentId
+    {
+        get
+        {
+            return !string.IsNullOrWhiteSpace(agentId);
+        }
+    }
 
     public bool HasTargetSkillId
     {
@@ -171,6 +189,33 @@ public class UpgradeDefinition : ScriptableObject
     public bool CanAppearAtStage(int stageNumber)
     {
         return stageNumber >= minStage;
+    }
+
+    public bool MatchesAgentDefinition(AgentDefinitionSO agentDefinition)
+    {
+        if (agentDefinition == null)
+            return false;
+
+        return MatchesAgentId(agentDefinition.AgentId);
+    }
+
+    public bool MatchesAgentId(string targetAgentId)
+    {
+        if (!IsAgentUpgrade)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(targetAgentId))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(agentId))
+            return NormalizeAgentId(agentId) == NormalizeAgentId(targetAgentId);
+
+        CommanderAgentType legacyType = ConvertAgentIdToLegacyAgentType(targetAgentId);
+
+        if (legacyType == CommanderAgentType.None)
+            return false;
+
+        return MatchesAgent(legacyType);
     }
 
     public bool MatchesAgent(CommanderAgentType type)
@@ -220,6 +265,41 @@ public class UpgradeDefinition : ScriptableObject
         return NormalizeEffectKey(effectKey) == NormalizeEffectKey(targetEffectKey);
     }
 
+    public bool IsRelatedToAgentDefinition(AgentDefinitionSO agentDefinition)
+    {
+        if (agentDefinition == null)
+            return false;
+
+        if (!IsAgentUpgrade)
+            return false;
+
+        if (MatchesAgentDefinition(agentDefinition))
+            return true;
+
+        if (agentDefinition.HasSkillId(skillId))
+            return true;
+
+        if (agentDefinition.HasSkillId(unlockSkillId))
+            return true;
+
+        return false;
+    }
+
+    public bool IsRelatedToAgentSkillSet(AgentDefinitionSO agentDefinition)
+    {
+        return IsRelatedToAgentDefinition(agentDefinition);
+    }
+
+    public static string NormalizeAgentId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant()
+            .Replace(" ", "_")
+            .Replace("-", "_");
+    }
+
     public static string NormalizeSkillId(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -234,6 +314,52 @@ public class UpgradeDefinition : ScriptableObject
             return "";
 
         return value.Trim();
+    }
+
+    public static CommanderAgentType ConvertAgentIdToLegacyAgentType(string targetAgentId)
+    {
+        string normalizedAgentId = NormalizeAgentId(targetAgentId);
+
+        switch (normalizedAgentId)
+        {
+            case "security_officer":
+            case "chaser":
+                return CommanderAgentType.Chaser;
+
+            case "drone_pilot":
+            case "observer":
+                return CommanderAgentType.Observer;
+
+            case "safety_manager":
+            case "engineer":
+                return CommanderAgentType.Engineer;
+
+            case "magician":
+            case "trickster":
+                return CommanderAgentType.Trickster;
+        }
+
+        return CommanderAgentType.None;
+    }
+
+    public static string ConvertLegacyAgentTypeToAgentId(CommanderAgentType legacyAgentType)
+    {
+        switch (legacyAgentType)
+        {
+            case CommanderAgentType.Chaser:
+                return "security_officer";
+
+            case CommanderAgentType.Observer:
+                return "drone_pilot";
+
+            case CommanderAgentType.Engineer:
+                return "safety_manager";
+
+            case CommanderAgentType.Trickster:
+                return "magician";
+        }
+
+        return "";
     }
 
     private string GetEffectKey()
@@ -255,7 +381,8 @@ public class UpgradeDefinition : ScriptableObject
     private void OnValidate()
     {
         ValidateBasicInfo();
-        ValidateTargetInfo();
+        ValidateOwnerInfo();
+        ValidateSkillInfo();
         ValidateEffectInfo();
         ValidateStageRule();
         ValidateStackRule();
@@ -278,19 +405,28 @@ public class UpgradeDefinition : ScriptableObject
             description = description.Trim();
     }
 
-    private void ValidateTargetInfo()
+    private void ValidateOwnerInfo()
     {
-        skillId = NormalizeSkillId(skillId);
-        unlockSkillId = NormalizeSkillId(unlockSkillId);
+        agentId = NormalizeAgentId(agentId);
 
         if (ownerType == UpgradeOwnerType.Agent)
         {
             targetType = CommanderTargetType.None;
+
+            if (string.IsNullOrWhiteSpace(agentId) && agentType != CommanderAgentType.None)
+                agentId = ConvertLegacyAgentTypeToAgentId(agentType);
+
+            return;
         }
-        else
-        {
-            agentType = CommanderAgentType.None;
-        }
+
+        agentId = "";
+        agentType = CommanderAgentType.None;
+    }
+
+    private void ValidateSkillInfo()
+    {
+        skillId = NormalizeSkillId(skillId);
+        unlockSkillId = NormalizeSkillId(unlockSkillId);
     }
 
     private void ValidateEffectInfo()

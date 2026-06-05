@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -317,6 +318,13 @@ public class CommanderCommandProcessor : MonoBehaviour
                     Debug.Log("[Commander] 조커 카드는 마술사 게이지가 가득 차면 자동 발동되므로 직접 명령하지 않습니다.");
                     validatedSkill = "hold";
                 }
+                else if (TryResolveSkillFromAgentDefinitionInstruction(
+                             targetAgent,
+                             originalInstruction,
+                             out string resolvedSkillFromDefinition))
+                {
+                    validatedSkill = resolvedSkillFromDefinition;
+                }
                 else if (commandValidator.IsLookAroundInstruction(originalInstruction))
                 {
                     validatedSkill = "lookaround";
@@ -415,20 +423,23 @@ public class CommanderCommandProcessor : MonoBehaviour
     private string GetSystemPromptForAgent(AgentController targetAgent)
     {
         string commonRules =
-            "You are a tactical coordinator for the game 'Commander'.\n\n" +
-            "You will receive exactly one instruction for exactly one agent.\n" +
-            $"The fixed agent id is {targetAgent.AgentID}.\n\n" +
-            "RULES:\n" +
-            $"1. Always output exactly one command with \"id\": {targetAgent.AgentID}.\n" +
-            "2. Never output commands for any other agent id.\n" +
-            "3. If the instruction says a time delay such as '5초 후', '5초 뒤', '5초 이후', 'after 5 seconds', or 'in 5 seconds', set \"delaySeconds\" to that value.\n" +
-            "4. If no time delay is specified, set \"delaySeconds\": 0.0.\n" +
-            "5. \"delaySeconds\" must never be negative.\n" +
-            "6. If the instruction is movement only, skill MUST be an empty string.\n" +
-            "7. If the instruction asks to check surroundings, use skill \"lookaround\".\n" +
-            "8. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\".\n" +
-            "9. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
-            "10. Output JSON only.\n";
+        "You are a tactical coordinator for the game 'Commander'.\n\n" +
+        "You will receive exactly one instruction for exactly one agent.\n" +
+        $"The fixed agent id is {targetAgent.AgentID}.\n\n" +
+        "RULES:\n" +
+        $"1. Always output exactly one command with \"id\": {targetAgent.AgentID}.\n" +
+        "2. Never output commands for any other agent id.\n" +
+        "3. If the instruction says a time delay such as '5초 후', '5초 뒤', '5초 이후', 'after 5 seconds', or 'in 5 seconds', set \"delaySeconds\" to that value.\n" +
+        "4. If no time delay is specified, set \"delaySeconds\": 0.0.\n" +
+        "5. \"delaySeconds\" must never be negative.\n" +
+        "6. If the instruction is movement only, skill MUST be an empty string.\n" +
+        "7. If the instruction asks to check surroundings, use skill \"lookaround\".\n" +
+        "8. If the instruction is vague, unsupported, or outside the supported command set, use skill \"hold\".\n" +
+        "9. When using \"lookaround\" or \"hold\", pos should be {\"x\":0.0,\"z\":0.0}.\n" +
+        "10. Output JSON only.\n";
+
+        if (TryBuildSystemPromptFromAgentDefinition(targetAgent, commonRules, out string definitionPrompt))
+            return definitionPrompt;
 
         if (targetAgent is Chaser)
         {
@@ -518,8 +529,13 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (string.IsNullOrWhiteSpace(skill))
             return true;
 
+        skill = NormalizeSkillKey(skill);
+
         if (skill == "hold" || skill == "lookaround")
             return true;
+
+        if (TryCheckSkillAllowedByAgentDefinition(agent, skill, out bool allowedByDefinition))
+            return allowedByDefinition;
 
         if (agent is Chaser)
         {
@@ -557,6 +573,477 @@ public class CommanderCommandProcessor : MonoBehaviour
         }
 
         return true;
+    }
+
+    private bool TryBuildSystemPromptFromAgentDefinition(
+    AgentController targetAgent,
+    string commonRules,
+    out string prompt)
+    {
+        prompt = "";
+
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        List<SkillDefinitionSO> commandableSkills = GetAvailableCommandableSkills(targetAgent);
+
+        if (commandableSkills.Count <= 0)
+            return false;
+
+        StringBuilder builder = new StringBuilder();
+
+        builder.Append(commonRules);
+        builder.AppendLine();
+        builder.AppendLine($"AGENT:");
+        builder.AppendLine($"- Agent display name: {targetAgent.AgentDisplayName}");
+        builder.AppendLine($"- Agent id key: {targetAgent.AgentId}");
+        builder.AppendLine();
+        builder.AppendLine("AGENT SKILL RULES:");
+        builder.AppendLine("11. Allowed skills for this agent are only the skills listed below.");
+        builder.AppendLine("12. Use a skill only when the instruction explicitly matches the skill name, command keyword, or alternative keyword.");
+        builder.AppendLine("13. If the instruction does not clearly match one of the listed skills, use skill \"hold\".");
+        builder.AppendLine("14. Passive or automatic skills must not be output as direct commands.");
+        builder.AppendLine();
+
+        builder.Append("Allowed skill output values: ");
+
+        List<string> allOutputKeys = new List<string>();
+
+        for (int i = 0; i < commandableSkills.Count; i++)
+        {
+            AddRuntimeKeysFromSkill(commandableSkills[i], allOutputKeys);
+        }
+
+        builder.AppendLine(BuildQuotedList(allOutputKeys));
+        builder.AppendLine();
+
+        builder.AppendLine("SKILL GUIDE:");
+
+        for (int i = 0; i < commandableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = commandableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            List<string> outputKeys = GetRuntimeKeysFromSkill(skill);
+            List<string> keywords = GetKeywordsFromSkill(skill);
+
+            builder.AppendLine($"- {GetSafeSkillDisplayName(skill)}");
+            builder.AppendLine($"  Output skill value: {BuildQuotedList(outputKeys)}");
+
+            if (keywords.Count > 0)
+                builder.AppendLine($"  Use when instruction mentions: {BuildQuotedList(keywords)}");
+
+            if (!string.IsNullOrWhiteSpace(skill.UsageText))
+                builder.AppendLine($"  Usage: {skill.UsageText}");
+
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("OUTPUT FORMAT:");
+        builder.AppendLine("{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }");
+        builder.AppendLine();
+
+        builder.AppendLine("POSITION RULES:");
+        builder.AppendLine("- If a skill instruction contains coordinates, use those coordinates in pos.");
+        builder.AppendLine("- If a skill does not need coordinates, use pos {\"x\":0.0,\"z\":0.0}.");
+        builder.AppendLine("- If a skill needs coordinates but the instruction has no coordinates, use skill \"hold\".");
+        builder.AppendLine("- If the instruction is movement only, use an empty skill value.");
+
+        prompt = builder.ToString();
+        return true;
+    }
+
+    private List<SkillDefinitionSO> GetAvailableCommandableSkills(AgentController agent)
+    {
+        List<SkillDefinitionSO> result = new List<SkillDefinitionSO>();
+
+        if (agent == null)
+            return result;
+
+        AgentDefinitionSO definition = agent.AgentDefinition;
+
+        if (definition == null)
+            return result;
+
+        AddAvailableCommandableSkills(agent, definition.BasicSkills, result);
+        AddAvailableCommandableSkills(agent, definition.UnlockableSkills, result);
+
+        return result;
+    }
+
+    private void AddAvailableCommandableSkills(
+        AgentController agent,
+        IReadOnlyList<SkillDefinitionSO> source,
+        List<SkillDefinitionSO> result)
+    {
+        if (agent == null || source == null || result == null)
+            return;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            SkillDefinitionSO skill = source[i];
+
+            if (skill == null)
+                continue;
+
+            if (!IsSkillAvailableForCommand(agent, skill))
+                continue;
+
+            if (result.Contains(skill))
+                continue;
+
+            result.Add(skill);
+        }
+    }
+
+    private bool IsSkillAvailableForCommand(AgentController agent, SkillDefinitionSO skill)
+    {
+        if (agent == null || skill == null)
+            return false;
+
+        if (!skill.IsCommandSkill && !skill.IsToggleSkill)
+            return false;
+
+        if (skill.IsBasicSkill)
+            return true;
+
+        if (!skill.IsUnlockableSkill)
+            return true;
+
+        if (!skill.HasUnlockUpgradeId)
+            return false;
+
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return false;
+
+        return upgradeManager.HasAgentUpgrade(skill.UnlockUpgradeId);
+    }
+
+    private bool TryCheckSkillAllowedByAgentDefinition(
+        AgentController agent,
+        string skill,
+        out bool allowed)
+    {
+        allowed = false;
+
+        if (agent == null)
+            return false;
+
+        AgentDefinitionSO definition = agent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        List<SkillDefinitionSO> commandableSkills = GetAvailableCommandableSkills(agent);
+
+        if (commandableSkills.Count <= 0)
+            return false;
+
+        string normalizedSkill = NormalizeSkillKey(skill);
+
+        for (int i = 0; i < commandableSkills.Count; i++)
+        {
+            SkillDefinitionSO skillDefinition = commandableSkills[i];
+
+            if (skillDefinition == null)
+                continue;
+
+            if (SkillMatchesRuntimeOutput(skillDefinition, normalizedSkill))
+            {
+                allowed = true;
+                return true;
+            }
+        }
+
+        allowed = false;
+        return true;
+    }
+
+    private bool TryResolveSkillFromAgentDefinitionInstruction(
+        AgentController agent,
+        string instruction,
+        out string runtimeSkillKey)
+    {
+        runtimeSkillKey = "";
+
+        if (agent == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(instruction))
+            return false;
+
+        List<SkillDefinitionSO> commandableSkills = GetAvailableCommandableSkills(agent);
+
+        if (commandableSkills.Count <= 0)
+            return false;
+
+        for (int i = 0; i < commandableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = commandableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            if (!InstructionMatchesSkillKeyword(instruction, skill))
+                continue;
+
+            runtimeSkillKey = GetPrimaryRuntimeKeyFromSkill(skill);
+
+            if (string.IsNullOrWhiteSpace(runtimeSkillKey))
+                continue;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool InstructionMatchesSkillKeyword(string instruction, SkillDefinitionSO skill)
+    {
+        if (string.IsNullOrWhiteSpace(instruction) || skill == null)
+            return false;
+
+        List<string> keywords = GetKeywordsFromSkill(skill);
+
+        for (int i = 0; i < keywords.Count; i++)
+        {
+            if (ContainsKeyword(instruction, keywords[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool SkillMatchesRuntimeOutput(SkillDefinitionSO skill, string runtimeOutput)
+    {
+        if (skill == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(runtimeOutput))
+            return false;
+
+        string normalizedRuntimeOutput = NormalizeSkillKey(runtimeOutput);
+
+        if (NormalizeSkillKey(skill.RuntimeSkillKey) == normalizedRuntimeOutput)
+            return true;
+
+        if (NormalizeSkillKey(skill.SkillId) == normalizedRuntimeOutput)
+            return true;
+
+        if (NormalizeSkillKey(skill.CommandKeyword) == normalizedRuntimeOutput)
+            return true;
+
+        IReadOnlyList<string> aliases = skill.RuntimeSkillAliases;
+
+        if (aliases != null)
+        {
+            for (int i = 0; i < aliases.Count; i++)
+            {
+                if (NormalizeSkillKey(aliases[i]) == normalizedRuntimeOutput)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string GetPrimaryRuntimeKeyFromSkill(SkillDefinitionSO skill)
+    {
+        if (skill == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(skill.RuntimeSkillKey))
+            return NormalizeSkillKey(skill.RuntimeSkillKey);
+
+        if (!string.IsNullOrWhiteSpace(skill.SkillId))
+            return NormalizeSkillKey(skill.SkillId);
+
+        if (!string.IsNullOrWhiteSpace(skill.CommandKeyword))
+            return NormalizeSkillKey(skill.CommandKeyword);
+
+        return "";
+    }
+
+    private List<string> GetRuntimeKeysFromSkill(SkillDefinitionSO skill)
+    {
+        List<string> result = new List<string>();
+
+        AddRuntimeKeysFromSkill(skill, result);
+
+        return result;
+    }
+
+    private void AddRuntimeKeysFromSkill(SkillDefinitionSO skill, List<string> result)
+    {
+        if (skill == null || result == null)
+            return;
+
+        AddUniqueNormalizedValue(result, skill.RuntimeSkillKey);
+        AddUniqueNormalizedValue(result, skill.SkillId);
+
+        IReadOnlyList<string> aliases = skill.RuntimeSkillAliases;
+
+        if (aliases == null)
+            return;
+
+        for (int i = 0; i < aliases.Count; i++)
+        {
+            AddUniqueNormalizedValue(result, aliases[i]);
+        }
+    }
+
+    private List<string> GetKeywordsFromSkill(SkillDefinitionSO skill)
+    {
+        List<string> result = new List<string>();
+
+        if (skill == null)
+            return result;
+
+        AddUniqueKeywordValue(result, skill.DisplayName);
+        AddUniqueKeywordValue(result, skill.CommandKeyword);
+        AddUniqueKeywordValue(result, skill.SkillId);
+        AddUniqueKeywordValue(result, skill.RuntimeSkillKey);
+
+        IReadOnlyList<string> alternativeKeywords = skill.AlternativeCommandKeywords;
+
+        if (alternativeKeywords != null)
+        {
+            for (int i = 0; i < alternativeKeywords.Count; i++)
+            {
+                AddUniqueKeywordValue(result, alternativeKeywords[i]);
+            }
+        }
+
+        IReadOnlyList<string> aliases = skill.RuntimeSkillAliases;
+
+        if (aliases != null)
+        {
+            for (int i = 0; i < aliases.Count; i++)
+            {
+                AddUniqueKeywordValue(result, aliases[i]);
+            }
+        }
+
+        return result;
+    }
+
+    private string GetSafeSkillDisplayName(SkillDefinitionSO skill)
+    {
+        if (skill == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(skill.DisplayName))
+            return skill.DisplayName;
+
+        if (!string.IsNullOrWhiteSpace(skill.SkillId))
+            return skill.SkillId;
+
+        return skill.name;
+    }
+
+    private bool ContainsKeyword(string source, string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(keyword))
+            return false;
+
+        string normalizedSource = NormalizeKeywordForContains(source);
+        string normalizedKeyword = NormalizeKeywordForContains(keyword);
+
+        if (normalizedSource.Contains(normalizedKeyword))
+            return true;
+
+        string compactSource = normalizedSource.Replace(" ", "");
+        string compactKeyword = normalizedKeyword.Replace(" ", "");
+
+        return compactSource.Contains(compactKeyword);
+    }
+
+    private string NormalizeKeywordForContains(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant()
+            .Replace("_", " ")
+            .Replace("-", " ");
+    }
+
+    private string NormalizeSkillKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
+    }
+
+    private void AddUniqueNormalizedValue(List<string> values, string value)
+    {
+        if (values == null)
+            return;
+
+        string normalizedValue = NormalizeSkillKey(value);
+
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+            return;
+
+        if (values.Contains(normalizedValue))
+            return;
+
+        values.Add(normalizedValue);
+    }
+
+    private void AddUniqueKeywordValue(List<string> values, string value)
+    {
+        if (values == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        string trimmedValue = value.Trim();
+
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (NormalizeKeywordForContains(values[i]) == NormalizeKeywordForContains(trimmedValue))
+                return;
+        }
+
+        values.Add(trimmedValue);
+    }
+
+    private string BuildQuotedList(List<string> values)
+    {
+        if (values == null || values.Count <= 0)
+            return "\"\"";
+
+        StringBuilder builder = new StringBuilder();
+
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (i > 0)
+                builder.Append(", ");
+
+            builder.Append("\"");
+            builder.Append(values[i]);
+            builder.Append("\"");
+        }
+
+        return builder.ToString();
     }
 
     private bool IsBarricadeInstruction(string source)

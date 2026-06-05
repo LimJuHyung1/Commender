@@ -274,7 +274,10 @@ public class Observer : AgentController, IUpgradeReceiver
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
     {
-        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Observer);
+        return CanApplyUpgradeByAgentDefinitionOrLegacy(
+            upgrade,
+            CommanderAgentType.Observer
+        );
     }
 
     public void ApplyUpgrade(UpgradeDefinition upgrade)

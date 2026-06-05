@@ -12,7 +12,6 @@ public class StageMapManager : MonoBehaviour
         public int minStageNumber = 1;
         public int maxStageNumber = 1;
         public GameObject[] mapPrefabs;
-        public bool useFloorViewController = false;
     }
 
     [Header("Stages")]
@@ -250,8 +249,6 @@ public class StageMapManager : MonoBehaviour
 
         SavePlayedMapIndexIfNeeded(currentStageMapGroupIndex, currentMapIndex);
 
-        ConfigureFloorViewController(currentStageMapGroup);
-
         if (!CacheMapPoints())
         {
             Debug.LogError("[StageMapManager] 맵 내부 포인트를 찾지 못했습니다.");
@@ -272,18 +269,17 @@ public class StageMapManager : MonoBehaviour
         RefreshCommanderAgents();
 
         Debug.Log(
-            $"[StageMapManager] 맵 생성 완료: " +
-            $"Stage={CurrentStageDisplayName}, " +
-            $"StageIndex={currentStageIndex}, " +
-            $"StageNumber={currentStageNumber}, " +
-            $"Group={currentStageMapGroup.groupName}, " +
-            $"GroupIndex={currentStageMapGroupIndex}, " +
-            $"MapPrefab={selectedMapPrefab.name}, " +
-            $"MapIndex={currentMapIndex}, " +
-            $"MapRotation={mapSpawnEuler}, " +
-            $"DebugMode={IsDebugStageMode()}, " +
-            $"UseFloorView={currentStageMapGroup.useFloorViewController}"
-        );
+    $"[StageMapManager] 맵 생성 완료: " +
+    $"Stage={CurrentStageDisplayName}, " +
+    $"StageIndex={currentStageIndex}, " +
+    $"StageNumber={currentStageNumber}, " +
+    $"Group={currentStageMapGroup.groupName}, " +
+    $"GroupIndex={currentStageMapGroupIndex}, " +
+    $"MapPrefab={selectedMapPrefab.name}, " +
+    $"MapIndex={currentMapIndex}, " +
+    $"MapRotation={mapSpawnEuler}, " +
+    $"DebugMode={IsDebugStageMode()}"
+);
     }
 
     private int GetStartStageIndex()
@@ -487,32 +483,6 @@ public class StageMapManager : MonoBehaviour
 
         PlayerPrefs.DeleteKey(GetPlayedMapHistoryKey(groupIndex));
         PlayerPrefs.Save();
-    }
-
-    private void ConfigureFloorViewController(StageMapGroup selectedStageMapGroup)
-    {
-        FloorViewController floorViewController = FindFloorViewController();
-        if (floorViewController == null)
-            return;
-
-        floorViewController.SetSearchRoot(currentMap != null ? currentMap.transform : null);
-        floorViewController.SetSystemEnabled(selectedStageMapGroup != null && selectedStageMapGroup.useFloorViewController);
-    }
-
-    private FloorViewController FindFloorViewController()
-    {
-        FloorViewController floorViewController = null;
-
-        if (currentMap != null)
-            floorViewController = currentMap.GetComponentInChildren<FloorViewController>(true);
-
-        if (floorViewController == null)
-            floorViewController = FindFirstObjectByType<FloorViewController>(FindObjectsInactive.Include);
-
-        if (floorViewController == null)
-            Debug.LogWarning("[StageMapManager] FloorViewController를 찾지 못했습니다.");
-
-        return floorViewController;
     }
 
     private bool CacheMapPoints()
@@ -966,14 +936,6 @@ public class StageMapManager : MonoBehaviour
 
     public void ClearStage()
     {
-        FloorViewController floorViewController = FindFirstObjectByType<FloorViewController>(FindObjectsInactive.Include);
-
-        if (floorViewController != null)
-        {
-            floorViewController.SetSystemEnabled(false);
-            floorViewController.SetSearchRoot(null);
-        }
-
         if (currentTarget != null)
         {
             Destroy(currentTarget);

@@ -8,41 +8,20 @@ public class UpgradeManager : MonoBehaviour
     private const string ChaserUnlockPatrol = "chaser_unlock_patrol";
     private const string ChaserUnlockTrackingInstinct = "chaser_unlock_tracking_instinct";
 
-    private const string ChaserPatrolPressureTracking = "chaser_patrol_pressure_tracking";
-    private const string ChaserPatrolHighSpeed = "chaser_patrol_high_speed";
-
-    private const string ChaserTrackingInstinctMaxStack10 = "chaser_tracking_instinct_max_stack_10";
-    private const string ChaserTrackingInstinctInstinctiveCharge = "chaser_tracking_instinct_instinctive_charge";
-
     private const string ObserverUnlockReconnaissance = "observer_unlock_reconnaissance";
     private const string ObserverUnlockObservationSupport = "observer_unlock_observation_support";
-
-    private const string ObserverReconnaissanceUpgradeModule = "observer_reconnaissance_upgrade_module";
-    private const string ObserverReconnaissanceSkilledPilot = "observer_reconnaissance_skilled_pilot";
-
-    private const string ObserverObservationSupportHawkeye = "observer_observation_support_hawkeye";
-    private const string ObserverObservationSupportEfficientObservation = "observer_observation_support_efficient_observation";
 
     private const string EngineerUnlockDemolition = "engineer_unlock_demolition";
     private const string EngineerUnlockSafeZone = "engineer_unlock_safe_zone";
 
-    private const string EngineerDemolitionAllInRange = "engineer_demolition_all_in_range";
-    private const string EngineerDemolitionAutoExecute = "engineer_demolition_auto_execute";
-
-    private const string EngineerSafeZoneExpanded = "engineer_safe_zone_expanded";
-    private const string EngineerSafeZoneFollowAgent = "engineer_safe_zone_follow_agent";
-
     private const string TricksterUnlockVanishing = "trickster_unlock_vanishing";
     private const string TricksterUnlockMisdirection = "trickster_unlock_misdirection";
 
-    private const string TricksterVanishingStageTransition = "trickster_vanishing_stage_transition";
-    private const string TricksterVanishingSpotlight = "trickster_vanishing_spotlight";
-
-    private const string TricksterMisdirectionFlawlessActing = "trickster_misdirection_flawless_acting";
-    private const string TricksterMisdirectionPerfectGaze = "trickster_misdirection_perfect_gaze";
-
     [Header("Database")]
     [SerializeField] private UpgradeDatabase upgradeDatabase;
+
+    [Header("Agent Definition Rules")]
+    [SerializeField] private List<AgentDefinitionSO> agentDefinitions = new List<AgentDefinitionSO>();
 
     [Header("Reward Settings")]
     [SerializeField] private int rewardChoiceCount = 3;
@@ -53,12 +32,14 @@ public class UpgradeManager : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool logDebugMessages;
 
-    private readonly List<string> selectedAgentUpgradeIds = new();
-    private readonly Dictionary<CommanderTargetType, List<string>> targetUpgradeIdsByType = new();
-    private readonly HashSet<int> appliedTargetMilestoneStages = new();
+    private readonly List<string> selectedAgentUpgradeIds = new List<string>();
+    private readonly Dictionary<CommanderTargetType, List<string>> targetUpgradeIdsByType =
+        new Dictionary<CommanderTargetType, List<string>>();
+    private readonly HashSet<int> appliedTargetMilestoneStages = new HashSet<int>();
 
     public UpgradeDatabase UpgradeDatabase => upgradeDatabase;
     public IReadOnlyList<string> SelectedAgentUpgradeIds => selectedAgentUpgradeIds;
+    public IReadOnlyList<AgentDefinitionSO> AgentDefinitions => agentDefinitions;
 
     private void Awake()
     {
@@ -79,9 +60,7 @@ public class UpgradeManager : MonoBehaviour
         appliedTargetMilestoneStages.Clear();
 
         if (logDebugMessages)
-        {
             Debug.Log("UpgradeManager run data reset.");
-        }
     }
 
     public List<UpgradeDefinition> BuildAgentRewardChoices(int stageNumber)
@@ -91,7 +70,7 @@ public class UpgradeManager : MonoBehaviour
 
     public List<UpgradeDefinition> BuildAgentRewardChoices(int stageNumber, int choiceCount)
     {
-        List<UpgradeDefinition> result = new();
+        List<UpgradeDefinition> result = new List<UpgradeDefinition>();
 
         if (upgradeDatabase == null)
         {
@@ -116,9 +95,7 @@ public class UpgradeManager : MonoBehaviour
     public bool SelectAgentUpgrade(UpgradeDefinition upgrade)
     {
         if (upgrade == null)
-        {
             return false;
-        }
 
         if (!upgrade.IsAgentUpgrade)
         {
@@ -135,9 +112,7 @@ public class UpgradeManager : MonoBehaviour
         selectedAgentUpgradeIds.Add(upgrade.UpgradeId);
 
         if (logDebugMessages)
-        {
             Debug.Log($"Agent upgrade selected: {upgrade.DisplayName}");
-        }
 
         return true;
     }
@@ -162,14 +137,10 @@ public class UpgradeManager : MonoBehaviour
     public void TryApplyTargetMilestoneUpgrades(int stageNumber)
     {
         if (!IsTargetMilestoneStage(stageNumber))
-        {
             return;
-        }
 
         if (appliedTargetMilestoneStages.Contains(stageNumber))
-        {
             return;
-        }
 
         appliedTargetMilestoneStages.Add(stageNumber);
 
@@ -178,17 +149,13 @@ public class UpgradeManager : MonoBehaviour
         AddRandomTargetUpgrade(stageNumber, CommanderTargetType.GraffitiArtist);
 
         if (logDebugMessages)
-        {
             Debug.Log($"Target milestone upgrades applied at stage {stageNumber}.");
-        }
     }
 
     public List<UpgradeDefinition> GetSelectedAgentUpgrades()
     {
         if (upgradeDatabase == null)
-        {
             return new List<UpgradeDefinition>();
-        }
 
         return upgradeDatabase.GetUpgradesByIds(selectedAgentUpgradeIds);
     }
@@ -196,14 +163,10 @@ public class UpgradeManager : MonoBehaviour
     public List<UpgradeDefinition> GetTargetUpgrades(CommanderTargetType targetType)
     {
         if (upgradeDatabase == null)
-        {
             return new List<UpgradeDefinition>();
-        }
 
         if (!targetUpgradeIdsByType.TryGetValue(targetType, out List<string> upgradeIds))
-        {
             return new List<UpgradeDefinition>();
-        }
 
         return upgradeDatabase.GetUpgradesByIds(upgradeIds);
     }
@@ -211,9 +174,7 @@ public class UpgradeManager : MonoBehaviour
     public IReadOnlyList<string> GetTargetUpgradeIds(CommanderTargetType targetType)
     {
         if (!targetUpgradeIdsByType.TryGetValue(targetType, out List<string> upgradeIds))
-        {
             return new List<string>();
-        }
 
         return upgradeIds;
     }
@@ -226,9 +187,7 @@ public class UpgradeManager : MonoBehaviour
     public int GetTargetUpgradeStackCount(CommanderTargetType targetType, string upgradeId)
     {
         if (!targetUpgradeIdsByType.TryGetValue(targetType, out List<string> upgradeIds))
-        {
             return 0;
-        }
 
         return CountUpgrade(upgradeIds, upgradeId);
     }
@@ -243,192 +202,247 @@ public class UpgradeManager : MonoBehaviour
         return ContainsUpgrade(selectedAgentUpgradeIds, upgradeId);
     }
 
-    public string GetUnlockedChaserThirdSkillName()
+    public bool HasUnlockedSkill(string skillId)
     {
-        if (HasAgentUpgrade(ChaserUnlockPatrol))
+        if (string.IsNullOrWhiteSpace(skillId))
+            return false;
+
+        string normalizedSkillId = NormalizeSkillId(skillId);
+        List<UpgradeDefinition> selectedUpgrades = GetSelectedAgentUpgrades();
+
+        for (int i = 0; i < selectedUpgrades.Count; i++)
         {
-            return "patrol";
+            UpgradeDefinition upgrade = selectedUpgrades[i];
+
+            if (upgrade == null)
+                continue;
+
+            if (!upgrade.IsUnlockSkillUpgrade)
+                continue;
+
+            if (NormalizeSkillId(upgrade.UnlockSkillId) == normalizedSkillId)
+                return true;
         }
 
-        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
-        {
-            return "trackinginstinct";
-        }
-
-        return "";
+        return false;
     }
 
-    public UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    public bool TryGetUnlockedSkillFromAgentDefinition(
+        AgentDefinitionSO agentDefinition,
+        out SkillDefinitionSO unlockedSkill,
+        out UpgradeDefinition unlockedUpgrade)
     {
-        if (upgradeDatabase == null)
+        unlockedSkill = null;
+        unlockedUpgrade = null;
+
+        if (agentDefinition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = agentDefinition.UnlockableSkills;
+
+        if (unlockableSkills == null || unlockableSkills.Count <= 0)
+            return false;
+
+        for (int i = 0; i < unlockableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = unlockableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            if (!skill.HasUnlockUpgradeId)
+                continue;
+
+            if (!HasAgentUpgrade(skill.UnlockUpgradeId))
+                continue;
+
+            unlockedSkill = skill;
+
+            if (upgradeDatabase != null)
+                unlockedUpgrade = upgradeDatabase.GetUpgradeOrNull(skill.UnlockUpgradeId);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public UpgradeDefinition GetUnlockedSkillUpgradeFromAgentDefinition(AgentDefinitionSO agentDefinition)
+    {
+        if (TryGetUnlockedSkillFromAgentDefinition(
+                agentDefinition,
+                out SkillDefinitionSO _,
+                out UpgradeDefinition unlockedUpgrade))
+        {
+            return unlockedUpgrade;
+        }
+
+        return null;
+    }
+
+    public Sprite GetUnlockedSkillIconFromAgentDefinition(AgentDefinitionSO agentDefinition)
+    {
+        if (!TryGetUnlockedSkillFromAgentDefinition(
+                agentDefinition,
+                out SkillDefinitionSO unlockedSkill,
+                out UpgradeDefinition unlockedUpgrade))
         {
             return null;
         }
 
-        if (HasAgentUpgrade(ChaserUnlockPatrol))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
-        }
+        if (unlockedSkill != null && unlockedSkill.Icon != null)
+            return unlockedSkill.Icon;
 
-        if (HasAgentUpgrade(ChaserUnlockTrackingInstinct))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
-        }
+        if (unlockedUpgrade != null)
+            return unlockedUpgrade.Icon;
 
         return null;
+    }
+
+    public string GetUnlockedSkillRuntimeKeyFromAgentDefinition(AgentDefinitionSO agentDefinition)
+    {
+        if (!TryGetUnlockedSkillFromAgentDefinition(
+                agentDefinition,
+                out SkillDefinitionSO unlockedSkill,
+                out UpgradeDefinition _))
+        {
+            return "";
+        }
+
+        if (unlockedSkill == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(unlockedSkill.RuntimeSkillKey))
+            return NormalizeSkillRuntimeKey(unlockedSkill.RuntimeSkillKey);
+
+        if (!string.IsNullOrWhiteSpace(unlockedSkill.SkillId))
+            return NormalizeSkillRuntimeKey(unlockedSkill.SkillId);
+
+        if (!string.IsNullOrWhiteSpace(unlockedSkill.CommandKeyword))
+            return NormalizeSkillRuntimeKey(unlockedSkill.CommandKeyword);
+
+        return "";
+    }
+
+    public string GetUnlockedChaserThirdSkillName()
+    {
+        return GetLegacyUnlockedSkillName(
+            ChaserUnlockPatrol,
+            "patrol",
+            ChaserUnlockTrackingInstinct,
+            "trackinginstinct"
+        );
+    }
+
+    public UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    {
+        return GetLegacyUnlockedSkillUpgrade(ChaserUnlockPatrol, ChaserUnlockTrackingInstinct);
     }
 
     public Sprite GetUnlockedChaserThirdSkillIcon()
     {
         UpgradeDefinition upgrade = GetUnlockedChaserThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
+        return upgrade != null ? upgrade.Icon : null;
     }
 
     public string GetUnlockedObserverThirdSkillName()
     {
-        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
-        {
-            return "reconnaissance";
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
-        {
-            return "observationsupport";
-        }
-
-        return "";
+        return GetLegacyUnlockedSkillName(
+            ObserverUnlockReconnaissance,
+            "reconnaissance",
+            ObserverUnlockObservationSupport,
+            "observationsupport"
+        );
     }
 
     public UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
     {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockReconnaissance))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
-        }
-
-        if (HasAgentUpgrade(ObserverUnlockObservationSupport))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
-        }
-
-        return null;
+        return GetLegacyUnlockedSkillUpgrade(
+            ObserverUnlockReconnaissance,
+            ObserverUnlockObservationSupport
+        );
     }
 
     public Sprite GetUnlockedObserverThirdSkillIcon()
     {
         UpgradeDefinition upgrade = GetUnlockedObserverThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
+        return upgrade != null ? upgrade.Icon : null;
     }
 
     public string GetUnlockedEngineerThirdSkillName()
     {
-        if (HasAgentUpgrade(EngineerUnlockDemolition))
-        {
-            return "demolition";
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockSafeZone))
-        {
-            return "safezone";
-        }
-
-        return "";
+        return GetLegacyUnlockedSkillName(
+            EngineerUnlockDemolition,
+            "demolition",
+            EngineerUnlockSafeZone,
+            "safezone"
+        );
     }
 
     public UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
     {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockDemolition))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
-        }
-
-        if (HasAgentUpgrade(EngineerUnlockSafeZone))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
-        }
-
-        return null;
+        return GetLegacyUnlockedSkillUpgrade(EngineerUnlockDemolition, EngineerUnlockSafeZone);
     }
 
     public Sprite GetUnlockedEngineerThirdSkillIcon()
     {
         UpgradeDefinition upgrade = GetUnlockedEngineerThirdSkillUpgrade();
-
-        if (upgrade == null)
-        {
-            return null;
-        }
-
-        return upgrade.Icon;
+        return upgrade != null ? upgrade.Icon : null;
     }
 
     public string GetUnlockedTricksterThirdSkillName()
     {
-        if (HasAgentUpgrade(TricksterUnlockVanishing))
-        {
-            return "vanishing";
-        }
-
-        if (HasAgentUpgrade(TricksterUnlockMisdirection))
-        {
-            return "misdirection";
-        }
-
-        return "";
+        return GetLegacyUnlockedSkillName(
+            TricksterUnlockVanishing,
+            "vanishing",
+            TricksterUnlockMisdirection,
+            "misdirection"
+        );
     }
 
     public UpgradeDefinition GetUnlockedTricksterThirdSkillUpgrade()
     {
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (HasAgentUpgrade(TricksterUnlockVanishing))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockVanishing);
-        }
-
-        if (HasAgentUpgrade(TricksterUnlockMisdirection))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockMisdirection);
-        }
-
-        return null;
+        return GetLegacyUnlockedSkillUpgrade(
+            TricksterUnlockVanishing,
+            TricksterUnlockMisdirection
+        );
     }
 
     public Sprite GetUnlockedTricksterThirdSkillIcon()
     {
         UpgradeDefinition upgrade = GetUnlockedTricksterThirdSkillUpgrade();
+        return upgrade != null ? upgrade.Icon : null;
+    }
 
-        if (upgrade == null)
-        {
+    private string GetLegacyUnlockedSkillName(
+        string firstUnlockUpgradeId,
+        string firstSkillName,
+        string secondUnlockUpgradeId,
+        string secondSkillName)
+    {
+        if (HasAgentUpgrade(firstUnlockUpgradeId))
+            return firstSkillName;
+
+        if (HasAgentUpgrade(secondUnlockUpgradeId))
+            return secondSkillName;
+
+        return "";
+    }
+
+    private UpgradeDefinition GetLegacyUnlockedSkillUpgrade(
+        string firstUnlockUpgradeId,
+        string secondUnlockUpgradeId)
+    {
+        if (upgradeDatabase == null)
             return null;
-        }
 
-        return upgrade.Icon;
+        if (HasAgentUpgrade(firstUnlockUpgradeId))
+            return upgradeDatabase.GetUpgradeOrNull(firstUnlockUpgradeId);
+
+        if (HasAgentUpgrade(secondUnlockUpgradeId))
+            return upgradeDatabase.GetUpgradeOrNull(secondUnlockUpgradeId);
+
+        return null;
     }
 
     private void AddRandomTargetUpgrade(int stageNumber, CommanderTargetType targetType)
@@ -445,15 +459,15 @@ public class UpgradeManager : MonoBehaviour
             targetUpgradeIdsByType.Add(targetType, currentUpgradeIds);
         }
 
-        List<UpgradeDefinition> candidates = upgradeDatabase.GetTargetUpgradeCandidates(stageNumber, targetType);
+        List<UpgradeDefinition> candidates =
+            upgradeDatabase.GetTargetUpgradeCandidates(stageNumber, targetType);
+
         RemoveUnavailableUpgrades(candidates, currentUpgradeIds);
 
         if (candidates.Count <= 0)
         {
             if (logDebugMessages)
-            {
                 Debug.Log($"No target upgrade candidates for {targetType} at stage {stageNumber}.");
-            }
 
             return;
         }
@@ -464,24 +478,18 @@ public class UpgradeManager : MonoBehaviour
         currentUpgradeIds.Add(selectedUpgrade.UpgradeId);
 
         if (logDebugMessages)
-        {
             Debug.Log($"Target upgrade selected: {targetType} / {selectedUpgrade.DisplayName}");
-        }
     }
 
     private bool IsTargetMilestoneStage(int stageNumber)
     {
         if (targetUpgradeMilestoneStages == null)
-        {
             return false;
-        }
 
         for (int i = 0; i < targetUpgradeMilestoneStages.Length; i++)
         {
             if (targetUpgradeMilestoneStages[i] == stageNumber)
-            {
                 return true;
-            }
         }
 
         return false;
@@ -492,9 +500,7 @@ public class UpgradeManager : MonoBehaviour
         List<string> alreadySelectedUpgradeIds)
     {
         if (candidates == null)
-        {
             return;
-        }
 
         for (int i = candidates.Count - 1; i >= 0; i--)
         {
@@ -507,195 +513,117 @@ public class UpgradeManager : MonoBehaviour
             }
 
             if (!CanAddUpgrade(upgrade, alreadySelectedUpgradeIds))
-            {
                 candidates.RemoveAt(i);
-            }
         }
     }
 
     private bool CanAddUpgrade(UpgradeDefinition upgrade, List<string> alreadySelectedUpgradeIds)
     {
         if (upgrade == null)
-        {
             return false;
-        }
 
-        if (!CanAddChaserNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
-        {
+        if (!CanAddAgentDefinitionBasedUpgrade(upgrade, alreadySelectedUpgradeIds))
             return false;
-        }
-
-        if (!CanAddObserverNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
-        {
-            return false;
-        }
-
-        if (!CanAddEngineerNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
-        {
-            return false;
-        }
-
-        if (!CanAddTricksterNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds))
-        {
-            return false;
-        }
 
         int currentStack = CountUpgrade(alreadySelectedUpgradeIds, upgrade.UpgradeId);
 
         if (!upgrade.Stackable && currentStack > 0)
-        {
             return false;
-        }
 
         if (upgrade.Stackable && currentStack >= upgrade.MaxStack)
-        {
             return false;
-        }
 
         return true;
     }
 
-    private bool CanAddChaserNewSkillUpgrade(
+    private bool CanAddAgentDefinitionBasedUpgrade(
         UpgradeDefinition upgrade,
         List<string> alreadySelectedUpgradeIds)
     {
         if (upgrade == null)
-        {
             return false;
-        }
 
-        string upgradeId = upgrade.UpgradeId;
+        if (!upgrade.IsAgentUpgrade)
+            return true;
 
-        bool hasPatrol = ContainsUpgrade(alreadySelectedUpgradeIds, ChaserUnlockPatrol);
-        bool hasTrackingInstinct = ContainsUpgrade(alreadySelectedUpgradeIds, ChaserUnlockTrackingInstinct);
+        if (upgrade.IsUnlockSkillUpgrade)
+            return CanAddUnlockSkillUpgrade(upgrade, alreadySelectedUpgradeIds);
 
-        if (upgradeId == ChaserUnlockPatrol && hasTrackingInstinct)
-        {
-            return false;
-        }
-
-        if (upgradeId == ChaserUnlockTrackingInstinct && hasPatrol)
-        {
-            return false;
-        }
-
-        if (IsPatrolUpgrade(upgradeId) && !hasPatrol)
-        {
-            return false;
-        }
-
-        if (IsTrackingInstinctUpgrade(upgradeId) && !hasTrackingInstinct)
-        {
-            return false;
-        }
-
-        if (IsPatrolUpgrade(upgradeId) && hasTrackingInstinct)
-        {
-            return false;
-        }
-
-        if (IsTrackingInstinctUpgrade(upgradeId) && hasPatrol)
-        {
-            return false;
-        }
+        if (upgrade.IsNewSkillUpgrade)
+            return CanAddNewSkillUpgrade(upgrade, alreadySelectedUpgradeIds);
 
         return true;
     }
 
-    private bool CanAddObserverNewSkillUpgrade(
+    private bool CanAddUnlockSkillUpgrade(
         UpgradeDefinition upgrade,
         List<string> alreadySelectedUpgradeIds)
     {
         if (upgrade == null)
-        {
             return false;
-        }
 
-        string upgradeId = upgrade.UpgradeId;
+        if (!upgrade.HasUnlockSkillId)
+            return true;
 
-        bool hasReconnaissance = ContainsUpgrade(
-            alreadySelectedUpgradeIds,
-            ObserverUnlockReconnaissance
-        );
+        AgentDefinitionSO ownerDefinition =
+            FindAgentDefinitionByUnlockableSkillId(upgrade.UnlockSkillId);
 
-        bool hasObservationSupport = ContainsUpgrade(
-            alreadySelectedUpgradeIds,
-            ObserverUnlockObservationSupport
-        );
+        if (ownerDefinition == null)
+            return true;
 
-        if (upgradeId == ObserverUnlockReconnaissance && hasObservationSupport)
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = ownerDefinition.UnlockableSkills;
+
+        if (unlockableSkills == null || unlockableSkills.Count <= 0)
+            return true;
+
+        string candidateUnlockSkillId = NormalizeSkillId(upgrade.UnlockSkillId);
+
+        for (int i = 0; i < unlockableSkills.Count; i++)
         {
-            return false;
-        }
+            SkillDefinitionSO unlockableSkill = unlockableSkills[i];
 
-        if (upgradeId == ObserverUnlockObservationSupport && hasReconnaissance)
-        {
-            return false;
-        }
+            if (unlockableSkill == null)
+                continue;
 
-        if (IsReconnaissanceUpgrade(upgradeId) && !hasReconnaissance)
-        {
-            return false;
-        }
+            string existingUnlockSkillId = NormalizeSkillId(unlockableSkill.SkillId);
 
-        if (IsObservationSupportUpgrade(upgradeId) && !hasObservationSupport)
-        {
-            return false;
-        }
+            if (string.IsNullOrWhiteSpace(existingUnlockSkillId))
+                continue;
 
-        if (IsReconnaissanceUpgrade(upgradeId) && hasObservationSupport)
-        {
-            return false;
-        }
+            if (existingUnlockSkillId == candidateUnlockSkillId)
+                continue;
 
-        if (IsObservationSupportUpgrade(upgradeId) && hasReconnaissance)
-        {
-            return false;
+            if (HasSelectedUnlockUpgradeForSkill(existingUnlockSkillId, alreadySelectedUpgradeIds))
+                return false;
         }
 
         return true;
     }
 
-    private bool CanAddEngineerNewSkillUpgrade(
+    private bool CanAddNewSkillUpgrade(
         UpgradeDefinition upgrade,
         List<string> alreadySelectedUpgradeIds)
     {
         if (upgrade == null)
-        {
             return false;
-        }
 
-        string upgradeId = upgrade.UpgradeId;
+        if (!upgrade.HasTargetSkillId)
+            return true;
 
-        bool hasDemolition = ContainsUpgrade(alreadySelectedUpgradeIds, EngineerUnlockDemolition);
-        bool hasSafeZone = ContainsUpgrade(alreadySelectedUpgradeIds, EngineerUnlockSafeZone);
+        string targetSkillId = NormalizeSkillId(upgrade.SkillId);
 
-        if (upgradeId == EngineerUnlockDemolition && hasSafeZone)
-        {
+        AgentDefinitionSO ownerDefinition = FindAgentDefinitionByUnlockableSkillId(targetSkillId);
+
+        if (ownerDefinition == null)
+            return true;
+
+        if (!HasSelectedUnlockUpgradeForSkill(targetSkillId, alreadySelectedUpgradeIds))
             return false;
-        }
 
-        if (upgradeId == EngineerUnlockSafeZone && hasDemolition)
-        {
-            return false;
-        }
-
-        if (IsDemolitionUpgrade(upgradeId) && !hasDemolition)
-        {
-            return false;
-        }
-
-        if (IsSafeZoneUpgrade(upgradeId) && !hasSafeZone)
-        {
-            return false;
-        }
-
-        if (IsDemolitionUpgrade(upgradeId) && hasSafeZone)
-        {
-            return false;
-        }
-
-        if (IsSafeZoneUpgrade(upgradeId) && hasDemolition)
+        if (HasSelectedDifferentUnlockableSkillInSameAgent(
+                ownerDefinition,
+                targetSkillId,
+                alreadySelectedUpgradeIds))
         {
             return false;
         }
@@ -703,114 +631,127 @@ public class UpgradeManager : MonoBehaviour
         return true;
     }
 
-    private bool CanAddTricksterNewSkillUpgrade(
-        UpgradeDefinition upgrade,
+    private bool HasSelectedDifferentUnlockableSkillInSameAgent(
+        AgentDefinitionSO agentDefinition,
+        string targetSkillId,
         List<string> alreadySelectedUpgradeIds)
     {
-        if (upgrade == null)
-        {
+        if (agentDefinition == null)
             return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = agentDefinition.UnlockableSkills;
+
+        if (unlockableSkills == null || unlockableSkills.Count <= 0)
+            return false;
+
+        string normalizedTargetSkillId = NormalizeSkillId(targetSkillId);
+
+        for (int i = 0; i < unlockableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = unlockableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            string unlockableSkillId = NormalizeSkillId(skill.SkillId);
+
+            if (string.IsNullOrWhiteSpace(unlockableSkillId))
+                continue;
+
+            if (unlockableSkillId == normalizedTargetSkillId)
+                continue;
+
+            if (HasSelectedUnlockUpgradeForSkill(unlockableSkillId, alreadySelectedUpgradeIds))
+                return true;
         }
 
-        string upgradeId = upgrade.UpgradeId;
+        return false;
+    }
 
-        bool hasVanishing = ContainsUpgrade(alreadySelectedUpgradeIds, TricksterUnlockVanishing);
-        bool hasMisdirection = ContainsUpgrade(alreadySelectedUpgradeIds, TricksterUnlockMisdirection);
-
-        if (upgradeId == TricksterUnlockVanishing && hasMisdirection)
-        {
+    private bool HasSelectedUnlockUpgradeForSkill(
+        string skillId,
+        List<string> alreadySelectedUpgradeIds)
+    {
+        if (upgradeDatabase == null)
             return false;
+
+        if (alreadySelectedUpgradeIds == null)
+            return false;
+
+        string normalizedSkillId = NormalizeSkillId(skillId);
+
+        if (string.IsNullOrWhiteSpace(normalizedSkillId))
+            return false;
+
+        for (int i = 0; i < alreadySelectedUpgradeIds.Count; i++)
+        {
+            string upgradeId = alreadySelectedUpgradeIds[i];
+
+            if (string.IsNullOrWhiteSpace(upgradeId))
+                continue;
+
+            if (!upgradeDatabase.TryGetUpgrade(upgradeId, out UpgradeDefinition selectedUpgrade))
+                continue;
+
+            if (selectedUpgrade == null)
+                continue;
+
+            if (!selectedUpgrade.IsUnlockSkillUpgrade)
+                continue;
+
+            if (NormalizeSkillId(selectedUpgrade.UnlockSkillId) == normalizedSkillId)
+                return true;
         }
 
-        if (upgradeId == TricksterUnlockMisdirection && hasVanishing)
+        return false;
+    }
+
+    private AgentDefinitionSO FindAgentDefinitionByUnlockableSkillId(string skillId)
+    {
+        if (agentDefinitions == null)
+            return null;
+
+        string normalizedSkillId = NormalizeSkillId(skillId);
+
+        if (string.IsNullOrWhiteSpace(normalizedSkillId))
+            return null;
+
+        for (int i = 0; i < agentDefinitions.Count; i++)
         {
-            return false;
+            AgentDefinitionSO definition = agentDefinitions[i];
+
+            if (definition == null)
+                continue;
+
+            IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
+
+            if (unlockableSkills == null)
+                continue;
+
+            for (int j = 0; j < unlockableSkills.Count; j++)
+            {
+                SkillDefinitionSO skill = unlockableSkills[j];
+
+                if (skill == null)
+                    continue;
+
+                if (NormalizeSkillId(skill.SkillId) == normalizedSkillId)
+                    return definition;
+            }
         }
 
-        if (IsVanishingUpgrade(upgradeId) && !hasVanishing)
-        {
-            return false;
-        }
-
-        if (IsMisdirectionUpgrade(upgradeId) && !hasMisdirection)
-        {
-            return false;
-        }
-
-        if (IsVanishingUpgrade(upgradeId) && hasMisdirection)
-        {
-            return false;
-        }
-
-        if (IsMisdirectionUpgrade(upgradeId) && hasVanishing)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool IsPatrolUpgrade(string upgradeId)
-    {
-        return upgradeId == ChaserPatrolPressureTracking ||
-               upgradeId == ChaserPatrolHighSpeed;
-    }
-
-    private bool IsTrackingInstinctUpgrade(string upgradeId)
-    {
-        return upgradeId == ChaserTrackingInstinctMaxStack10 ||
-               upgradeId == ChaserTrackingInstinctInstinctiveCharge;
-    }
-
-    private bool IsReconnaissanceUpgrade(string upgradeId)
-    {
-        return upgradeId == ObserverReconnaissanceUpgradeModule ||
-               upgradeId == ObserverReconnaissanceSkilledPilot;
-    }
-
-    private bool IsObservationSupportUpgrade(string upgradeId)
-    {
-        return upgradeId == ObserverObservationSupportHawkeye ||
-               upgradeId == ObserverObservationSupportEfficientObservation;
-    }
-
-    private bool IsDemolitionUpgrade(string upgradeId)
-    {
-        return upgradeId == EngineerDemolitionAllInRange ||
-               upgradeId == EngineerDemolitionAutoExecute;
-    }
-
-    private bool IsSafeZoneUpgrade(string upgradeId)
-    {
-        return upgradeId == EngineerSafeZoneExpanded ||
-               upgradeId == EngineerSafeZoneFollowAgent;
-    }
-
-    private bool IsVanishingUpgrade(string upgradeId)
-    {
-        return upgradeId == TricksterVanishingStageTransition ||
-               upgradeId == TricksterVanishingSpotlight;
-    }
-
-    private bool IsMisdirectionUpgrade(string upgradeId)
-    {
-        return upgradeId == TricksterMisdirectionFlawlessActing ||
-               upgradeId == TricksterMisdirectionPerfectGaze;
+        return null;
     }
 
     private bool ContainsUpgrade(List<string> upgradeIds, string upgradeId)
     {
         if (upgradeIds == null || string.IsNullOrWhiteSpace(upgradeId))
-        {
             return false;
-        }
 
         for (int i = 0; i < upgradeIds.Count; i++)
         {
             if (upgradeIds[i] == upgradeId)
-            {
                 return true;
-            }
         }
 
         return false;
@@ -819,29 +760,43 @@ public class UpgradeManager : MonoBehaviour
     private int CountUpgrade(List<string> upgradeIds, string upgradeId)
     {
         if (upgradeIds == null || string.IsNullOrWhiteSpace(upgradeId))
-        {
             return 0;
-        }
 
         int count = 0;
 
         for (int i = 0; i < upgradeIds.Count; i++)
         {
             if (upgradeIds[i] == upgradeId)
-            {
                 count++;
-            }
         }
 
         return count;
     }
 
+    private string NormalizeSkillId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant();
+    }
+
+    private string NormalizeSkillRuntimeKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim()
+            .ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
+    }
+
     private void Shuffle(List<UpgradeDefinition> list)
     {
         if (list == null)
-        {
             return;
-        }
 
         for (int i = 0; i < list.Count; i++)
         {

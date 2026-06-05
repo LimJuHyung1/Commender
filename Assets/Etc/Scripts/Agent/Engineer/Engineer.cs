@@ -321,7 +321,10 @@ public class Engineer : AgentController, IUpgradeReceiver
 
     public bool CanApplyUpgrade(UpgradeDefinition upgrade)
     {
-        return upgrade != null && upgrade.MatchesAgent(CommanderAgentType.Engineer);
+        return CanApplyUpgradeByAgentDefinitionOrLegacy(
+            upgrade,
+            CommanderAgentType.Engineer
+        );
     }
 
     public void ApplyUpgrade(UpgradeDefinition upgrade)

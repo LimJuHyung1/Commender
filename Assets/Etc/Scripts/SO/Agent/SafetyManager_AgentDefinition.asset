@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 152479f4254f13447a5480917d58508f, type: 3}
+  m_Name: SafetyManager_AgentDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::AgentDefinitionSO
+  agentId: safetymanager_agentdefinition
+  displayName: SafetyManager_AgentDefinition
+  description: "\uC124\uCE58\uBB3C\uB97C \uD65C\uC6A9\uD574 \uD604\uC7A5\uC744 \uAD00\uB9AC\uD558\uB294
+    \uC5D0\uC774\uC804\uD2B8"
+  icon: {fileID: 0}
+  themeColor: {r: 1, g: 0.64705884, b: 0, a: 1}
+  agentPrefab: {fileID: 7290855899324585111, guid: 3cc5674e12b7495418d5e8bfb76e696c, type: 3}
+  stats: {fileID: 11400000, guid: 021a81bdba69f114cb4b4880f63289f1, type: 2}
+  basicSkills:
+  - {fileID: 11400000, guid: cdc1b1fdecc6c124d88a0c53e60be2e4, type: 2}
+  - {fileID: 11400000, guid: 40610d1c6083cb54c9de5ea830ccf7b6, type: 2}
+  unlockableSkills:
+  - {fileID: 11400000, guid: 2ef108f76eedfb64f9dcfb0e7b671ebe, type: 2}
+  - {fileID: 11400000, guid: 2e4ffdab9e7bf2c47b7664892138fefd, type: 2}
