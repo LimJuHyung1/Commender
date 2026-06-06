@@ -35,14 +35,14 @@ public class UIController : MonoBehaviour
     [SerializeField] private string resultThirdTextFallbackItemID = "Third Text";
 
     [Header("Success Result Text")]
-    [SerializeField] private string successFirstText = "성공";
-    [SerializeField] private string successSecondText = "TARGET\nCAPTURED!";
-    [SerializeField] private string successThirdText = "다음 스테이지로\n->";
+    private string successFirstText = "TARGET";
+    private string successSecondText = "CAPTURED!";
+    private string successThirdText = "다음 스테이지로";
 
     [Header("Failure Result Text")]
-    [SerializeField] private string failureFirstText = "실패";
-    [SerializeField] private string failureSecondText = "MISSION\nFAILED!";
-    [SerializeField] private string failureThirdText = "다시 시도\n->";
+    private string failureFirstText = "MISSION";
+    private string failureSecondText = "FAILED!";
+    private string failureThirdText = "로비로";
 
     [Header("Result Detail")]
     [SerializeField] private bool showResultDetailMessageInFirstText = false;

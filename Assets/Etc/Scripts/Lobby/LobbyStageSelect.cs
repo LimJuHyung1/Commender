@@ -4,7 +4,9 @@ using UnityEngine.UI;
 public class LobbyStageSelect : MonoBehaviour
 {
     [Header("Scene")]
-    [SerializeField] private string gameSceneName = "Stage1";
+    [SerializeField] private string defaultGameSceneName = "WarehouseStage";
+    [SerializeField] private string warehouseSceneName = "WarehouseStage";
+    [SerializeField] private string citySceneName = "CityStage";
 
     [Header("Progress")]
     [SerializeField] private int firstStageIndex = 0;
@@ -36,9 +38,17 @@ public class LobbyStageSelect : MonoBehaviour
 
     public void PlayButton()
     {
-        SaveBaseProgressPrefs();
+        PlayScene(defaultGameSceneName);
+    }
 
-        StageMapManager.LoadNormalGameScene(gameSceneName);
+    public void PlayWarehouseButton()
+    {
+        PlayScene(warehouseSceneName);
+    }
+
+    public void PlayCityButton()
+    {
+        PlayScene(citySceneName);
     }
 
     public void DebugStageButton()
@@ -65,14 +75,14 @@ public class LobbyStageSelect : MonoBehaviour
     {
         SaveBaseProgressPrefs();
 
-        StageMapManager.LoadDebugStageScene(gameSceneName, debugStageNumber, targetPrefabIndex);
+        StageMapManager.LoadDebugStageScene(defaultGameSceneName, debugStageNumber, targetPrefabIndex);
     }
 
     public void DebugStageButtonByNumber(int stageNumber)
     {
         SaveBaseProgressPrefs();
 
-        StageMapManager.LoadDebugStageScene(gameSceneName, stageNumber);
+        StageMapManager.LoadDebugStageScene(defaultGameSceneName, stageNumber);
     }
 
     public void ResetProgress()
@@ -106,6 +116,19 @@ public class LobbyStageSelect : MonoBehaviour
 
             ApplyButtonVisual(button, isCleared);
         }
+    }
+
+    private void PlayScene(string sceneName)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            Debug.LogWarning("[LobbyStageSelect] 이동할 씬 이름이 비어 있습니다.");
+            return;
+        }
+
+        SaveBaseProgressPrefs();
+
+        StageMapManager.LoadNormalGameScene(sceneName);
     }
 
     private void ApplyButtonVisual(Button button, bool isCleared)
