@@ -26,6 +26,13 @@ public class CommanderUIController : MonoBehaviour
     [SerializeField] private bool releaseJamOnlyWhenSubmittedInstructionExists = true;
 
     private IReadOnlyList<AgentController> agents;
+
+    private readonly Dictionary<InputField, AgentController> agentByInput =
+        new Dictionary<InputField, AgentController>();
+
+    private readonly Dictionary<int, InputField> inputByAgentId =
+        new Dictionary<int, InputField>();
+
     private int currentFocusedInputIndex = -1;
     private AgentOutline currentHighlightedOutline;
     private bool uiInteractable = true;
@@ -63,6 +70,7 @@ public class CommanderUIController : MonoBehaviour
         HandleFunctionKeyFocus();
         HandleTabInputNavigation();
         HandleSubmitHotkey();
+        HandlePointerFocusRelease();
         HandleOrbitFocusRetention();
         UpdateFocusedInputPresentation();
     }
@@ -76,9 +84,57 @@ public class CommanderUIController : MonoBehaviour
     public void BindAgents(IReadOnlyList<AgentController> boundAgents)
     {
         agents = boundAgents;
+        RebuildInputAgentBindingCacheFromCurrentLists();
         WarnIfInputCountMismatch();
         RefreshAllInputInteractableStates();
         UpdateFocusedInputPresentation(true);
+    }
+
+    public void FocusAgentByInputField(InputField inputField)
+    {
+        if (!uiInteractable)
+            return;
+
+        if (inputField == null)
+            return;
+
+        int inputIndex = GetInputIndex(inputField);
+
+        if (inputIndex < 0)
+            return;
+
+        if (!CanFocusInputIndex(inputIndex))
+            return;
+
+        if (!TryGetAgentFromInputField(inputField, inputIndex, out AgentController targetAgent))
+            return;
+
+        pendingRefocusAfterOrbit = false;
+
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(inputField.gameObject);
+
+        ApplyFocusedAgentImmediately(inputIndex, inputField, targetAgent, false);
+    }
+
+    public void FocusAgentByInputIndex(int inputIndex)
+    {
+        if (!uiInteractable)
+            return;
+
+        if (!CanFocusInputIndex(inputIndex))
+            return;
+
+        InputField inputField = agentInputs[inputIndex];
+
+        if (inputField == null)
+            return;
+
+        if (!TryGetAgentFromInputField(inputField, inputIndex, out AgentController targetAgent))
+            return;
+
+        pendingRefocusAfterOrbit = false;
+        ApplyFocusedAgentImmediately(inputIndex, inputField, targetAgent, true);
     }
 
     public void SetUIInteractable(bool state)
@@ -203,13 +259,9 @@ public class CommanderUIController : MonoBehaviour
         PasteSkillNameToInput(input, skillDisplayName.Trim());
 
         if (clearFocusAfterPastedSkillName)
-        {
             ClearCurrentInputFocus();
-        }
         else
-        {
             FocusInputField(inputIndex);
-        }
 
         return true;
     }
@@ -353,7 +405,7 @@ public class CommanderUIController : MonoBehaviour
 
         if (agents == null || agents.Count == 0)
         {
-            Debug.LogWarning("[CommanderUI] 통신 방해 실패: 에이전트 목록이 비어 있습니다.");
+            Debug.LogWarning("[CommanderUI] 에이전트 목록이 비어 있어서 통신 방해를 적용할 수 없습니다.");
             return false;
         }
 
@@ -374,7 +426,7 @@ public class CommanderUIController : MonoBehaviour
 
         if (candidateAgentIds.Count == 0)
         {
-            Debug.LogWarning("[CommanderUI] 통신 방해 실패: 방해 가능한 에이전트가 없습니다.");
+            Debug.LogWarning("[CommanderUI] 방해 가능한 에이전트가 없습니다.");
             return false;
         }
 
@@ -535,15 +587,10 @@ public class CommanderUIController : MonoBehaviour
         if (inputIndex < 0)
             return false;
 
-        int focusedIndex = GetFocusedInputIndex();
+        int focusedIndex = GetEffectiveFocusedInputIndex();
 
         if (focusedIndex >= 0)
             return focusedIndex == inputIndex;
-
-        int selectedIndex = GetSelectedInputIndex();
-
-        if (selectedIndex >= 0)
-            return selectedIndex == inputIndex;
 
         return currentFocusedInputIndex == inputIndex;
     }
@@ -569,11 +616,7 @@ public class CommanderUIController : MonoBehaviour
         if (agentCameraFollow != null)
             agentCameraFollow.ClearFocusAgent();
 
-        if (currentHighlightedOutline != null)
-        {
-            currentHighlightedOutline.SetOutlineVisible(false);
-            currentHighlightedOutline = null;
-        }
+        ClearCurrentAgentVisualFocus();
 
         currentFocusedInputIndex = -1;
 
@@ -597,10 +640,7 @@ public class CommanderUIController : MonoBehaviour
         if (!keyboard.tabKey.wasPressedThisFrame)
             return;
 
-        int currentIndex = GetSelectedInputIndex();
-
-        if (currentIndex < 0)
-            currentIndex = GetEffectiveFocusedInputIndex();
+        int currentIndex = GetEffectiveFocusedInputIndex();
 
         if (currentIndex < 0)
             return;
@@ -703,6 +743,128 @@ public class CommanderUIController : MonoBehaviour
         return !string.IsNullOrEmpty(UnityEngine.Input.compositionString);
     }
 
+    private void HandlePointerFocusRelease()
+    {
+        if (currentFocusedInputIndex < 0)
+            return;
+
+        if (ShouldRetainFocusDuringOrbitInput())
+            return;
+
+        Mouse mouse = Mouse.current;
+
+        if (mouse == null)
+            return;
+
+        if (!mouse.leftButton.wasPressedThisFrame)
+            return;
+
+        Vector2 screenPosition = mouse.position.ReadValue();
+
+        if (IsPointerOverManagedFocusKeepArea(screenPosition))
+            return;
+
+        ClearCurrentInputFocus();
+    }
+
+    private bool IsPointerOverManagedFocusKeepArea(Vector2 screenPosition)
+    {
+        if (IsPointerOverManagedInput(screenPosition))
+            return true;
+
+        if (IsPointerOverManagedAgentPanel(screenPosition))
+            return true;
+
+        if (IsPointerOverSubmitButton(screenPosition))
+            return true;
+
+        return false;
+    }
+
+    private bool IsPointerOverManagedInput(Vector2 screenPosition)
+    {
+        if (agentInputs == null)
+            return false;
+
+        for (int i = 0; i < agentInputs.Count; i++)
+        {
+            InputField input = agentInputs[i];
+
+            if (input == null)
+                continue;
+
+            RectTransform rectTransform = input.transform as RectTransform;
+
+            if (IsPointerInsideRect(rectTransform, screenPosition))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPointerOverManagedAgentPanel(Vector2 screenPosition)
+    {
+        if (agentInputs == null)
+            return false;
+
+        for (int i = 0; i < agentInputs.Count; i++)
+        {
+            InputField input = agentInputs[i];
+
+            if (input == null)
+                continue;
+
+            AgentUIPanel panel = input.GetComponentInParent<AgentUIPanel>(true);
+
+            if (panel == null)
+                continue;
+
+            RectTransform rectTransform = panel.transform as RectTransform;
+
+            if (IsPointerInsideRect(rectTransform, screenPosition))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPointerOverSubmitButton(Vector2 screenPosition)
+    {
+        if (submitButton == null)
+            return false;
+
+        RectTransform rectTransform = submitButton.transform as RectTransform;
+        return IsPointerInsideRect(rectTransform, screenPosition);
+    }
+
+    private bool IsPointerInsideRect(RectTransform rectTransform, Vector2 screenPosition)
+    {
+        if (rectTransform == null)
+            return false;
+
+        return RectTransformUtility.RectangleContainsScreenPoint(
+            rectTransform,
+            screenPosition,
+            GetCanvasCamera(rectTransform)
+        );
+    }
+
+    private Camera GetCanvasCamera(RectTransform rectTransform)
+    {
+        if (rectTransform == null)
+            return null;
+
+        Canvas canvas = rectTransform.GetComponentInParent<Canvas>();
+
+        if (canvas == null)
+            return null;
+
+        if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            return null;
+
+        return canvas.worldCamera;
+    }
+
     private int GetSelectedInputIndex()
     {
         if (agentInputs == null || EventSystem.current == null)
@@ -721,6 +883,9 @@ public class CommanderUIController : MonoBehaviour
                 continue;
 
             if (selectedObject == input.gameObject)
+                return i;
+
+            if (selectedObject.transform != null && selectedObject.transform.IsChildOf(input.transform))
                 return i;
         }
 
@@ -753,7 +918,15 @@ public class CommanderUIController : MonoBehaviour
         if (focusedIndex >= 0)
             return focusedIndex;
 
+        int selectedIndex = GetSelectedInputIndex();
+
+        if (selectedIndex >= 0)
+            return selectedIndex;
+
         if (ShouldRetainFocusDuringOrbitInput() && CanFocusInputIndex(currentFocusedInputIndex))
+            return currentFocusedInputIndex;
+
+        if (currentFocusedInputIndex >= 0 && CanFocusInputIndex(currentFocusedInputIndex))
             return currentFocusedInputIndex;
 
         return -1;
@@ -836,41 +1009,45 @@ public class CommanderUIController : MonoBehaviour
     {
         int focusedIndex = GetEffectiveFocusedInputIndex();
 
-        if (!force && focusedIndex == currentFocusedInputIndex)
-            return;
-
-        currentFocusedInputIndex = focusedIndex;
-
-        RestoreAllPlaceholderTexts();
-        ApplyAllJammedPlaceholders();
-
-        if (currentHighlightedOutline != null)
+        if (focusedIndex < 0)
         {
-            currentHighlightedOutline.SetOutlineVisible(false);
-            currentHighlightedOutline = null;
-        }
+            if (!force)
+                return;
 
-        if (!TryGetAgentAtInputIndex(focusedIndex, out AgentController targetAgent))
-        {
+            RestoreAllPlaceholderTexts();
+            ApplyAllJammedPlaceholders();
+            ClearCurrentAgentVisualFocus();
+
             if (agentCameraFollow != null)
                 agentCameraFollow.ClearFocusAgent();
 
             return;
         }
 
-        if (!IsInputIndexJammed(focusedIndex))
-            ApplyFocusedInputSkillPlaceholder(focusedIndex, targetAgent);
+        if (!force && focusedIndex == currentFocusedInputIndex)
+            return;
 
-        if (agentCameraFollow != null)
-            agentCameraFollow.FocusAgent(targetAgent.transform);
-
-        AgentOutline outline = targetAgent.GetComponent<AgentOutline>();
-
-        if (outline != null)
+        if (!TryGetAgentAtInputIndex(focusedIndex, out AgentController targetAgent))
         {
-            outline.SetOutlineVisible(true);
-            currentHighlightedOutline = outline;
+            if (!force)
+                return;
+
+            RestoreAllPlaceholderTexts();
+            ApplyAllJammedPlaceholders();
+            ClearCurrentAgentVisualFocus();
+
+            if (agentCameraFollow != null)
+                agentCameraFollow.ClearFocusAgent();
+
+            return;
         }
+
+        InputField inputField = agentInputs[focusedIndex];
+
+        if (inputField == null)
+            return;
+
+        ApplyFocusedAgentImmediately(focusedIndex, inputField, targetAgent, false);
     }
 
     private void FocusInputField(int index)
@@ -884,21 +1061,66 @@ public class CommanderUIController : MonoBehaviour
         if (IsInputIndexJammed(index))
             return;
 
-        InputField nextInput = agentInputs[index];
+        InputField inputField = agentInputs[index];
 
-        if (nextInput == null || !nextInput.interactable)
+        if (inputField == null || !inputField.interactable)
+            return;
+
+        if (!TryGetAgentFromInputField(inputField, index, out AgentController targetAgent))
             return;
 
         pendingRefocusAfterOrbit = false;
 
+        ApplyFocusedAgentImmediately(index, inputField, targetAgent, true);
+    }
+
+    private void ApplyFocusedAgentImmediately(
+        int inputIndex,
+        InputField inputField,
+        AgentController targetAgent,
+        bool activateInputField)
+    {
+        if (inputField == null || targetAgent == null)
+            return;
+
+        currentFocusedInputIndex = inputIndex;
+
         if (EventSystem.current != null)
-            EventSystem.current.SetSelectedGameObject(nextInput.gameObject);
+            EventSystem.current.SetSelectedGameObject(inputField.gameObject);
 
-        nextInput.Select();
-        nextInput.ActivateInputField();
-        nextInput.MoveTextEnd(false);
+        if (activateInputField)
+        {
+            inputField.Select();
+            inputField.ActivateInputField();
+            inputField.MoveTextEnd(false);
+        }
 
-        UpdateFocusedInputPresentation(true);
+        RestoreAllPlaceholderTexts();
+        ApplyAllJammedPlaceholders();
+        ClearCurrentAgentVisualFocus();
+
+        if (!IsInputIndexJammed(inputIndex))
+            ApplyFocusedInputSkillPlaceholder(inputIndex, targetAgent);
+
+        if (agentCameraFollow != null)
+            agentCameraFollow.FocusAgent(targetAgent.transform);
+
+        AgentOutline outline = targetAgent.GetComponent<AgentOutline>();
+
+        if (outline != null)
+        {
+            outline.SetOutlineVisible(true);
+            currentHighlightedOutline = outline;
+        }
+    }
+
+    private void ClearCurrentAgentVisualFocus()
+    {
+        if (currentHighlightedOutline != null)
+        {
+            currentHighlightedOutline.SetOutlineVisible(false);
+            currentHighlightedOutline = null;
+        }
     }
 
     private void FocusNextAvailableInputFrom(int startIndex)
@@ -967,6 +1189,12 @@ public class CommanderUIController : MonoBehaviour
     {
         inputIndex = -1;
 
+        if (inputByAgentId.TryGetValue(agentId, out InputField input))
+        {
+            inputIndex = GetInputIndex(input);
+            return inputIndex >= 0;
+        }
+
         if (agents == null)
             return false;
 
@@ -991,14 +1219,109 @@ public class CommanderUIController : MonoBehaviour
     {
         agent = null;
 
+        if (agentInputs == null)
+            return false;
+
+        if (index < 0 || index >= agentInputs.Count)
+            return false;
+
+        InputField input = agentInputs[index];
+
+        if (input == null)
+            return false;
+
+        return TryGetAgentFromInputField(input, index, out agent);
+    }
+
+    private bool TryGetAgentFromInputField(
+        InputField inputField,
+        int inputIndex,
+        out AgentController agent)
+    {
+        agent = null;
+
+        if (inputField == null)
+            return false;
+
+        if (agentByInput.TryGetValue(inputField, out agent) && agent != null)
+            return true;
+
         if (agents == null)
             return false;
 
-        if (index < 0 || index >= agents.Count)
+        if (inputIndex < 0 || inputIndex >= agents.Count)
             return false;
 
-        agent = agents[index];
-        return agent != null;
+        agent = agents[inputIndex];
+
+        if (agent == null)
+            return false;
+
+        CacheInputAgentBinding(inputField, agent);
+        return true;
+    }
+
+    private int GetInputIndex(InputField targetInput)
+    {
+        if (targetInput == null || agentInputs == null)
+            return -1;
+
+        for (int i = 0; i < agentInputs.Count; i++)
+        {
+            if (agentInputs[i] == targetInput)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private void RegisterInputAgentBinding(int inputIndex, InputField input, AgentController agent)
+    {
+        if (input == null || agent == null)
+            return;
+
+        CacheInputAgentBinding(input, agent);
+    }
+
+    private void CacheInputAgentBinding(InputField input, AgentController agent)
+    {
+        if (input == null || agent == null)
+            return;
+
+        agentByInput[input] = agent;
+
+        if (inputByAgentId.TryGetValue(agent.AgentID, out InputField existingInput) &&
+            existingInput != null &&
+            existingInput != input)
+        {
+            Debug.LogWarning(
+                $"[CommanderUI] AgentID가 중복되었거나 InputField 매핑이 덮어써졌습니다. " +
+                $"AgentID={agent.AgentID}, ExistingInput={existingInput.name}, NewInput={input.name}, Agent={agent.name}"
+            );
+        }
+
+        inputByAgentId[agent.AgentID] = input;
+    }
+
+    private void ClearInputAgentBindingCache()
+    {
+        agentByInput.Clear();
+        inputByAgentId.Clear();
+    }
+
+    private void RebuildInputAgentBindingCacheFromCurrentLists()
+    {
+        ClearInputAgentBindingCache();
+
+        if (agentInputs == null || agents == null)
+            return;
+
+        int count = Mathf.Min(agentInputs.Count, agents.Count);
+
+        for (int i = 0; i < count; i++)
+        {
+            RegisterInputAgentBinding(i, agentInputs[i], agents[i]);
+        }
     }
 
     private void WarnIfInputCountMismatch()
@@ -1090,24 +1413,7 @@ public class CommanderUIController : MonoBehaviour
         if (TryGetSkillPlaceholderTextByAgentDefinition(agent, out string definitionPlaceholder))
             return definitionPlaceholder;
 
-        if (agent.Stats != null)
-            return GetSkillPlaceholderTextByRole(agent.Stats.role);
-
-        string typeName = agent.GetType().Name;
-
-        if (typeName.Contains("Chaser"))
-            return GetSkillPlaceholderTextByRole(AgentRole.Chaser);
-
-        if (typeName.Contains("Observer"))
-            return GetSkillPlaceholderTextByRole(AgentRole.Observer);
-
-        if (typeName.Contains("Engineer"))
-            return GetSkillPlaceholderTextByRole(AgentRole.Engineer);
-
-        if (typeName.Contains("Trickster"))
-            return GetSkillPlaceholderTextByRole(AgentRole.Trickster);
-
-        return GetSkillPlaceholderTextByAgentId(agent.AgentID);
+        return "";
     }
 
     private bool TryGetSkillPlaceholderTextByAgentDefinition(
@@ -1140,16 +1446,14 @@ public class CommanderUIController : MonoBehaviour
         if (definition == null)
             return result;
 
-        AddPlaceholderSkillTexts(definition.BasicSkills, result, false);
-        AddPlaceholderSkillTexts(definition.UnlockableSkills, result, true);
+        AddPlaceholderSkillTexts(definition.BasicSkills, result);
 
         return result;
     }
 
     private void AddPlaceholderSkillTexts(
         IReadOnlyList<SkillDefinitionSO> skills,
-        List<string> result,
-        bool requireUnlocked)
+        List<string> result)
     {
         if (skills == null || result == null)
             return;
@@ -1159,9 +1463,6 @@ public class CommanderUIController : MonoBehaviour
             SkillDefinitionSO skill = skills[i];
 
             if (skill == null)
-                continue;
-
-            if (requireUnlocked && !IsUnlockableSkillUnlocked(skill))
                 continue;
 
             if (!ShouldShowSkillInPlaceholder(skill))
@@ -1177,22 +1478,6 @@ public class CommanderUIController : MonoBehaviour
 
             result.Add(skillText);
         }
-    }
-
-    private bool IsUnlockableSkillUnlocked(SkillDefinitionSO skill)
-    {
-        if (skill == null)
-            return false;
-
-        if (!skill.HasUnlockUpgradeId)
-            return false;
-
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-            return false;
-
-        return upgradeManager.HasAgentUpgrade(skill.UnlockUpgradeId);
     }
 
     private bool ShouldShowSkillInPlaceholder(SkillDefinitionSO skill)
@@ -1254,46 +1539,6 @@ public class CommanderUIController : MonoBehaviour
             .Replace("-", "");
     }
 
-    private string GetSkillPlaceholderTextByRole(AgentRole role)
-    {
-        switch (role)
-        {
-            case AgentRole.Chaser:
-                return "EX) (좌표) 출입 통제, 도주 제지";
-
-            case AgentRole.Observer:
-                return "EX) (좌표) 드론, 위치 공유 꺼";
-
-            case AgentRole.Engineer:
-                return "EX) (좌표) 바리케이드, (좌표) 정지 신호";
-
-            case AgentRole.Trickster:
-                return "EX) (좌표) 페이크 박스";
-        }
-
-        return "";
-    }
-
-    private string GetSkillPlaceholderTextByAgentId(int agentId)
-    {
-        switch (agentId)
-        {
-            case 0:
-                return GetSkillPlaceholderTextByRole(AgentRole.Chaser);
-
-            case 1:
-                return GetSkillPlaceholderTextByRole(AgentRole.Observer);
-
-            case 2:
-                return GetSkillPlaceholderTextByRole(AgentRole.Engineer);
-
-            case 3:
-                return GetSkillPlaceholderTextByRole(AgentRole.Trickster);
-        }
-
-        return "";
-    }
-
     private string GetPlaceholderText(InputField input)
     {
         if (input == null || input.placeholder == null)
@@ -1348,5 +1593,46 @@ public class CommanderUIController : MonoBehaviour
             skillDisplayName,
             true
         );
+    }
+
+    public void BindInputFieldsAndAgents(
+        IReadOnlyList<InputField> inputFields,
+        IReadOnlyList<AgentController> boundAgents)
+    {
+        ClearCurrentInputFocus();
+        ClearAllAgentInputJams();
+
+        agentInputs.Clear();
+        ClearInputAgentBindingCache();
+
+        List<AgentController> normalizedAgents = new List<AgentController>();
+
+        if (inputFields != null)
+        {
+            for (int i = 0; i < inputFields.Count; i++)
+            {
+                InputField input = inputFields[i];
+
+                if (input == null)
+                    continue;
+
+                AgentController agent = null;
+
+                if (boundAgents != null && i < boundAgents.Count)
+                    agent = boundAgents[i];
+
+                agentInputs.Add(input);
+                normalizedAgents.Add(agent);
+
+                RegisterInputAgentBinding(agentInputs.Count - 1, input, agent);
+            }
+        }
+
+        agents = normalizedAgents;
+
+        CacheOriginalPlaceholderTexts();
+        WarnIfInputCountMismatch();
+        RefreshAllInputInteractableStates();
+        UpdateFocusedInputPresentation(true);
     }
 }

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 152479f4254f13447a5480917d58508f, type: 3}
+  m_Name: Profiler_AgentDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::AgentDefinitionSO
+  agentId: profiler
+  displayName: Profiler_AgentDefinition
+  description: "\uD0C0\uAC9F\uC758 \uD589\uB3D9\uC744 \uAD00\uCC30\uD558\uACE0 \uCD95\uC801\uB41C
+    \uC815\uBCF4\uB97C \uBC14\uD0D5\uC73C\uB85C \uC784\uBB34 \uC804\uCCB4\uB97C \uBCF4\uC870\uD558\uB294
+    \uBD84\uC11D\uD615 \uC5D0\uC774\uC804\uD2B8"
+  icon: {fileID: 0}
+  themeColor: {r: 0.5019608, g: 0, b: 0.1254902, a: 1}
+  agentPrefab: {fileID: 1062719418092690549, guid: 4f65d9f1352901f499d1119ecf5abf40, type: 3}
+  stats: {fileID: 11400000, guid: 942af302a1431e943acc037a124c5cb1, type: 2}
+  basicSkills:
+  - {fileID: 11400000, guid: 11fd541cf5368d742a36b0f468d5bb10, type: 2}
+  - {fileID: 11400000, guid: f52b592fae27d3444a94d6f12ee87579, type: 2}
+  unlockableSkills:
+  - {fileID: 11400000, guid: 9b9d1603a44b357409f1e576966c3772, type: 2}
+  - {fileID: 11400000, guid: 3887d6ce7f0b1f34eb538390cb6cc1cb, type: 2}

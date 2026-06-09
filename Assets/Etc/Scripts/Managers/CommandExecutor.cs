@@ -1,10 +1,9 @@
 using UnityEngine;
 
-public sealed class CommandExecutor
+public class CommandExecutor
 {
     private const string SkillHold = "hold";
     private const string SkillLookAround = "lookaround";
-
     private const string SkillDash = "dash";
     private const string SkillHologram = "hologram";
 
@@ -16,6 +15,9 @@ public sealed class CommandExecutor
     private const string SkillSafeZone = "safezone";
 
     private const string SkillMisdirection = "misdirection";
+
+    private const string SkillBehaviorBriefing = "behavior_briefing";
+    private const string SkillRouteIdentification = "route_identification";
 
     private TargetSkillController targetSkillController;
 
@@ -78,6 +80,8 @@ public sealed class CommandExecutor
             case SkillPositionShareOff:
             case SkillDemolition:
             case SkillMisdirection:
+            case SkillBehaviorBriefing:
+            case SkillRouteIdentification:
                 ExecuteNoPositionSkill(targetAgent, agentId, validatedSkill);
                 return;
 
@@ -124,6 +128,7 @@ public sealed class CommandExecutor
 
         targetAgent.MoveTo(finalDest);
         targetAgent.ExecuteSkill(SkillDash, finalDest);
+        NotifyAgentSkillExecuted(targetAgent, SkillDash);
     }
 
     private void ExecuteHologram(AgentController targetAgent, int agentId)
@@ -138,6 +143,7 @@ public sealed class CommandExecutor
         RequestAgentSkillCutscene(targetAgent, SkillHologram);
 
         targetAgent.ExecuteSkill(SkillHologram, currentPosition);
+        NotifyAgentSkillExecuted(targetAgent, SkillHologram);
     }
 
     private void ExecuteNoPositionSkill(
@@ -155,6 +161,7 @@ public sealed class CommandExecutor
         RequestAgentSkillCutscene(targetAgent, validatedSkill);
 
         targetAgent.ExecuteSkill(validatedSkill, currentPosition);
+        NotifyAgentSkillExecuted(targetAgent, validatedSkill);
     }
 
     private void ExecuteDefaultSkill(
@@ -173,6 +180,7 @@ public sealed class CommandExecutor
         RequestAgentSkillCutscene(targetAgent, validatedSkill);
 
         targetAgent.ExecuteSkill(validatedSkill, finalDest);
+        NotifyAgentSkillExecuted(targetAgent, validatedSkill);
     }
 
     private void ExecuteMoveCommand(AgentController targetAgent, int agentId, Vector3 dest)
@@ -188,6 +196,17 @@ public sealed class CommandExecutor
         Debug.Log($"[Action] Agent {agentId} : {finalDest}로 이동 명령");
 
         targetAgent.MoveTo(finalDest);
+    }
+
+    private void NotifyAgentSkillExecuted(AgentController targetAgent, string skillKey)
+    {
+        if (targetAgent == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(skillKey))
+            return;
+
+        AgentSkillUseEventBus.RaiseAgentSkillExecuted(targetAgent, skillKey);
     }
 
     private void RequestAgentSkillCutscene(AgentController targetAgent, string skillKey)

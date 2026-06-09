@@ -189,6 +189,8 @@ public class TargetEscapeMotor : MonoBehaviour
         0.55f
     };
 
+    public static event System.Action<TargetEscapeMotor> OnAnyEscapeAction;
+
     [Header("References")]
     public TargetThreatTracker threatTracker;
     public TargetSkillController skillController;
@@ -435,6 +437,9 @@ public class TargetEscapeMotor : MonoBehaviour
             StopCoroutine(emergencyEscapeRoutine);
 
         emergencyEscapeRoutine = StartCoroutine(EmergencyEscapeRoutine());
+
+        NotifyEscapeAction();
+
         return true;
     }
 
@@ -542,6 +547,7 @@ public class TargetEscapeMotor : MonoBehaviour
         stuckTimer = 0f;
 
         TryUseAutoDefensiveSkillAfterDestinationChosen(reversedDestination);
+        NotifyEscapeAction();
 
         Debug.Log(
             $"[TargetEscapeMotor] FakeBox reverse route applied. " +
@@ -683,6 +689,14 @@ public class TargetEscapeMotor : MonoBehaviour
         stuckTimer = 0f;
 
         TryUseAutoDefensiveSkillAfterDestinationChosen(escapeDestination);
+
+        if (!isEmergencyEscaping)
+            NotifyEscapeAction();
+    }
+
+    private void NotifyEscapeAction()
+    {
+        OnAnyEscapeAction?.Invoke(this);
     }
 
     private void TryUseAutoDefensiveSkillAfterDestinationChosen(Vector3 escapeDestination)

@@ -38,7 +38,11 @@ public class CommanderManager : MonoBehaviour
         if (refreshAgentsOnStart)
             commandProcessor.RefreshAgentsFromScene();
 
-        uiController.Initialize(commandProcessor.GetAgents());
+        // 중요:
+        // CommanderUIController의 InputField-Agent 매핑은
+        // UIController.BindPreplacedAgentUIPanels()에서만 처리합니다.
+        // 여기서 uiController.Initialize(...)를 호출하면
+        // InputField 목록 없이 Agent 목록만 다시 덮어써서 매핑이 꼬입니다.
     }
 
     private void OnDestroy()
@@ -66,7 +70,10 @@ public class CommanderManager : MonoBehaviour
         try
         {
             commandProcessor.RefreshAgentsFromScene();
-            uiController.BindAgents(commandProcessor.GetAgents());
+
+            // 중요:
+            // 여기서도 uiController.BindAgents(...)를 호출하지 않습니다.
+            // UI 매핑은 이미 UIController.BindPreplacedAgentUIPanels()에서 완료된 상태입니다.
 
             var result = await commandProcessor.ProcessCommandsFromUIAsync(uiController);
 
@@ -87,10 +94,13 @@ public class CommanderManager : MonoBehaviour
     [ContextMenu("Refresh Agents")]
     public void RefreshAgents()
     {
-        if (commandProcessor == null || uiController == null)
+        if (commandProcessor == null)
             return;
 
         commandProcessor.RefreshAgentsFromScene();
-        uiController.BindAgents(commandProcessor.GetAgents());
+
+        // 중요:
+        // 이 메서드는 명령 처리용 Agent 목록만 갱신합니다.
+        // CommanderUIController.BindAgents(...)는 호출하지 않습니다.
     }
 }

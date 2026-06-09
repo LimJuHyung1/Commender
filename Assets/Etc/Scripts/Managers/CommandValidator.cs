@@ -38,6 +38,9 @@ public sealed class CommandValidator
     private const string SkillVanishing = "vanishing";
     private const string SkillMisdirection = "misdirection";
 
+    private const string SkillBehaviorBriefing = "behavior_briefing";
+    private const string SkillRouteIdentification = "route_identification";
+
     private static readonly Regex CoordinateRegex =
         new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
@@ -290,6 +293,28 @@ public sealed class CommandValidator
     "미스 디렉션"
 };
 
+    private static readonly string[] BehaviorBriefingInstructionKeywords =
+{
+    "behavior_briefing",
+    "behavior briefing",
+    "briefing",
+    "행동 브리핑",
+    "행동브리핑",
+    "브리핑"
+};
+
+    private static readonly string[] RouteIdentificationInstructionKeywords =
+    {
+    "route_identification",
+    "route identification",
+    "route analysis",
+    "route scan",
+    "동선 파악",
+    "동선파악",
+    "동선 분석",
+    "동선분석"
+};
+
     private static readonly string[] LookAroundInstructionKeywords =
     {
         "주변",
@@ -383,6 +408,12 @@ public sealed class CommandValidator
         if (IsMisdirectionInstruction(normalizedInstruction))
             return SkillMisdirection;
 
+        if (IsBehaviorBriefingInstruction(normalizedInstruction))
+            return SkillBehaviorBriefing;
+
+        if (IsRouteIdentificationInstruction(normalizedInstruction))
+            return SkillRouteIdentification;
+
         if (ContainsAny(normalizedSkill, SkillDash))
             return MatchOrHold(normalizedInstruction, DashInstructionKeywords, SkillDash, aiSkill, originalInstruction);
 
@@ -436,6 +467,24 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedSkill, SkillMisdirection, "mis direction"))
             return MatchOrHold(normalizedInstruction, MisdirectionInstructionKeywords, SkillMisdirection, aiSkill, originalInstruction);
 
+        if (ContainsAny(normalizedSkill, SkillBehaviorBriefing, "behavior briefing"))
+            return MatchOrHold(
+                normalizedInstruction,
+                BehaviorBriefingInstructionKeywords,
+                SkillBehaviorBriefing,
+                aiSkill,
+                originalInstruction
+            );
+
+        if (ContainsAny(normalizedSkill, SkillRouteIdentification, "route identification", "route analysis"))
+            return MatchOrHold(
+                normalizedInstruction,
+                RouteIdentificationInstructionKeywords,
+                SkillRouteIdentification,
+                aiSkill,
+                originalInstruction
+            );
+
         if (ContainsAny(normalizedSkill, SkillNoiseMaker, "noise"))
             return MatchOrHold(normalizedInstruction, NoiseMakerInstructionKeywords, SkillNoiseMaker, aiSkill, originalInstruction);
 
@@ -485,6 +534,12 @@ public sealed class CommandValidator
 
             if (IsFakeBoxInstruction(normalizedInstruction))
                 return SkillFakeBox;
+
+            if (IsBehaviorBriefingInstruction(normalizedInstruction))
+                return SkillBehaviorBriefing;
+
+            if (IsRouteIdentificationInstruction(normalizedInstruction))
+                return SkillRouteIdentification;
 
             if (IsJokerCardInstruction(normalizedInstruction))
             {
@@ -835,5 +890,15 @@ public sealed class CommandValidator
     public bool IsMisdirectionInstruction(string source)
     {
         return ContainsAny(Normalize(source), MisdirectionInstructionKeywords);
+    }
+
+    public bool IsBehaviorBriefingInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), BehaviorBriefingInstructionKeywords);
+    }
+
+    public bool IsRouteIdentificationInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), RouteIdentificationInstructionKeywords);
     }
 }

@@ -12,7 +12,8 @@ public enum CommanderAgentType
     Chaser,
     Observer,
     Engineer,
-    Trickster
+    Trickster,
+    Profiler
 }
 
 public enum CommanderTargetType
@@ -337,6 +338,9 @@ public class UpgradeDefinition : ScriptableObject
             case "magician":
             case "trickster":
                 return CommanderAgentType.Trickster;
+
+            case "profiler":
+                return CommanderAgentType.Profiler;
         }
 
         return CommanderAgentType.None;
@@ -357,6 +361,9 @@ public class UpgradeDefinition : ScriptableObject
 
             case CommanderAgentType.Trickster:
                 return "magician";
+
+            case CommanderAgentType.Profiler:
+                return "profiler";
         }
 
         return "";

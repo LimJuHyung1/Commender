@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using DG.Tweening;
 using Michsky.UI.MTP;
 using UnityEngine;
@@ -35,17 +36,27 @@ public class UIController : MonoBehaviour
     [SerializeField] private string resultThirdTextFallbackItemID = "Third Text";
 
     [Header("Success Result Text")]
-    private string successFirstText = "TARGET";
-    private string successSecondText = "CAPTURED!";
-    private string successThirdText = "다음 스테이지로";
+    [SerializeField] private string successFirstText = "TARGET";
+    [SerializeField] private string successSecondText = "CAPTURED!";
+    [SerializeField] private string successThirdText = "다음 스테이지로";
 
     [Header("Failure Result Text")]
-    private string failureFirstText = "MISSION";
-    private string failureSecondText = "FAILED!";
-    private string failureThirdText = "로비로";
+    [SerializeField] private string failureFirstText = "MISSION";
+    [SerializeField] private string failureSecondText = "FAILED!";
+    [SerializeField] private string failureThirdText = "로비로";
 
     [Header("Result Detail")]
     [SerializeField] private bool showResultDetailMessageInFirstText = false;
+
+    [Header("Preplaced Agent UI")]
+    [SerializeField] private Transform agentUIRoot;
+    [SerializeField] private AgentUIPanel[] agentUIPanels;
+    [SerializeField] private bool autoFindAgentUIPanels = true;
+    [SerializeField] private bool hideUnusedAgentUIPanels = true;
+    [SerializeField] private bool sortAgentUIPanelsByHierarchyOrder = true;
+
+    [Header("Commander UI")]
+    [SerializeField] private CommanderUIController commanderUIController;
 
     [Header("Option UI")]
     [SerializeField] private Transform optionsRoot;
@@ -64,7 +75,9 @@ public class UIController : MonoBehaviour
     [SerializeField] private DOTweenAnimation[] exitButtonAnimations;
 
     private bool isOptionOpen = false;
+    private bool hasBoundAgentUIPanels = false;
     private float previousTimeScale = 1f;
+
     private Coroutine closeOptionCoroutine;
     private Coroutine pauseAfterOpenCoroutine;
     private Coroutine missionStyleCoroutine;
@@ -73,11 +86,14 @@ public class UIController : MonoBehaviour
     {
         CacheMissionReferences();
         CacheResultReferences();
+        CachePreplacedAgentUIPanels();
+        CacheCommanderUIController();
         CacheOptionReferences();
         CacheOptionAnimations();
 
         InitializeMissionState();
         HideResultPanel();
+        InitializePreplacedAgentUIState();
         InitializeOptionState();
     }
 
@@ -154,6 +170,110 @@ public class UIController : MonoBehaviour
 
         if (resultText == null && resultPanelObject != null)
             resultText = resultPanelObject.GetComponentInChildren<Text>(true);
+    }
+
+    private void CachePreplacedAgentUIPanels()
+    {
+        if (agentUIRoot == null)
+        {
+            Transform foundRoot = FindChildRecursive(transform, "AgentUIRoot");
+
+            if (foundRoot == null)
+                foundRoot = FindChildRecursive(transform, "AgentUI");
+
+            if (foundRoot == null)
+                foundRoot = FindChildRecursive(transform, "AgentsUI");
+
+            if (foundRoot != null)
+                agentUIRoot = foundRoot;
+        }
+
+        if (autoFindAgentUIPanels && agentUIRoot != null)
+        {
+            List<AgentUIPanel> foundPanels = new List<AgentUIPanel>();
+
+            for (int i = 0; i < agentUIRoot.childCount; i++)
+            {
+                Transform child = agentUIRoot.GetChild(i);
+
+                if (child == null)
+                    continue;
+
+                AgentUIPanel panel = child.GetComponent<AgentUIPanel>();
+
+                if (panel != null)
+                    foundPanels.Add(panel);
+            }
+
+            agentUIPanels = foundPanels.ToArray();
+        }
+
+        SortAgentUIPanelsByHierarchyOrder();
+    }
+
+    private void SortAgentUIPanelsByHierarchyOrder()
+    {
+        if (!sortAgentUIPanelsByHierarchyOrder)
+            return;
+
+        if (agentUIPanels == null || agentUIPanels.Length <= 1)
+            return;
+
+        List<AgentUIPanel> sortedPanels = new List<AgentUIPanel>();
+
+        for (int i = 0; i < agentUIPanels.Length; i++)
+        {
+            if (agentUIPanels[i] != null)
+                sortedPanels.Add(agentUIPanels[i]);
+        }
+
+        sortedPanels.Sort((a, b) =>
+        {
+            if (a == null && b == null)
+                return 0;
+
+            if (a == null)
+                return 1;
+
+            if (b == null)
+                return -1;
+
+            return a.transform.GetSiblingIndex().CompareTo(b.transform.GetSiblingIndex());
+        });
+
+        agentUIPanels = sortedPanels.ToArray();
+    }
+
+    private void CacheCommanderUIController()
+    {
+        if (commanderUIController != null)
+            return;
+
+        commanderUIController = FindFirstObjectByType<CommanderUIController>();
+    }
+
+    private void InitializePreplacedAgentUIState()
+    {
+        hasBoundAgentUIPanels = false;
+
+        if (agentUIPanels == null)
+            return;
+
+        for (int i = 0; i < agentUIPanels.Length; i++)
+        {
+            AgentUIPanel panel = agentUIPanels[i];
+
+            if (panel == null)
+                continue;
+
+            ClearAgentUIPanel(panel);
+
+            if (hideUnusedAgentUIPanels)
+                panel.gameObject.SetActive(false);
+        }
+
+        if (hideUnusedAgentUIPanels && agentUIRoot != null)
+            agentUIRoot.gameObject.SetActive(false);
     }
 
     private void CacheOptionReferences()
@@ -258,6 +378,147 @@ public class UIController : MonoBehaviour
         }
 
         return null;
+    }
+
+    public void BindPreplacedAgentUIPanels(IReadOnlyList<GameObject> agents)
+    {
+        CachePreplacedAgentUIPanels();
+        CacheCommanderUIController();
+
+        if (agentUIPanels == null || agentUIPanels.Length <= 0)
+        {
+            Debug.LogWarning("[UIController] 배치된 AgentUIPanel을 찾지 못했습니다.");
+            return;
+        }
+
+        int agentCount = agents != null ? agents.Count : 0;
+
+        List<InputField> boundInputs = new List<InputField>();
+        List<AgentController> boundAgents = new List<AgentController>();
+
+        if (agentUIRoot != null)
+            agentUIRoot.gameObject.SetActive(agentCount > 0);
+
+        for (int i = 0; i < agentUIPanels.Length; i++)
+        {
+            AgentUIPanel panel = agentUIPanels[i];
+
+            if (panel == null)
+                continue;
+
+            if (i < agentCount && agents[i] != null)
+            {
+                GameObject agentObject = agents[i];
+                AgentController agentController = FindAgentController(agentObject);
+
+                panel.gameObject.SetActive(true);
+                panel.Bind(i, agentObject);
+
+                InputField inputField = GetInputFieldInPanel(panel);
+
+                if (inputField != null && agentController != null)
+                {
+                    boundInputs.Add(inputField);
+                    boundAgents.Add(agentController);
+                }
+
+                Debug.Log(
+                    $"[UIController] Agent UI Bind: Index={i}, " +
+                    $"Panel={panel.name}, InputField={(inputField != null ? inputField.name : "None")}, " +
+                    $"Agent={agentObject.name}, AgentID={(agentController != null ? agentController.AgentID.ToString() : "None")}"
+                );
+            }
+            else
+            {
+                ClearAgentUIPanel(panel);
+
+                if (hideUnusedAgentUIPanels)
+                    panel.gameObject.SetActive(false);
+            }
+        }
+
+        hasBoundAgentUIPanels = boundInputs.Count > 0;
+
+        if (commanderUIController != null)
+            commanderUIController.BindInputFieldsAndAgents(boundInputs, boundAgents);
+    }
+
+    public void ClearPreplacedAgentUIPanels()
+    {
+        CachePreplacedAgentUIPanels();
+        CacheCommanderUIController();
+
+        hasBoundAgentUIPanels = false;
+
+        if (agentUIPanels != null)
+        {
+            for (int i = 0; i < agentUIPanels.Length; i++)
+            {
+                AgentUIPanel panel = agentUIPanels[i];
+
+                if (panel == null)
+                    continue;
+
+                ClearAgentUIPanel(panel);
+
+                if (hideUnusedAgentUIPanels)
+                    panel.gameObject.SetActive(false);
+            }
+        }
+
+        if (commanderUIController != null)
+            commanderUIController.BindInputFieldsAndAgents(new List<InputField>(), new List<AgentController>());
+
+        if (hideUnusedAgentUIPanels && agentUIRoot != null)
+            agentUIRoot.gameObject.SetActive(false);
+    }
+
+    private void ClearAgentUIPanel(AgentUIPanel panel)
+    {
+        if (panel == null)
+            return;
+
+        panel.Clear();
+
+        InputField inputField = GetInputFieldInPanel(panel);
+
+        if (inputField != null)
+        {
+            inputField.text = "";
+            inputField.DeactivateInputField();
+        }
+    }
+
+    private AgentController FindAgentController(GameObject agentObject)
+    {
+        if (agentObject == null)
+            return null;
+
+        AgentController agentController = agentObject.GetComponent<AgentController>();
+
+        if (agentController == null)
+            agentController = agentObject.GetComponentInChildren<AgentController>(true);
+
+        return agentController;
+    }
+
+    private InputField GetInputFieldInPanel(AgentUIPanel panel)
+    {
+        if (panel == null)
+            return null;
+
+        if (panel.InputField != null)
+            return panel.InputField;
+
+        return panel.GetComponentInChildren<InputField>(true);
+    }
+
+    public void SetAgentUIVisible(bool visible)
+    {
+        if (agentUIRoot == null)
+            return;
+
+        agentUIRoot.gameObject.SetActive(visible && hasBoundAgentUIPanels);
     }
 
     public void SetMissionText(string missionDescription)
@@ -911,6 +1172,8 @@ public class UIController : MonoBehaviour
 
         if (timerText != null)
             timerText.gameObject.SetActive(visible);
+
+        SetAgentUIVisible(visible);
     }
 
     public void SetOptionButtonVisible(bool visible)

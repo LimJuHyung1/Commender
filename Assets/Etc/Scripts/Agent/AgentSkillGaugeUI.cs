@@ -137,14 +137,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void Start()
     {
         if (targetAgent == null && autoBindByAgentId)
-        {
             TryCacheTargetAgent();
-        }
 
         if (commanderUIController == null && autoFindCommanderUIController)
-        {
             TryCacheCommanderUIController();
-        }
 
         Refresh();
     }
@@ -152,14 +148,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void Update()
     {
         if (targetAgent == null && autoBindByAgentId && agentId >= 0)
-        {
             TryCacheTargetAgent();
-        }
 
         if (commanderUIController == null && autoFindCommanderUIController)
-        {
             TryCacheCommanderUIController();
-        }
 
         Refresh();
         HandleSkillGaugeInfoClick();
@@ -184,102 +176,6 @@ public class AgentSkillGaugeUI : MonoBehaviour
         CacheSlotsByComponent();
         ConfigureSlotGauges();
     }
-
-    private void HandleSkillDescriptionRightClick()
-    {
-        if (!showSkillDescriptionOnRightClick)
-            return;
-
-        Mouse mouse = Mouse.current;
-
-        if (mouse == null)
-            return;
-
-        if (!mouse.rightButton.wasReleasedThisFrame)
-            return;
-
-        Vector2 mousePosition = mouse.position.ReadValue();
-
-        if (IsSlotClicked(skill1Slot, mousePosition))
-        {
-            ShowSkillDescriptionPopup(skill1Name, mousePosition);
-            return;
-        }
-
-        if (IsSlotClicked(skill2Slot, mousePosition))
-        {
-            ShowSkillDescriptionPopup(skill2Name, mousePosition);
-            return;
-        }
-
-        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
-        {
-            ShowSkillDescriptionPopup(skill3Name, mousePosition);
-        }
-    }
-
-    private void ShowSkillDescriptionPopup(string skillName, Vector2 mousePosition)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-            return;
-
-        if (skillDescriptionPopupUI == null && autoFindSkillDescriptionPopupUI)
-            skillDescriptionPopupUI = FindFirstObjectByType<SkillDescriptionPopupUI>(FindObjectsInactive.Include);
-
-        if (skillDescriptionPopupUI == null)
-            return;
-
-        if (TryGetSkillDefinitionForPopup(skillName, out SkillDefinitionSO skillDefinition))
-        {
-            skillDescriptionPopupUI.Show(skillDefinition, mousePosition);
-            return;
-        }
-
-        Debug.LogWarning($"[AgentSkillGaugeUI] SkillDefinitionSO를 찾을 수 없습니다. SkillName: {skillName}");
-
-        skillDescriptionPopupUI.Show(
-            skillName,
-            "스킬 설명 데이터를 찾을 수 없습니다.",
-            mousePosition
-        );
-    }
-
-    private bool TryGetSkillDefinitionForPopup(string skillName, out SkillDefinitionSO skillDefinition)
-    {
-        skillDefinition = null;
-
-        if (string.IsNullOrWhiteSpace(skillName))
-            return false;
-
-        string normalizedSkillName = NormalizeSkillName(skillName);
-
-        if (targetAgent != null)
-        {
-            if (targetAgent.TryGetSkillDefinitionByRuntimeKey(normalizedSkillName, out skillDefinition))
-                return true;
-
-            if (targetAgent.TryGetSkillDefinitionById(normalizedSkillName, out skillDefinition))
-                return true;
-
-            if (targetAgent.TryGetSkillDefinitionByCommandKeyword(skillName, out skillDefinition))
-                return true;
-        }
-
-        if (skillDatabase == null)
-            return false;
-
-        if (skillDatabase.TryGetSkillByRuntimeKey(normalizedSkillName, out skillDefinition))
-            return true;
-
-        if (skillDatabase.TryGetSkillById(normalizedSkillName, out skillDefinition))
-            return true;
-
-        if (skillDatabase.TryGetSkillByCommandKeyword(skillName, out skillDefinition))
-            return true;
-
-        return false;
-    }
-
 
     public void Bind(AgentController agent)
     {
@@ -320,6 +216,32 @@ public class AgentSkillGaugeUI : MonoBehaviour
         Refresh();
     }
 
+    public void BindAgentController(AgentController agent)
+    {
+        Bind(agent);
+    }
+
+    public void BindAgentObject(GameObject agentObject)
+    {
+        if (agentObject == null)
+        {
+            Unbind();
+            return;
+        }
+
+        AgentController agent = agentObject.GetComponent<AgentController>();
+
+        if (agent == null)
+            agent = agentObject.GetComponentInChildren<AgentController>(true);
+
+        Bind(agent);
+    }
+
+    public void ClearAgentUI()
+    {
+        Unbind();
+    }
+
     public void BindByAgentId(int id, string firstSkillName, string secondSkillName)
     {
         BindByAgentId(id, firstSkillName, secondSkillName, "");
@@ -335,9 +257,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         skill3Name = NormalizeSkillName(thirdSkillName);
 
         if (autoBindByAgentId)
-        {
             TryCacheTargetAgent();
-        }
 
         if (targetAgent != null &&
             string.IsNullOrWhiteSpace(skill1Name) &&
@@ -364,6 +284,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
         SetSlotGaugeAmount(skill1Slot, 0f);
         SetSlotGaugeAmount(skill2Slot, 0f);
         SetSlotGaugeAmount(skill3Slot, 0f);
+
+        ClearSkillIcon(skill1Slot);
+        ClearSkillIcon(skill2Slot);
 
         if (skill3Slot != null)
         {
@@ -396,6 +319,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
             SetSlotGaugeAmount(skill2Slot, 0f);
             SetSlotGaugeAmount(skill3Slot, 0f);
 
+            ClearSkillIcon(skill1Slot);
+            ClearSkillIcon(skill2Slot);
+
             if (skill3Slot != null)
             {
                 skill3Slot.ClearIcon();
@@ -410,9 +336,93 @@ public class AgentSkillGaugeUI : MonoBehaviour
             SetupSkillNamesByAgent(targetAgent);
         }
 
+        RefreshBasicSkillIcons();
+
         UpdateSkillGaugeSlot(skill1Slot, skill1Name);
         UpdateSkillGaugeSlot(skill2Slot, skill2Name);
         RefreshThirdSkillSlot();
+    }
+
+    private void RefreshBasicSkillIcons()
+    {
+        RefreshBasicSkillIcon(skill1Slot, 0, skill1Name);
+        RefreshBasicSkillIcon(skill2Slot, 1, skill2Name);
+    }
+
+    private void RefreshBasicSkillIcon(AgentSkillSlotUI slot, int basicSkillIndex, string skillName)
+    {
+        if (slot == null)
+            return;
+
+        slot.SetVisible(true);
+
+        SkillDefinitionSO skillDefinition = GetBasicSkillDefinitionByIndex(basicSkillIndex);
+
+        if (skillDefinition != null)
+        {
+            if (skillDefinition.Icon != null)
+            {
+                slot.SetIcon(skillDefinition.Icon);
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[AgentSkillGaugeUI] {targetAgent.name}의 BasicSkills[{basicSkillIndex}]는 존재하지만 Icon이 비어 있습니다. " +
+                $"SkillSO={skillDefinition.name}, SkillName={skillName}"
+            );
+
+            return;
+        }
+
+        if (TryGetSkillDefinitionForPopup(skillName, out skillDefinition))
+        {
+            if (skillDefinition != null && skillDefinition.Icon != null)
+            {
+                slot.SetIcon(skillDefinition.Icon);
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[AgentSkillGaugeUI] SkillDefinitionSO는 찾았지만 Icon이 비어 있습니다. " +
+                $"Agent={targetAgent.name}, SkillName={skillName}"
+            );
+
+            return;
+        }
+
+        Debug.LogWarning(
+            $"[AgentSkillGaugeUI] SkillDefinitionSO를 찾지 못했습니다. " +
+            $"Agent={targetAgent.name}, Index={basicSkillIndex}, SkillName={skillName}"
+        );
+    }
+
+    private SkillDefinitionSO GetBasicSkillDefinitionByIndex(int index)
+    {
+        if (targetAgent == null)
+            return null;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return null;
+
+        IReadOnlyList<SkillDefinitionSO> basicSkills = definition.BasicSkills;
+
+        if (basicSkills == null)
+            return null;
+
+        if (index < 0 || index >= basicSkills.Count)
+            return null;
+
+        return basicSkills[index];
+    }
+
+    private void ClearSkillIcon(AgentSkillSlotUI slot)
+    {
+        if (slot == null)
+            return;
+
+        slot.ClearIcon();
     }
 
     public bool CanUseSkill(string skillName)
@@ -455,15 +465,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (targetAgent.TryGetSkillDefinitionByCommandKeyword(skillName, out _))
             return true;
 
-        return false;
+        return TryGetSkillDefinitionFromAgentDefinition(normalizedSkillName, out _);
     }
 
     private void CacheSlotsByComponent()
     {
         if (!autoFindSlotsByComponent)
-        {
             return;
-        }
 
         AgentSkillSlotUI[] slots = GetComponentsInChildren<AgentSkillSlotUI>(true);
 
@@ -472,31 +480,23 @@ public class AgentSkillGaugeUI : MonoBehaviour
             AgentSkillSlotUI slot = slots[i];
 
             if (slot == null)
-            {
                 continue;
-            }
 
             switch (slot.SlotType)
             {
                 case AgentSkillSlotType.First:
                     if (skill1Slot == null)
-                    {
                         skill1Slot = slot;
-                    }
                     break;
 
                 case AgentSkillSlotType.Second:
                     if (skill2Slot == null)
-                    {
                         skill2Slot = slot;
-                    }
                     break;
 
                 case AgentSkillSlotType.Third:
                     if (skill3Slot == null)
-                    {
                         skill3Slot = slot;
-                    }
                     break;
             }
         }
@@ -505,776 +505,79 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void ConfigureSlotGauges()
     {
         if (!setupImageFillSetting)
-        {
             return;
-        }
 
         Image.FillMethod fillMethod = Image.FillMethod.Vertical;
-        int fillOrigin = (int)Image.OriginVertical.Bottom;
+        int fillOrigin = 0;
 
         switch (fillDirection)
         {
             case GaugeFillDirection.HorizontalLeft:
                 fillMethod = Image.FillMethod.Horizontal;
-                fillOrigin = (int)Image.OriginHorizontal.Left;
+                fillOrigin = 1;
                 break;
 
             case GaugeFillDirection.HorizontalRight:
                 fillMethod = Image.FillMethod.Horizontal;
-                fillOrigin = (int)Image.OriginHorizontal.Right;
+                fillOrigin = 0;
                 break;
 
             case GaugeFillDirection.VerticalBottom:
                 fillMethod = Image.FillMethod.Vertical;
-                fillOrigin = (int)Image.OriginVertical.Bottom;
+                fillOrigin = 0;
                 break;
 
             case GaugeFillDirection.VerticalTop:
                 fillMethod = Image.FillMethod.Vertical;
-                fillOrigin = (int)Image.OriginVertical.Top;
+                fillOrigin = 1;
                 break;
         }
 
-        if (skill1Slot != null)
-        {
-            skill1Slot.ConfigureGauge(fillMethod, fillOrigin);
-        }
-
-        if (skill2Slot != null)
-        {
-            skill2Slot.ConfigureGauge(fillMethod, fillOrigin);
-        }
-
-        if (skill3Slot != null)
-        {
-            skill3Slot.ConfigureGauge(fillMethod, fillOrigin);
-        }
+        ConfigureSlotGauge(skill1Slot, fillMethod, fillOrigin);
+        ConfigureSlotGauge(skill2Slot, fillMethod, fillOrigin);
+        ConfigureSlotGauge(skill3Slot, fillMethod, fillOrigin);
     }
 
-    private void RefreshThirdSkillSlot()
-    {
-        if (skill3Slot == null)
-            return;
-
-        if (ShouldUseAgentDefinitionUnlockableSkills())
-        {
-            RefreshThirdSkillSlotByAgentDefinition();
-            return;
-        }
-
-        UpgradeDefinition unlockedUpgrade = GetUnlockedThirdSkillUpgrade();
-
-        if (unlockedUpgrade == null)
-        {
-            ClearThirdSkillSlot();
-            return;
-        }
-
-        string unlockedSkillName = GetSkillNameFromUpgrade(unlockedUpgrade);
-
-        if (string.IsNullOrWhiteSpace(unlockedSkillName))
-        {
-            ClearThirdSkillSlot();
-            return;
-        }
-
-        skill3Name = NormalizeSkillName(unlockedSkillName);
-
-        skill3Slot.SetVisible(true);
-        skill3Slot.SetIcon(unlockedUpgrade.Icon);
-        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
-    }
-
-    private bool ShouldUseAgentDefinitionUnlockableSkills()
-    {
-        if (targetAgent == null)
-            return false;
-
-        AgentDefinitionSO definition = targetAgent.AgentDefinition;
-
-        if (definition == null)
-            return false;
-
-        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
-
-        return unlockableSkills != null && unlockableSkills.Count > 0;
-    }
-
-    private void RefreshThirdSkillSlotByAgentDefinition()
-    {
-        if (!TryGetUnlockedSkillFromAgentDefinition(
-                out SkillDefinitionSO unlockedSkill,
-                out UpgradeDefinition unlockedUpgrade))
-        {
-            ClearThirdSkillSlot();
-            return;
-        }
-
-        string unlockedSkillName = GetRuntimeSkillNameFromDefinition(unlockedSkill);
-
-        if (string.IsNullOrWhiteSpace(unlockedSkillName))
-        {
-            ClearThirdSkillSlot();
-            return;
-        }
-
-        skill3Name = NormalizeSkillName(unlockedSkillName);
-
-        skill3Slot.SetVisible(true);
-
-        Sprite icon = GetThirdSkillIcon(unlockedSkill, unlockedUpgrade);
-
-        if (icon != null)
-            skill3Slot.SetIcon(icon);
-        else
-            skill3Slot.ClearIcon();
-
-        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
-    }
-
-    private bool TryGetUnlockedSkillFromAgentDefinition(
-        out SkillDefinitionSO unlockedSkill,
-        out UpgradeDefinition unlockedUpgrade)
-    {
-        unlockedSkill = null;
-        unlockedUpgrade = null;
-
-        if (targetAgent == null)
-            return false;
-
-        AgentDefinitionSO definition = targetAgent.AgentDefinition;
-
-        if (definition == null)
-            return false;
-
-        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
-
-        if (unlockableSkills == null || unlockableSkills.Count <= 0)
-            return false;
-
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-            return false;
-
-        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
-
-        for (int i = 0; i < unlockableSkills.Count; i++)
-        {
-            SkillDefinitionSO skill = unlockableSkills[i];
-
-            if (skill == null)
-                continue;
-
-            if (!skill.HasUnlockUpgradeId)
-                continue;
-
-            string unlockUpgradeId = skill.UnlockUpgradeId;
-
-            if (!upgradeManager.HasAgentUpgrade(unlockUpgradeId))
-                continue;
-
-            unlockedSkill = skill;
-
-            if (upgradeDatabase != null)
-                unlockedUpgrade = upgradeDatabase.GetUpgradeOrNull(unlockUpgradeId);
-
-            return true;
-        }
-
-        return false;
-    }
-
-    private Sprite GetThirdSkillIcon(SkillDefinitionSO skillDefinition, UpgradeDefinition upgradeDefinition)
-    {
-        if (skillDefinition != null && skillDefinition.Icon != null)
-            return skillDefinition.Icon;
-
-        if (upgradeDefinition != null && upgradeDefinition.Icon != null)
-            return upgradeDefinition.Icon;
-
-        return null;
-    }
-
-    private void ClearThirdSkillSlot()
-    {
-        skill3Name = "";
-        skill3Slot.SetGaugeAmount(0f);
-        skill3Slot.ClearIcon();
-        skill3Slot.SetVisible(false);
-    }
-
-    private UpgradeDefinition GetUnlockedThirdSkillUpgrade()
-    {
-        if (IsChaserAgent())
-        {
-            return GetUnlockedChaserThirdSkillUpgrade();
-        }
-
-        if (IsObserverAgent())
-        {
-            return GetUnlockedObserverThirdSkillUpgrade();
-        }
-
-        if (IsEngineerAgent())
-        {
-            return GetUnlockedEngineerThirdSkillUpgrade();
-        }
-
-        if (IsTricksterAgent())
-        {
-            return GetUnlockedTricksterThirdSkillUpgrade();
-        }
-
-        return null;
-    }
-
-    private UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
-    {
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-        {
-            return null;
-        }
-
-        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
-
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (upgradeManager.HasAgentUpgrade(ChaserUnlockPatrol))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
-        }
-
-        if (upgradeManager.HasAgentUpgrade(ChaserUnlockTrackingInstinct))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
-        }
-
-        return null;
-    }
-
-    private UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
-    {
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-        {
-            return null;
-        }
-
-        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
-
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (upgradeManager.HasAgentUpgrade(ObserverUnlockReconnaissance))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
-        }
-
-        if (upgradeManager.HasAgentUpgrade(ObserverUnlockObservationSupport))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
-        }
-
-        return null;
-    }
-
-    private UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
-    {
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-        {
-            return null;
-        }
-
-        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
-
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (upgradeManager.HasAgentUpgrade(EngineerUnlockDemolition))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
-        }
-
-        if (upgradeManager.HasAgentUpgrade(EngineerUnlockSafeZone))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
-        }
-
-        return null;
-    }
-
-    private UpgradeDefinition GetUnlockedTricksterThirdSkillUpgrade()
-    {
-        UpgradeManager upgradeManager = UpgradeManager.Instance;
-
-        if (upgradeManager == null)
-        {
-            return null;
-        }
-
-        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
-
-        if (upgradeDatabase == null)
-        {
-            return null;
-        }
-
-        if (upgradeManager.HasAgentUpgrade(TricksterUnlockVanishing))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockVanishing);
-        }
-
-        if (upgradeManager.HasAgentUpgrade(TricksterUnlockMisdirection))
-        {
-            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockMisdirection);
-        }
-
-        return null;
-    }
-
-    private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
-    {
-        if (upgrade == null)
-        {
-            return "";
-        }
-
-        if (!string.IsNullOrWhiteSpace(upgrade.SkillId))
-        {
-            return NormalizeSkillName(upgrade.SkillId);
-        }
-
-        if (upgrade.UpgradeId == ChaserUnlockPatrol)
-        {
-            return SkillPatrol;
-        }
-
-        if (upgrade.UpgradeId == ChaserUnlockTrackingInstinct)
-        {
-            return SkillTrackingInstinct;
-        }
-
-        if (upgrade.UpgradeId == ObserverUnlockReconnaissance)
-        {
-            return SkillReconnaissance;
-        }
-
-        if (upgrade.UpgradeId == ObserverUnlockObservationSupport)
-        {
-            return SkillObservationSupport;
-        }
-
-        if (upgrade.UpgradeId == EngineerUnlockDemolition)
-        {
-            return SkillDemolition;
-        }
-
-        if (upgrade.UpgradeId == EngineerUnlockSafeZone)
-        {
-            return SkillSafeZone;
-        }
-
-        if (upgrade.UpgradeId == TricksterUnlockVanishing)
-        {
-            return SkillVanishing;
-        }
-
-        if (upgrade.UpgradeId == TricksterUnlockMisdirection)
-        {
-            return SkillMisdirection;
-        }
-
-        return "";
-    }
-
-    private bool IsChaserAgent()
-    {
-        if (targetAgent != null)
-        {
-            if (targetAgent.Stats != null)
-            {
-                return targetAgent.Stats.role == AgentRole.Chaser;
-            }
-
-            return targetAgent.AgentID == 0;
-        }
-
-        return agentId == 0;
-    }
-
-    private bool IsObserverAgent()
-    {
-        if (targetAgent != null)
-        {
-            if (targetAgent.Stats != null)
-            {
-                return targetAgent.Stats.role == AgentRole.Observer;
-            }
-
-            return targetAgent.AgentID == 1;
-        }
-
-        return agentId == 1;
-    }
-
-    private bool IsEngineerAgent()
-    {
-        if (targetAgent != null)
-        {
-            if (targetAgent.Stats != null)
-            {
-                return targetAgent.Stats.role == AgentRole.Engineer;
-            }
-
-            return targetAgent.AgentID == 2;
-        }
-
-        return agentId == 2;
-    }
-
-    private bool IsTricksterAgent()
-    {
-        if (targetAgent != null)
-        {
-            if (targetAgent.Stats != null)
-            {
-                return targetAgent.Stats.role == AgentRole.Trickster;
-            }
-
-            return targetAgent.AgentID == 3;
-        }
-
-        return agentId == 3;
-    }
-
-    private void HandleSkillGaugeInfoClick()
-    {
-        if (!showGaugeInfoOnSkillClick &&
-            !pasteSkillNameOnFunctionKeyClick &&
-            !pasteSkillNameOnDoubleClick)
-        {
-            return;
-        }
-
-        Mouse mouse = Mouse.current;
-
-        if (mouse == null)
-        {
-            return;
-        }
-
-        if (!mouse.leftButton.wasReleasedThisFrame)
-        {
-            return;
-        }
-
-        Vector2 mousePosition = mouse.position.ReadValue();
-
-        if (IsSlotClicked(skill1Slot, mousePosition))
-        {
-            HandleSkillIconClick(skill1Slot, skill1Name, mousePosition);
-            return;
-        }
-
-        if (IsSlotClicked(skill2Slot, mousePosition))
-        {
-            HandleSkillIconClick(skill2Slot, skill2Name, mousePosition);
-            return;
-        }
-
-        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
-        {
-            HandleSkillIconClick(skill3Slot, skill3Name, mousePosition);
-        }
-    }
-    private bool IsSlotClicked(AgentSkillSlotUI slot, Vector2 screenPosition)
+    private void ConfigureSlotGauge(AgentSkillSlotUI slot, Image.FillMethod fillMethod, int fillOrigin)
     {
         if (slot == null)
-        {
-            return false;
-        }
-
-        RectTransform clickArea = slot.ClickArea;
-
-        if (clickArea == null)
-        {
-            return false;
-        }
-
-        return RectTransformUtility.RectangleContainsScreenPoint(
-            clickArea,
-            screenPosition,
-            GetCanvasCamera()
-        );
-    }
-
-    private void HandleSkillIconClick(AgentSkillSlotUI clickedSlot, string skillName, Vector2 mousePosition)
-    {
-        bool pasted = false;
-
-        if (IsSkillIconDoubleClick(clickedSlot))
-        {
-            pasted = TryPasteSkillNameToOwnInput(skillName);
-            ResetLastSkillIconClick();
-        }
-        else
-        {
-            RegisterSkillIconClick(clickedSlot);
-            pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
-        }
-
-        if (pasted && !showGaugeInfoAfterSkillPaste)
-        {
             return;
-        }
 
-        if (showGaugeInfoOnSkillClick)
-        {
-            ShowGaugeInfoLabel(skillName, mousePosition);
-        }
-    }
-
-    private bool IsSkillIconDoubleClick(AgentSkillSlotUI clickedSlot)
-    {
-        if (!pasteSkillNameOnDoubleClick)
-        {
-            return false;
-        }
-
-        if (clickedSlot == null)
-        {
-            return false;
-        }
-
-        if (lastClickedSkillSlot != clickedSlot)
-        {
-            return false;
-        }
-
-        float elapsedTime = Time.unscaledTime - lastSkillClickTime;
-        return elapsedTime <= doubleClickMaxInterval;
-    }
-
-    private void RegisterSkillIconClick(AgentSkillSlotUI clickedSlot)
-    {
-        lastClickedSkillSlot = clickedSlot;
-        lastSkillClickTime = Time.unscaledTime;
-    }
-
-    private void ResetLastSkillIconClick()
-    {
-        lastClickedSkillSlot = null;
-        lastSkillClickTime = -999f;
-    }
-
-    private bool TryPasteSkillNameToOwnInput(string skillName)
-    {
-        if (!pasteSkillNameOnDoubleClick)
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string normalizedSkillName = NormalizeSkillName(skillName);
-
-        if (IsAutoActivatedSkill(normalizedSkillName))
-        {
-            return false;
-        }
-
-        if (commanderUIController == null && autoFindCommanderUIController)
-        {
-            TryCacheCommanderUIController();
-        }
-
-        if (commanderUIController == null)
-        {
-            return false;
-        }
-
-        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
-
-        if (clickedAgentId < 0)
-        {
-            return false;
-        }
-
-        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
-
-        return commanderUIController.TryPasteSkillDisplayNameToAgentInput(
-            clickedAgentId,
-            displayName
-        );
-    }
-
-    private bool TryPasteSkillNameToFunctionKeyInput(string skillName)
-    {
-        if (!pasteSkillNameOnFunctionKeyClick)
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string normalizedSkillName = NormalizeSkillName(skillName);
-
-        if (IsAutoActivatedSkill(normalizedSkillName))
-        {
-            return false;
-        }
-
-        if (!TryGetHeldFunctionKeyInputIndex(out int inputIndex))
-        {
-            return false;
-        }
-
-        if (commanderUIController == null && autoFindCommanderUIController)
-        {
-            TryCacheCommanderUIController();
-        }
-
-        if (commanderUIController == null)
-        {
-            return false;
-        }
-
-        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
-        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
-
-        return commanderUIController.TryPasteSkillDisplayNameToInputIndex(
-            inputIndex,
-            clickedAgentId,
-            displayName,
-            pasteOnlyWhenFunctionKeyInputMatchesClickedAgent
-        );
-    }
-
-    private bool TryGetHeldFunctionKeyInputIndex(out int inputIndex)
-    {
-        inputIndex = -1;
-
-        Keyboard keyboard = Keyboard.current;
-
-        if (keyboard == null)
-        {
-            return false;
-        }
-
-        if (keyboard.f1Key.isPressed)
-        {
-            inputIndex = 0;
-            return true;
-        }
-
-        if (keyboard.f2Key.isPressed)
-        {
-            inputIndex = 1;
-            return true;
-        }
-
-        if (keyboard.f3Key.isPressed)
-        {
-            inputIndex = 2;
-            return true;
-        }
-
-        if (keyboard.f4Key.isPressed)
-        {
-            inputIndex = 3;
-            return true;
-        }
-
-        return false;
-    }
-
-    private void TryCacheCommanderUIController()
-    {
-        if (commanderUIController != null)
-        {
-            return;
-        }
-
-        commanderUIController = FindFirstObjectByType<CommanderUIController>();
-    }
-
-    private Camera GetCanvasCamera()
-    {
-        Canvas canvas = GetComponentInParent<Canvas>();
-
-        if (canvas == null)
-        {
-            return null;
-        }
-
-        if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-        {
-            return null;
-        }
-
-        if (canvas.worldCamera != null)
-        {
-            return canvas.worldCamera;
-        }
-
-        return Camera.main;
+        slot.ConfigureGauge(fillMethod, fillOrigin);
     }
 
     private void TryCacheTargetAgent()
     {
         if (agentId < 0)
-        {
             return;
-        }
 
-        AgentController[] foundAgents = FindObjectsByType<AgentController>(
-            FindObjectsInactive.Exclude,
-            FindObjectsSortMode.None
-        );
+        AgentController[] agents = FindObjectsByType<AgentController>(FindObjectsSortMode.None);
 
-        for (int i = 0; i < foundAgents.Length; i++)
+        for (int i = 0; i < agents.Length; i++)
         {
-            AgentController agent = foundAgents[i];
+            AgentController agent = agents[i];
 
             if (agent == null)
-            {
                 continue;
-            }
 
             if (agent.AgentID != agentId)
-            {
                 continue;
-            }
 
             targetAgent = agent;
-
-            if (string.IsNullOrWhiteSpace(skill1Name) &&
-                string.IsNullOrWhiteSpace(skill2Name))
-            {
-                SetupSkillNamesByAgent(targetAgent);
-            }
-
-            return;
+            SetupSkillNamesByAgent(targetAgent);
+            break;
         }
+    }
+
+    private void TryCacheCommanderUIController()
+    {
+        if (!autoFindCommanderUIController)
+            return;
+
+        if (commanderUIController != null)
+            return;
+
+        commanderUIController = FindFirstObjectByType<CommanderUIController>();
     }
 
     private void SetupSkillNamesByAgent(AgentController agent)
@@ -1288,6 +591,30 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (agent.Stats != null)
         {
             SetupSkillNamesByRole(agent.Stats.role);
+            return;
+        }
+
+        if (agent is Chaser)
+        {
+            SetupSkillNamesByRole(AgentRole.Chaser);
+            return;
+        }
+
+        if (agent is Observer)
+        {
+            SetupSkillNamesByRole(AgentRole.Observer);
+            return;
+        }
+
+        if (agent is Engineer)
+        {
+            SetupSkillNamesByRole(AgentRole.Engineer);
+            return;
+        }
+
+        if (agent is Trickster)
+        {
+            SetupSkillNamesByRole(AgentRole.Trickster);
             return;
         }
 
@@ -1309,12 +636,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (basicSkills == null || basicSkills.Count <= 0)
             return false;
 
-        skill1Name = GetRuntimeSkillNameFromDefinition(GetSkillAt(basicSkills, 0));
-        skill2Name = GetRuntimeSkillNameFromDefinition(GetSkillAt(basicSkills, 1));
+        SkillDefinitionSO firstSkill = GetSkillAt(basicSkills, 0);
+        SkillDefinitionSO secondSkill = GetSkillAt(basicSkills, 1);
 
-        skill1Name = NormalizeSkillName(skill1Name);
-        skill2Name = NormalizeSkillName(skill2Name);
-
+        skill1Name = NormalizeSkillName(GetRuntimeSkillNameFromDefinition(firstSkill));
+        skill2Name = NormalizeSkillName(GetRuntimeSkillNameFromDefinition(secondSkill));
         skill3Name = "";
 
         return !string.IsNullOrWhiteSpace(skill1Name) ||
@@ -1415,9 +741,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void UpdateSkillGaugeSlot(AgentSkillSlotUI slot, string skillName)
     {
         if (slot == null)
-        {
             return;
-        }
 
         if (targetAgent == null)
         {
@@ -1434,9 +758,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         string normalizedSkillName = NormalizeSkillName(skillName);
 
         if (TryUpdateToggleSkillGaugeSlot(slot, normalizedSkillName))
-        {
             return;
-        }
 
         float requiredGauge = targetAgent.GetSkillGaugeRequiredForSkill(normalizedSkillName);
 
@@ -1453,9 +775,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool TryUpdateToggleSkillGaugeSlot(AgentSkillSlotUI slot, string normalizedSkillName)
     {
         if (!IsPositionShareSkill(normalizedSkillName))
-        {
             return false;
-        }
 
         Observer observer = targetAgent as Observer;
 
@@ -1476,11 +796,759 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void SetSlotGaugeAmount(AgentSkillSlotUI slot, float amount)
     {
         if (slot == null)
+            return;
+
+        slot.SetGaugeAmount(amount);
+    }
+
+    private void RefreshThirdSkillSlot()
+    {
+        if (skill3Slot == null)
+            return;
+
+        if (ShouldUseAgentDefinitionUnlockableSkills())
         {
+            RefreshThirdSkillSlotByAgentDefinition();
             return;
         }
 
-        slot.SetGaugeAmount(amount);
+        UpgradeDefinition unlockedUpgrade = GetUnlockedThirdSkillUpgrade();
+
+        if (unlockedUpgrade == null)
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        string unlockedSkillName = GetSkillNameFromUpgrade(unlockedUpgrade);
+
+        if (string.IsNullOrWhiteSpace(unlockedSkillName))
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        skill3Name = NormalizeSkillName(unlockedSkillName);
+
+        skill3Slot.SetVisible(true);
+
+        if (unlockedUpgrade.Icon != null)
+            skill3Slot.SetIcon(unlockedUpgrade.Icon);
+
+        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private bool ShouldUseAgentDefinitionUnlockableSkills()
+    {
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
+
+        return unlockableSkills != null && unlockableSkills.Count > 0;
+    }
+
+    private void RefreshThirdSkillSlotByAgentDefinition()
+    {
+        if (!TryGetUnlockedSkillFromAgentDefinition(
+                out SkillDefinitionSO unlockedSkill,
+                out UpgradeDefinition unlockedUpgrade))
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        string unlockedSkillName = GetRuntimeSkillNameFromDefinition(unlockedSkill);
+
+        if (string.IsNullOrWhiteSpace(unlockedSkillName))
+        {
+            ClearThirdSkillSlot();
+            return;
+        }
+
+        skill3Name = NormalizeSkillName(unlockedSkillName);
+
+        skill3Slot.SetVisible(true);
+
+        Sprite icon = GetThirdSkillIcon(unlockedSkill, unlockedUpgrade);
+
+        if (icon != null)
+            skill3Slot.SetIcon(icon);
+
+        UpdateSkillGaugeSlot(skill3Slot, skill3Name);
+    }
+
+    private bool TryGetUnlockedSkillFromAgentDefinition(
+        out SkillDefinitionSO unlockedSkill,
+        out UpgradeDefinition unlockedUpgrade)
+    {
+        unlockedSkill = null;
+        unlockedUpgrade = null;
+
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        IReadOnlyList<SkillDefinitionSO> unlockableSkills = definition.UnlockableSkills;
+
+        if (unlockableSkills == null || unlockableSkills.Count <= 0)
+            return false;
+
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return false;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        for (int i = 0; i < unlockableSkills.Count; i++)
+        {
+            SkillDefinitionSO skill = unlockableSkills[i];
+
+            if (skill == null)
+                continue;
+
+            if (!skill.HasUnlockUpgradeId)
+                continue;
+
+            string unlockUpgradeId = skill.UnlockUpgradeId;
+
+            if (!upgradeManager.HasAgentUpgrade(unlockUpgradeId))
+                continue;
+
+            unlockedSkill = skill;
+
+            if (upgradeDatabase != null)
+                unlockedUpgrade = upgradeDatabase.GetUpgradeOrNull(unlockUpgradeId);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private Sprite GetThirdSkillIcon(SkillDefinitionSO skillDefinition, UpgradeDefinition upgradeDefinition)
+    {
+        if (skillDefinition != null && skillDefinition.Icon != null)
+            return skillDefinition.Icon;
+
+        if (upgradeDefinition != null && upgradeDefinition.Icon != null)
+            return upgradeDefinition.Icon;
+
+        return null;
+    }
+
+    private void ClearThirdSkillSlot()
+    {
+        skill3Name = "";
+
+        if (skill3Slot == null)
+            return;
+
+        skill3Slot.SetGaugeAmount(0f);
+        skill3Slot.ClearIcon();
+        skill3Slot.SetVisible(false);
+    }
+
+    private UpgradeDefinition GetUnlockedThirdSkillUpgrade()
+    {
+        if (IsChaserAgent())
+            return GetUnlockedChaserThirdSkillUpgrade();
+
+        if (IsObserverAgent())
+            return GetUnlockedObserverThirdSkillUpgrade();
+
+        if (IsEngineerAgent())
+            return GetUnlockedEngineerThirdSkillUpgrade();
+
+        if (IsTricksterAgent())
+            return GetUnlockedTricksterThirdSkillUpgrade();
+
+        return null;
+    }
+
+    private UpgradeDefinition GetUnlockedChaserThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return null;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+            return null;
+
+        if (upgradeManager.HasAgentUpgrade(ChaserUnlockPatrol))
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockPatrol);
+
+        if (upgradeManager.HasAgentUpgrade(ChaserUnlockTrackingInstinct))
+            return upgradeDatabase.GetUpgradeOrNull(ChaserUnlockTrackingInstinct);
+
+        return null;
+    }
+
+    private UpgradeDefinition GetUnlockedObserverThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return null;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+            return null;
+
+        if (upgradeManager.HasAgentUpgrade(ObserverUnlockReconnaissance))
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockReconnaissance);
+
+        if (upgradeManager.HasAgentUpgrade(ObserverUnlockObservationSupport))
+            return upgradeDatabase.GetUpgradeOrNull(ObserverUnlockObservationSupport);
+
+        return null;
+    }
+
+    private UpgradeDefinition GetUnlockedEngineerThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return null;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+            return null;
+
+        if (upgradeManager.HasAgentUpgrade(EngineerUnlockDemolition))
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockDemolition);
+
+        if (upgradeManager.HasAgentUpgrade(EngineerUnlockSafeZone))
+            return upgradeDatabase.GetUpgradeOrNull(EngineerUnlockSafeZone);
+
+        return null;
+    }
+
+    private UpgradeDefinition GetUnlockedTricksterThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return null;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+            return null;
+
+        if (upgradeManager.HasAgentUpgrade(TricksterUnlockVanishing))
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockVanishing);
+
+        if (upgradeManager.HasAgentUpgrade(TricksterUnlockMisdirection))
+            return upgradeDatabase.GetUpgradeOrNull(TricksterUnlockMisdirection);
+
+        return null;
+    }
+
+    private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
+    {
+        if (upgrade == null)
+            return "";
+
+        string upgradeId = upgrade.UpgradeId;
+
+        if (string.IsNullOrWhiteSpace(upgradeId))
+            return "";
+
+        switch (upgradeId)
+        {
+            case ChaserUnlockPatrol:
+                return SkillPatrol;
+
+            case ChaserUnlockTrackingInstinct:
+                return SkillTrackingInstinct;
+
+            case ObserverUnlockReconnaissance:
+                return SkillReconnaissance;
+
+            case ObserverUnlockObservationSupport:
+                return SkillObservationSupport;
+
+            case EngineerUnlockDemolition:
+                return SkillDemolition;
+
+            case EngineerUnlockSafeZone:
+                return SkillSafeZone;
+
+            case TricksterUnlockVanishing:
+                return SkillVanishing;
+
+            case TricksterUnlockMisdirection:
+                return SkillMisdirection;
+        }
+
+        return upgradeId;
+    }
+
+    private bool IsChaserAgent()
+    {
+        if (targetAgent is Chaser)
+            return true;
+
+        return targetAgent != null &&
+               targetAgent.Stats != null &&
+               targetAgent.Stats.role == AgentRole.Chaser;
+    }
+
+    private bool IsObserverAgent()
+    {
+        if (targetAgent is Observer)
+            return true;
+
+        return targetAgent != null &&
+               targetAgent.Stats != null &&
+               targetAgent.Stats.role == AgentRole.Observer;
+    }
+
+    private bool IsEngineerAgent()
+    {
+        if (targetAgent is Engineer)
+            return true;
+
+        return targetAgent != null &&
+               targetAgent.Stats != null &&
+               targetAgent.Stats.role == AgentRole.Engineer;
+    }
+
+    private bool IsTricksterAgent()
+    {
+        if (targetAgent is Trickster)
+            return true;
+
+        return targetAgent != null &&
+               targetAgent.Stats != null &&
+               targetAgent.Stats.role == AgentRole.Trickster;
+    }
+
+    private void HandleSkillGaugeInfoClick()
+    {
+        if (!showGaugeInfoOnSkillClick && !pasteSkillNameOnFunctionKeyClick && !pasteSkillNameOnDoubleClick)
+            return;
+
+        Mouse mouse = Mouse.current;
+
+        if (mouse == null)
+            return;
+
+        if (!mouse.leftButton.wasReleasedThisFrame)
+            return;
+
+        Vector2 mousePosition = mouse.position.ReadValue();
+
+        if (IsSlotClicked(skill1Slot, mousePosition))
+        {
+            HandleSkillIconClick(skill1Slot, skill1Name, mousePosition);
+            return;
+        }
+
+        if (IsSlotClicked(skill2Slot, mousePosition))
+        {
+            HandleSkillIconClick(skill2Slot, skill2Name, mousePosition);
+            return;
+        }
+
+        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
+        {
+            HandleSkillIconClick(skill3Slot, skill3Name, mousePosition);
+        }
+    }
+
+    private void HandleSkillDescriptionRightClick()
+    {
+        if (!showSkillDescriptionOnRightClick)
+            return;
+
+        Mouse mouse = Mouse.current;
+
+        if (mouse == null)
+            return;
+
+        if (!mouse.rightButton.wasReleasedThisFrame)
+            return;
+
+        Vector2 mousePosition = mouse.position.ReadValue();
+
+        if (IsSlotClicked(skill1Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill1Name, mousePosition);
+            return;
+        }
+
+        if (IsSlotClicked(skill2Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill2Name, mousePosition);
+            return;
+        }
+
+        if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
+        {
+            ShowSkillDescriptionPopup(skill3Name, mousePosition);
+        }
+    }
+
+    private bool IsSlotClicked(AgentSkillSlotUI slot, Vector2 screenPosition)
+    {
+        if (slot == null)
+            return false;
+
+        RectTransform clickArea = slot.ClickArea;
+
+        if (clickArea == null)
+            return false;
+
+        return RectTransformUtility.RectangleContainsScreenPoint(
+            clickArea,
+            screenPosition,
+            GetCanvasCamera()
+        );
+    }
+
+    private Camera GetCanvasCamera()
+    {
+        Canvas canvas = GetComponentInParent<Canvas>();
+
+        if (canvas == null)
+            return null;
+
+        if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            return null;
+
+        return canvas.worldCamera;
+    }
+
+    private void HandleSkillIconClick(AgentSkillSlotUI clickedSlot, string skillName, Vector2 mousePosition)
+    {
+        bool pasted = false;
+
+        if (IsSkillIconDoubleClick(clickedSlot))
+        {
+            pasted = TryPasteSkillNameToOwnInput(skillName);
+            ResetLastSkillIconClick();
+        }
+        else
+        {
+            RegisterSkillIconClick(clickedSlot);
+            pasted = TryPasteSkillNameToFunctionKeyInput(skillName);
+        }
+
+        if (pasted && !showGaugeInfoAfterSkillPaste)
+            return;
+
+        if (showGaugeInfoOnSkillClick)
+            ShowGaugeInfoLabel(skillName, mousePosition);
+    }
+
+    private bool IsSkillIconDoubleClick(AgentSkillSlotUI clickedSlot)
+    {
+        if (!pasteSkillNameOnDoubleClick)
+            return false;
+
+        if (clickedSlot == null)
+            return false;
+
+        if (lastClickedSkillSlot != clickedSlot)
+            return false;
+
+        float elapsedTime = Time.unscaledTime - lastSkillClickTime;
+        return elapsedTime <= doubleClickMaxInterval;
+    }
+
+    private void RegisterSkillIconClick(AgentSkillSlotUI clickedSlot)
+    {
+        lastClickedSkillSlot = clickedSlot;
+        lastSkillClickTime = Time.unscaledTime;
+    }
+
+    private void ResetLastSkillIconClick()
+    {
+        lastClickedSkillSlot = null;
+        lastSkillClickTime = -999f;
+    }
+
+    private bool TryPasteSkillNameToOwnInput(string skillName)
+    {
+        if (!pasteSkillNameOnDoubleClick)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsAutoActivatedSkill(normalizedSkillName))
+            return false;
+
+        if (commanderUIController == null && autoFindCommanderUIController)
+            TryCacheCommanderUIController();
+
+        if (commanderUIController == null)
+            return false;
+
+        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
+
+        if (clickedAgentId < 0)
+            return false;
+
+        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
+
+        return commanderUIController.TryPasteSkillDisplayNameToAgentInput(
+            clickedAgentId,
+            displayName
+        );
+    }
+
+    private bool TryPasteSkillNameToFunctionKeyInput(string skillName)
+    {
+        if (!pasteSkillNameOnFunctionKeyClick)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (IsAutoActivatedSkill(normalizedSkillName))
+            return false;
+
+        if (!TryGetHeldFunctionKeyInputIndex(out int inputIndex))
+            return false;
+
+        if (commanderUIController == null && autoFindCommanderUIController)
+            TryCacheCommanderUIController();
+
+        if (commanderUIController == null)
+            return false;
+
+        int clickedAgentId = targetAgent != null ? targetAgent.AgentID : agentId;
+
+        if (clickedAgentId < 0)
+            return false;
+
+        string displayName = GetSkillDisplayNameForUI(normalizedSkillName);
+
+        return commanderUIController.TryPasteSkillDisplayNameToInputIndex(
+            inputIndex,
+            clickedAgentId,
+            displayName,
+            pasteOnlyWhenFunctionKeyInputMatchesClickedAgent
+        );
+    }
+
+    private bool TryGetHeldFunctionKeyInputIndex(out int inputIndex)
+    {
+        inputIndex = -1;
+
+        Keyboard keyboard = Keyboard.current;
+
+        if (keyboard == null)
+            return false;
+
+        if (keyboard.f1Key.isPressed)
+        {
+            inputIndex = 0;
+            return true;
+        }
+
+        if (keyboard.f2Key.isPressed)
+        {
+            inputIndex = 1;
+            return true;
+        }
+
+        if (keyboard.f3Key.isPressed)
+        {
+            inputIndex = 2;
+            return true;
+        }
+
+        if (keyboard.f4Key.isPressed)
+        {
+            inputIndex = 3;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ShowSkillDescriptionPopup(string skillName, Vector2 mousePosition)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return;
+
+        if (skillDescriptionPopupUI == null && autoFindSkillDescriptionPopupUI)
+            skillDescriptionPopupUI = FindFirstObjectByType<SkillDescriptionPopupUI>(FindObjectsInactive.Include);
+
+        if (skillDescriptionPopupUI == null)
+            return;
+
+        if (TryGetSkillDefinitionForPopup(skillName, out SkillDefinitionSO skillDefinition))
+        {
+            skillDescriptionPopupUI.Show(skillDefinition, mousePosition);
+            return;
+        }
+
+        Debug.LogWarning($"[AgentSkillGaugeUI] SkillDefinitionSO를 찾을 수 없습니다. SkillName: {skillName}");
+
+        skillDescriptionPopupUI.Show(
+            skillName,
+            "스킬 설명 데이터를 찾을 수 없습니다.",
+            mousePosition
+        );
+    }
+
+    private bool TryGetSkillDefinitionForPopup(string skillName, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string normalizedSkillName = NormalizeSkillName(skillName);
+
+        if (TryGetSkillDefinitionFromAgentDefinition(normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (targetAgent != null)
+        {
+            if (targetAgent.TryGetSkillDefinitionByRuntimeKey(normalizedSkillName, out skillDefinition))
+                return true;
+
+            if (targetAgent.TryGetSkillDefinitionById(normalizedSkillName, out skillDefinition))
+                return true;
+
+            if (targetAgent.TryGetSkillDefinitionByCommandKeyword(skillName, out skillDefinition))
+                return true;
+        }
+
+        if (skillDatabase == null)
+            return false;
+
+        if (skillDatabase.TryGetSkillByRuntimeKey(normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (skillDatabase.TryGetSkillById(normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (skillDatabase.TryGetSkillByCommandKeyword(skillName, out skillDefinition))
+            return true;
+
+        return false;
+    }
+
+    private bool TryGetSkillDefinitionFromAgentDefinition(string skillName, out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (targetAgent == null)
+            return false;
+
+        AgentDefinitionSO definition = targetAgent.AgentDefinition;
+
+        if (definition == null)
+            return false;
+
+        string normalizedSkillName = NormalizeSkillKeyForMatch(skillName);
+
+        if (TryGetSkillDefinitionFromList(definition.BasicSkills, normalizedSkillName, out skillDefinition))
+            return true;
+
+        if (TryGetSkillDefinitionFromList(definition.UnlockableSkills, normalizedSkillName, out skillDefinition))
+            return true;
+
+        return false;
+    }
+
+    private bool TryGetSkillDefinitionFromList(
+        IReadOnlyList<SkillDefinitionSO> skills,
+        string normalizedSkillName,
+        out SkillDefinitionSO skillDefinition)
+    {
+        skillDefinition = null;
+
+        if (skills == null)
+            return false;
+
+        for (int i = 0; i < skills.Count; i++)
+        {
+            SkillDefinitionSO skill = skills[i];
+
+            if (skill == null)
+                continue;
+
+            if (SkillMatchesNormalizedName(skill, normalizedSkillName))
+            {
+                skillDefinition = skill;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool SkillMatchesNormalizedName(SkillDefinitionSO skill, string normalizedSkillName)
+    {
+        if (skill == null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(normalizedSkillName))
+            return false;
+
+        if (NormalizeSkillKeyForMatch(skill.RuntimeSkillKey) == normalizedSkillName)
+            return true;
+
+        if (NormalizeSkillKeyForMatch(skill.SkillId) == normalizedSkillName)
+            return true;
+
+        if (NormalizeSkillKeyForMatch(skill.CommandKeyword) == normalizedSkillName)
+            return true;
+
+        if (NormalizeSkillKeyForMatch(skill.DisplayName) == normalizedSkillName)
+            return true;
+
+        IReadOnlyList<string> aliases = skill.RuntimeSkillAliases;
+
+        if (aliases != null)
+        {
+            for (int i = 0; i < aliases.Count; i++)
+            {
+                if (NormalizeSkillKeyForMatch(aliases[i]) == normalizedSkillName)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string NormalizeSkillKeyForMatch(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim()
+            .ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
     }
 
     private bool IsAutoActivatedSkill(string skillName)
@@ -1491,111 +1559,71 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private string NormalizeSkillName(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return "";
-        }
 
         string skill = skillName.Trim().ToLower();
 
         if (IsAccessControlSkill(skill))
-        {
             return SkillAccessControl;
-        }
 
         if (IsEscapeBlockSkill(skill))
-        {
             return SkillEscapeBlock;
-        }
 
         if (IsPatrolSkill(skill))
-        {
             return SkillPatrol;
-        }
 
         if (IsTrackingInstinctSkill(skill))
-        {
             return SkillTrackingInstinct;
-        }
 
         if (IsReconnaissanceSkill(skill))
-        {
             return SkillReconnaissance;
-        }
 
         if (IsObservationSupportSkill(skill))
-        {
             return SkillObservationSupport;
-        }
 
         if (IsPositionShareSkill(skill))
-        {
             return SkillPositionShare;
-        }
 
         if (IsLegacySlowTrapSkill(skill))
-        {
             return SkillStopSignal;
-        }
 
         if (IsLegacyNoisemakerSkill(skill))
-        {
             return SkillFakeBox;
-        }
 
         if (IsLegacyHologramSkill(skill))
-        {
             return SkillJokerCard;
-        }
 
         if (IsFakeBoxSkill(skill))
-        {
             return SkillFakeBox;
-        }
 
         if (IsJokerCardSkill(skill))
-        {
             return SkillJokerCard;
-        }
 
         if (IsStopSignalSkill(skill))
-        {
             return SkillStopSignal;
-        }
 
         if (IsDemolitionSkill(skill))
-        {
             return SkillDemolition;
-        }
 
         if (IsSafeZoneSkill(skill))
-        {
             return SkillSafeZone;
-        }
 
         if (IsDroneSkill(skill))
-        {
             return SkillDrone;
-        }
 
         if (IsVanishingSkill(skill))
-        {
             return SkillVanishing;
-        }
 
         if (IsMisdirectionSkill(skill))
-        {
             return SkillMisdirection;
-        }
 
-        return skill;
+        return NormalizeSkillKeyForMatch(skill);
     }
 
     private bool IsAccessControlSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -1612,9 +1640,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsEscapeBlockSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -1628,14 +1654,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsPatrolSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillPatrol ||
-               skill == "chaser_patrol" ||
                skill.Contains("patrol") ||
                skill.Contains("순찰");
     }
@@ -1643,9 +1666,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsTrackingInstinctSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -1659,114 +1680,112 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private bool IsDroneSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillDrone ||
                skill.Contains("drone") ||
-               skill.Contains("uav") ||
                skill.Contains("드론");
     }
 
     private bool IsReconnaissanceSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillReconnaissance ||
-               skill == "recon" ||
-               skill == "scout" ||
                skill.Contains("reconnaissance") ||
-               skill.Contains("recon") ||
-               skill.Contains("scout") ||
                skill.Contains("정찰");
     }
 
     private bool IsObservationSupportSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillObservationSupport ||
                skill == "observation_support" ||
-               skill == "vision_support" ||
                skill.Contains("observation support") ||
-               skill.Contains("vision support") ||
                skill.Contains("관측지원") ||
-               skill.Contains("관측 지원") ||
-               skill.Contains("시야지원") ||
-               skill.Contains("시야 지원");
+               skill.Contains("관측 지원");
     }
 
     private bool IsPositionShareSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillPositionShare ||
                skill == SkillPositionShareOn ||
                skill == SkillPositionShareOff ||
-               skill == "share_position" ||
                skill == "position_share" ||
                skill.Contains("position share") ||
-               skill.Contains("target position share") ||
-               skill.Contains("share position") ||
                skill.Contains("위치공유") ||
                skill.Contains("위치 공유");
+    }
+
+    private bool IsBarricadeSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillBarricade ||
+               skill.Contains("barricade") ||
+               skill.Contains("바리케이드");
     }
 
     private bool IsStopSignalSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillStopSignal ||
                skill == "stop_signal" ||
                skill.Contains("stop signal") ||
-               skill.Contains("stop sign") ||
                skill.Contains("정지신호") ||
                skill.Contains("정지 신호");
+    }
+
+    private bool IsLegacySlowTrapSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillSlowTrap ||
+               skill.Contains("slow trap") ||
+               skill.Contains("감속함정") ||
+               skill.Contains("감속 함정");
     }
 
     private bool IsDemolitionSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillDemolition ||
-               skill.Contains("demolish") ||
+               skill.Contains("demolition") ||
                skill.Contains("철거");
     }
 
     private bool IsSafeZoneSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -1777,114 +1796,24 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("안전 구역");
     }
 
-    private bool IsVanishingSkill(string skillName)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string skill = skillName.Trim().ToLower();
-
-        return skill == SkillVanishing ||
-               skill.Contains("vanishing") ||
-               skill.Contains("vanish") ||
-               skill.Contains("배니싱");
-    }
-
-    private bool IsMisdirectionSkill(string skillName)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string skill = skillName.Trim().ToLower();
-
-        return skill == SkillMisdirection ||
-               skill.Contains("misdirection") ||
-               skill.Contains("mis direction") ||
-               skill.Contains("미스디렉션") ||
-               skill.Contains("미스 디렉션");
-    }
-
-    private bool IsLegacySlowTrapSkill(string skillName)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string skill = skillName.Trim().ToLower();
-
-        return skill == SkillSlowTrap ||
-               skill.Contains("slow trap") ||
-               skill.Contains("snaretrap") ||
-               skill.Contains("감속함정") ||
-               skill.Contains("감속 함정") ||
-               skill.Contains("구속함정") ||
-               skill.Contains("구속 함정");
-    }
-
-    private bool IsLegacyNoisemakerSkill(string skillName)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string skill = skillName.Trim().ToLower();
-
-        return skill == LegacySkillNoisemaker ||
-               skill.Contains("noise") ||
-               skill.Contains("소란장치") ||
-               skill.Contains("소란 장치") ||
-               skill.Contains("소음장치") ||
-               skill.Contains("소음 장치");
-    }
-
-    private bool IsLegacyHologramSkill(string skillName)
-    {
-        if (string.IsNullOrWhiteSpace(skillName))
-        {
-            return false;
-        }
-
-        string skill = skillName.Trim().ToLower();
-
-        return skill == LegacySkillHologram ||
-               skill.Contains("hologram") ||
-               skill.Contains("홀로그램");
-    }
-
     private bool IsFakeBoxSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
         return skill == SkillFakeBox ||
                skill == "fake_box" ||
                skill.Contains("fake box") ||
-               skill.Contains("magicbox") ||
-               skill.Contains("magic box") ||
                skill.Contains("페이크박스") ||
-               skill.Contains("페이크 박스") ||
-               skill.Contains("마술상자") ||
-               skill.Contains("마술 상자") ||
-               skill.Contains("가짜상자") ||
-               skill.Contains("가짜 상자");
+               skill.Contains("페이크 박스");
     }
 
     private bool IsJokerCardSkill(string skillName)
     {
         if (string.IsNullOrWhiteSpace(skillName))
-        {
             return false;
-        }
 
         string skill = skillName.Trim().ToLower();
 
@@ -1893,6 +1822,54 @@ public class AgentSkillGaugeUI : MonoBehaviour
                skill.Contains("joker card") ||
                skill.Contains("조커카드") ||
                skill.Contains("조커 카드");
+    }
+
+    private bool IsVanishingSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillVanishing ||
+               skill.Contains("vanishing") ||
+               skill.Contains("배니싱");
+    }
+
+    private bool IsMisdirectionSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillMisdirection ||
+               skill.Contains("misdirection") ||
+               skill.Contains("미스디렉션");
+    }
+
+    private bool IsLegacyNoisemakerSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == LegacySkillNoisemaker ||
+               skill.Contains("noise maker") ||
+               skill.Contains("noisemaker");
+    }
+
+    private bool IsLegacyHologramSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == LegacySkillHologram ||
+               skill.Contains("hologram") ||
+               skill.Contains("홀로그램");
     }
 
     private string GetSkillDisplayNameForUI(string skillName)
@@ -1976,9 +1953,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private void OnGUI()
     {
         if (!IsGaugeInfoLabelVisible())
-        {
             return;
-        }
 
         if (gaugeInfoLabelStyle == null)
         {

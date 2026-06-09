@@ -51,6 +51,7 @@ public class StageMapManager : MonoBehaviour
     public int StageCount => Mathf.Max(1, totalStageCount);
     public string CurrentStageDisplayName => GetStageDisplayName(currentStageIndex);
     public int CurrentMapIndex => currentMapIndex;
+    public IReadOnlyList<GameObject> CurrentAgents => currentAgents;
 
     private const string SelectedStageKey = "SelectedStageIndex";
     private const string UnlockedStageCountKey = "UnlockedStageCount";
@@ -267,19 +268,20 @@ public class StageMapManager : MonoBehaviour
         ApplyAgentUpgradesToCurrentAgents();
         RegisterAgentsToTarget();
         RefreshCommanderAgents();
+        BindAgentUIPanels();
 
         Debug.Log(
-    $"[StageMapManager] 맵 생성 완료: " +
-    $"Stage={CurrentStageDisplayName}, " +
-    $"StageIndex={currentStageIndex}, " +
-    $"StageNumber={currentStageNumber}, " +
-    $"Group={currentStageMapGroup.groupName}, " +
-    $"GroupIndex={currentStageMapGroupIndex}, " +
-    $"MapPrefab={selectedMapPrefab.name}, " +
-    $"MapIndex={currentMapIndex}, " +
-    $"MapRotation={mapSpawnEuler}, " +
-    $"DebugMode={IsDebugStageMode()}"
-);
+            $"[StageMapManager] 맵 생성 완료: " +
+            $"Stage={CurrentStageDisplayName}, " +
+            $"StageIndex={currentStageIndex}, " +
+            $"StageNumber={currentStageNumber}, " +
+            $"Group={currentStageMapGroup.groupName}, " +
+            $"GroupIndex={currentStageMapGroupIndex}, " +
+            $"MapPrefab={selectedMapPrefab.name}, " +
+            $"MapIndex={currentMapIndex}, " +
+            $"MapRotation={mapSpawnEuler}, " +
+            $"DebugMode={IsDebugStageMode()}"
+        );
     }
 
     private int GetStartStageIndex()
@@ -513,6 +515,7 @@ public class StageMapManager : MonoBehaviour
             return;
 
         AgentCameraFollow cameraFollow = FindFirstObjectByType<AgentCameraFollow>();
+
         if (cameraFollow == null)
         {
             Debug.LogWarning("[StageMapManager] AgentCameraFollow를 찾지 못했습니다.");
@@ -558,6 +561,7 @@ public class StageMapManager : MonoBehaviour
         }
 
         Transform spawnPoint = GetRandomTargetSpawnPoint();
+
         if (spawnPoint == null)
         {
             Debug.LogError("[StageMapManager] 타겟 생성 위치를 찾지 못했습니다.");
@@ -873,6 +877,16 @@ public class StageMapManager : MonoBehaviour
         commanderManager.RefreshAgents();
     }
 
+    private void BindAgentUIPanels()
+    {
+        UIController uiController = FindFirstObjectByType<UIController>();
+
+        if (uiController == null)
+            return;
+
+        uiController.BindPreplacedAgentUIPanels(currentAgents);
+    }
+
     public void CompleteStage()
     {
         if (IsDebugStageMode())
@@ -936,6 +950,11 @@ public class StageMapManager : MonoBehaviour
 
     public void ClearStage()
     {
+        UIController uiController = FindFirstObjectByType<UIController>();
+
+        if (uiController != null)
+            uiController.ClearPreplacedAgentUIPanels();
+
         if (currentTarget != null)
         {
             Destroy(currentTarget);
