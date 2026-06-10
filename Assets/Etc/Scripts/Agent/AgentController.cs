@@ -856,7 +856,19 @@ public abstract class AgentController : MonoBehaviour
         if (IsSmokeSkill(skill))
             return SkillSmokeKey;
 
-        return skill;
+        return NormalizeSkillGaugeFallbackKey(skill);
+    }
+
+    private string NormalizeSkillGaugeFallbackKey(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return SkillGaugeDefaultKey;
+
+        return skillName.Trim()
+            .ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
     }
 
     protected virtual string[] GetCurrentAgentGaugeKeys()

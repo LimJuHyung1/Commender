@@ -31,6 +31,11 @@ public class AgentSkillGaugeUI : MonoBehaviour
     private const string SkillVanishing = "vanishing";
     private const string SkillMisdirection = "misdirection";
 
+    private const string SkillEscapePatternAnalysis = "escapepatternanalysis";
+    private const string SkillBehaviorBriefing = "behaviorbriefing";
+    private const string SkillLinkedAnalysis = "linkedanalysis";
+    private const string SkillRouteIdentification = "routeidentification";
+
     private const string LegacySkillNoisemaker = "noisemaker";
     private const string LegacySkillHologram = "hologram";
 
@@ -45,6 +50,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
     private const string TricksterUnlockVanishing = "trickster_unlock_vanishing";
     private const string TricksterUnlockMisdirection = "trickster_unlock_misdirection";
+
+    private const string ProfilerUnlockLinkedAnalysis = "profiler_unlock_linked_analysis";
+    private const string ProfilerUnlockRouteIdentification = "profiler_unlock_route_identification";
 
     private enum GaugeFillDirection
     {
@@ -332,9 +340,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         if (string.IsNullOrWhiteSpace(skill1Name) && string.IsNullOrWhiteSpace(skill2Name))
-        {
             SetupSkillNamesByAgent(targetAgent);
-        }
 
         RefreshBasicSkillIcons();
 
@@ -588,6 +594,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (TrySetupSkillNamesByAgentDefinition(agent))
             return;
 
+        if (agent is Profiler)
+        {
+            SetupProfilerSkillNames();
+            return;
+        }
+
         if (agent.Stats != null)
         {
             SetupSkillNamesByRole(agent.Stats.role);
@@ -678,6 +690,13 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return "";
     }
 
+    private void SetupProfilerSkillNames()
+    {
+        skill1Name = SkillEscapePatternAnalysis;
+        skill2Name = SkillBehaviorBriefing;
+        skill3Name = "";
+    }
+
     private void SetupSkillNamesByRole(AgentRole role)
     {
         switch (role)
@@ -734,6 +753,10 @@ public class AgentSkillGaugeUI : MonoBehaviour
                 skill1Name = SkillFakeBox;
                 skill2Name = SkillJokerCard;
                 skill3Name = "";
+                break;
+
+            case 4:
+                SetupProfilerSkillNames();
                 break;
         }
     }
@@ -973,6 +996,9 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (IsTricksterAgent())
             return GetUnlockedTricksterThirdSkillUpgrade();
 
+        if (IsProfilerAgent())
+            return GetUnlockedProfilerThirdSkillUpgrade();
+
         return null;
     }
 
@@ -1060,6 +1086,27 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return null;
     }
 
+    private UpgradeDefinition GetUnlockedProfilerThirdSkillUpgrade()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return null;
+
+        UpgradeDatabase upgradeDatabase = upgradeManager.UpgradeDatabase;
+
+        if (upgradeDatabase == null)
+            return null;
+
+        if (upgradeManager.HasAgentUpgrade(ProfilerUnlockLinkedAnalysis))
+            return upgradeDatabase.GetUpgradeOrNull(ProfilerUnlockLinkedAnalysis);
+
+        if (upgradeManager.HasAgentUpgrade(ProfilerUnlockRouteIdentification))
+            return upgradeDatabase.GetUpgradeOrNull(ProfilerUnlockRouteIdentification);
+
+        return null;
+    }
+
     private string GetSkillNameFromUpgrade(UpgradeDefinition upgrade)
     {
         if (upgrade == null)
@@ -1095,6 +1142,12 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
             case TricksterUnlockMisdirection:
                 return SkillMisdirection;
+
+            case ProfilerUnlockLinkedAnalysis:
+                return SkillLinkedAnalysis;
+
+            case ProfilerUnlockRouteIdentification:
+                return SkillRouteIdentification;
         }
 
         return upgradeId;
@@ -1140,6 +1193,20 @@ public class AgentSkillGaugeUI : MonoBehaviour
                targetAgent.Stats.role == AgentRole.Trickster;
     }
 
+    private bool IsProfilerAgent()
+    {
+        if (targetAgent is Profiler)
+            return true;
+
+        if (targetAgent == null)
+            return false;
+
+        string definitionAgentId = targetAgent.AgentId;
+
+        return !string.IsNullOrWhiteSpace(definitionAgentId) &&
+               definitionAgentId.Trim().ToLowerInvariant() == "profiler";
+    }
+
     private void HandleSkillGaugeInfoClick()
     {
         if (!showGaugeInfoOnSkillClick && !pasteSkillNameOnFunctionKeyClick && !pasteSkillNameOnDoubleClick)
@@ -1168,9 +1235,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
-        {
             HandleSkillIconClick(skill3Slot, skill3Name, mousePosition);
-        }
     }
 
     private void HandleSkillDescriptionRightClick()
@@ -1201,9 +1266,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         }
 
         if (skill3Slot != null && skill3Slot.IsVisible && IsSlotClicked(skill3Slot, mousePosition))
-        {
             ShowSkillDescriptionPopup(skill3Name, mousePosition);
-        }
     }
 
     private bool IsSlotClicked(AgentSkillSlotUI slot, Vector2 screenPosition)
@@ -1455,7 +1518,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return false;
     }
 
-    private bool TryGetSkillDefinitionFromAgentDefinition(string skillName, out SkillDefinitionSO skillDefinition)
+    private bool TryGetSkillDefinitionFromAgentDefinition(string normalizedSkillName, out SkillDefinitionSO skillDefinition)
     {
         skillDefinition = null;
 
@@ -1466,8 +1529,6 @@ public class AgentSkillGaugeUI : MonoBehaviour
 
         if (definition == null)
             return false;
-
-        string normalizedSkillName = NormalizeSkillKeyForMatch(skillName);
 
         if (TryGetSkillDefinitionFromList(definition.BasicSkills, normalizedSkillName, out skillDefinition))
             return true;
@@ -1495,7 +1556,7 @@ public class AgentSkillGaugeUI : MonoBehaviour
             if (skill == null)
                 continue;
 
-            if (SkillMatchesNormalizedName(skill, normalizedSkillName))
+            if (IsSkillDefinitionMatch(skill, normalizedSkillName))
             {
                 skillDefinition = skill;
                 return true;
@@ -1505,55 +1566,41 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return false;
     }
 
-    private bool SkillMatchesNormalizedName(SkillDefinitionSO skill, string normalizedSkillName)
+    private bool IsSkillDefinitionMatch(SkillDefinitionSO skillDefinition, string normalizedSkillName)
     {
-        if (skill == null)
+        if (skillDefinition == null)
             return false;
 
-        if (string.IsNullOrWhiteSpace(normalizedSkillName))
-            return false;
-
-        if (NormalizeSkillKeyForMatch(skill.RuntimeSkillKey) == normalizedSkillName)
+        if (IsSameNormalizedSkill(skillDefinition.RuntimeSkillKey, normalizedSkillName))
             return true;
 
-        if (NormalizeSkillKeyForMatch(skill.SkillId) == normalizedSkillName)
+        if (IsSameNormalizedSkill(skillDefinition.SkillId, normalizedSkillName))
             return true;
 
-        if (NormalizeSkillKeyForMatch(skill.CommandKeyword) == normalizedSkillName)
+        if (IsSameNormalizedSkill(skillDefinition.CommandKeyword, normalizedSkillName))
             return true;
 
-        if (NormalizeSkillKeyForMatch(skill.DisplayName) == normalizedSkillName)
+        if (IsSameNormalizedSkill(skillDefinition.DisplayName, normalizedSkillName))
             return true;
-
-        IReadOnlyList<string> aliases = skill.RuntimeSkillAliases;
-
-        if (aliases != null)
-        {
-            for (int i = 0; i < aliases.Count; i++)
-            {
-                if (NormalizeSkillKeyForMatch(aliases[i]) == normalizedSkillName)
-                    return true;
-            }
-        }
 
         return false;
     }
 
-    private string NormalizeSkillKeyForMatch(string value)
+    private bool IsSameNormalizedSkill(string sourceSkillName, string normalizedSkillName)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
+        if (string.IsNullOrWhiteSpace(sourceSkillName))
+            return false;
 
-        return value.Trim()
-            .ToLowerInvariant()
-            .Replace("_", "")
-            .Replace("-", "")
-            .Replace(" ", "");
+        return NormalizeSkillName(sourceSkillName) == normalizedSkillName;
     }
 
     private bool IsAutoActivatedSkill(string skillName)
     {
-        return NormalizeSkillName(skillName) == SkillJokerCard;
+        string skill = NormalizeSkillName(skillName);
+
+        return skill == SkillJokerCard ||
+               skill == SkillEscapePatternAnalysis ||
+               skill == SkillLinkedAnalysis;
     }
 
     private string NormalizeSkillName(string skillName)
@@ -1617,7 +1664,31 @@ public class AgentSkillGaugeUI : MonoBehaviour
         if (IsMisdirectionSkill(skill))
             return SkillMisdirection;
 
+        if (IsEscapePatternAnalysisSkill(skill))
+            return SkillEscapePatternAnalysis;
+
+        if (IsBehaviorBriefingSkill(skill))
+            return SkillBehaviorBriefing;
+
+        if (IsLinkedAnalysisSkill(skill))
+            return SkillLinkedAnalysis;
+
+        if (IsRouteIdentificationSkill(skill))
+            return SkillRouteIdentification;
+
         return NormalizeSkillKeyForMatch(skill);
+    }
+
+    private string NormalizeSkillKeyForMatch(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return "";
+
+        return skillName.Trim()
+            .ToLowerInvariant()
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(" ", "");
     }
 
     private bool IsAccessControlSkill(string skillName)
@@ -1870,6 +1941,63 @@ public class AgentSkillGaugeUI : MonoBehaviour
         return skill == LegacySkillHologram ||
                skill.Contains("hologram") ||
                skill.Contains("홀로그램");
+    }
+
+    private bool IsEscapePatternAnalysisSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillEscapePatternAnalysis ||
+               skill == "escape_pattern_analysis" ||
+               skill.Contains("escape pattern analysis") ||
+               skill.Contains("도주패턴분석") ||
+               skill.Contains("도주 패턴 분석");
+    }
+
+    private bool IsBehaviorBriefingSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillBehaviorBriefing ||
+               skill == "behavior_briefing" ||
+               skill.Contains("behavior briefing") ||
+               skill.Contains("행동브리핑") ||
+               skill.Contains("행동 브리핑");
+    }
+
+    private bool IsLinkedAnalysisSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillLinkedAnalysis ||
+               skill == "linked_analysis" ||
+               skill.Contains("linked analysis") ||
+               skill.Contains("연계분석") ||
+               skill.Contains("연계 분석");
+    }
+
+    private bool IsRouteIdentificationSkill(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName))
+            return false;
+
+        string skill = skillName.Trim().ToLower();
+
+        return skill == SkillRouteIdentification ||
+               skill == "route_identification" ||
+               skill.Contains("route identification") ||
+               skill.Contains("route analysis") ||
+               skill.Contains("동선파악") ||
+               skill.Contains("동선 파악");
     }
 
     private string GetSkillDisplayNameForUI(string skillName)

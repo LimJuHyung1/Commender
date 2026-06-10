@@ -34,6 +34,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
     [SerializeField] private bool writeLog = false;
 
     private readonly HashSet<Component> escapeSkillBlockSources = new HashSet<Component>();
+    private readonly HashSet<Component> targetSkillBlockSources = new HashSet<Component>();
 
     protected TargetController TargetController => targetController;
     protected TargetThreatTracker ThreatTracker => threatTracker;
@@ -43,6 +44,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
     protected bool WriteLog => writeLog;
 
     public bool IsEscapeSkillBlocked => escapeSkillBlockSources.Count > 0;
+    public bool IsTargetSkillBlocked => targetSkillBlockSources.Count > 0;
 
     public virtual TargetHologram CurrentHologram => null;
 
@@ -89,6 +91,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
     protected virtual void OnDisable()
     {
         ClearEscapeSkillBlockSources();
+        ClearTargetSkillBlockSources();
     }
 
     public void SetEscapeSkillBlocked(Component source, bool blocked)
@@ -124,6 +127,41 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
 
         if (writeLog)
             Debug.Log($"[TargetSkillController] 도주 스킬 차단 상태 초기화: {name}");
+    }
+
+    public void SetTargetSkillBlocked(Component source, bool blocked)
+    {
+        if (source == null)
+            return;
+
+        bool changed;
+
+        if (blocked)
+            changed = targetSkillBlockSources.Add(source);
+        else
+            changed = targetSkillBlockSources.Remove(source);
+
+        if (!changed)
+            return;
+
+        if (writeLog)
+        {
+            Debug.Log(
+                $"[TargetSkillController] 타겟 스킬 차단 상태 변경: {IsTargetSkillBlocked}, " +
+                $"Source={source.name}, Target={name}"
+            );
+        }
+    }
+
+    public void ClearTargetSkillBlockSources()
+    {
+        if (targetSkillBlockSources.Count <= 0)
+            return;
+
+        targetSkillBlockSources.Clear();
+
+        if (writeLog)
+            Debug.Log($"[TargetSkillController] 타겟 스킬 차단 상태 초기화: {name}");
     }
 
     public bool CanUseSkill(TargetSkillType skillType)
@@ -177,6 +215,9 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
             return true;
 
         if (targetController.IsExhausted)
+            return true;
+
+        if (IsTargetSkillBlocked)
             return true;
 
         return false;
@@ -281,6 +322,7 @@ public class TargetSkillController : MonoBehaviour, ITargetEscapeSkillBlockRecei
         bool destroyActiveHologram = true)
     {
         ClearEscapeSkillBlockSources();
+        ClearTargetSkillBlockSources();
     }
 
     public virtual bool TryUseBarricade(Vector3 escapeDestination)
