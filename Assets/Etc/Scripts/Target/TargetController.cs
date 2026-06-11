@@ -671,4 +671,21 @@ public class TargetController : MonoBehaviour, IGetHealthSystem, ISmokeDebuffRec
 
         healthSystem.Damage(extraDamage);
     }
+
+    public void ForceRecalculateEscapeRoute()
+    {
+        if (isCaught)
+            return;
+
+        if (healthSystem == null || healthSystem.IsDead())
+            return;
+
+        if (escapeMotor == null || threatTracker == null)
+            return;
+
+        if (!threatTracker.HasAnyThreat())
+            return;
+
+        escapeMotor.TryFleeFromThreats(true);
+    }
 }
