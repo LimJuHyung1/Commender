@@ -16,9 +16,11 @@ public class CameraOcclusionFader : MonoBehaviour
         public RendererFadeState(Renderer renderer)
         {
             Renderer = renderer;
-            OriginalSharedMaterials = renderer.sharedMaterials;
+            OriginalSharedMaterials = renderer != null ? renderer.sharedMaterials : null;
             OriginalPropertyBlock = new MaterialPropertyBlock();
-            renderer.GetPropertyBlock(OriginalPropertyBlock);
+
+            if (renderer != null)
+                renderer.GetPropertyBlock(OriginalPropertyBlock);
         }
     }
 
@@ -46,7 +48,7 @@ public class CameraOcclusionFader : MonoBehaviour
     private readonly List<Renderer> removeBuffer = new List<Renderer>();
 
     private readonly RaycastHit[] hitBuffer = new RaycastHit[64];
-    private readonly MaterialPropertyBlock runtimePropertyBlock = new MaterialPropertyBlock();
+    private MaterialPropertyBlock runtimePropertyBlock;
 
     private Transform manualTarget;
     private bool hasManualFocusPoint;
@@ -60,6 +62,7 @@ public class CameraOcclusionFader : MonoBehaviour
     private void Awake()
     {
         ResolveReferences();
+        EnsureRuntimePropertyBlock();
 
         if (occluderLayers.value == 0)
             occluderLayers = LayerMask.GetMask("Obstacle", "Wall");
@@ -152,6 +155,14 @@ public class CameraOcclusionFader : MonoBehaviour
 
         if (cameraFollow == null)
             cameraFollow = FindFirstObjectByType<AgentCameraFollow>();
+    }
+
+    private MaterialPropertyBlock EnsureRuntimePropertyBlock()
+    {
+        if (runtimePropertyBlock == null)
+            runtimePropertyBlock = new MaterialPropertyBlock();
+
+        return runtimePropertyBlock;
     }
 
     private bool TryGetCurrentFocusPoint(out Vector3 focusPoint, out Transform targetRoot)
@@ -266,23 +277,33 @@ public class CameraOcclusionFader : MonoBehaviour
 
     private void UpdateFadeStates()
     {
+        removeBuffer.Clear();
+
         foreach (Renderer blocker in currentBlockers)
         {
-            if (blocker == null)
+            if (!IsValidRenderer(blocker))
                 continue;
 
             RendererFadeState state = GetOrCreateState(blocker);
-            UpdateRendererAlpha(state, fadedAlpha);
-        }
 
-        removeBuffer.Clear();
+            if (state == null)
+            {
+                removeBuffer.Add(blocker);
+                continue;
+            }
+
+            bool applied = UpdateRendererAlpha(state, fadedAlpha);
+
+            if (!applied)
+                removeBuffer.Add(blocker);
+        }
 
         foreach (KeyValuePair<Renderer, RendererFadeState> pair in fadeStates)
         {
             Renderer renderer = pair.Key;
             RendererFadeState state = pair.Value;
 
-            if (renderer == null)
+            if (!IsValidRenderer(renderer) || state == null)
             {
                 removeBuffer.Add(renderer);
                 continue;
@@ -291,7 +312,13 @@ public class CameraOcclusionFader : MonoBehaviour
             if (currentBlockers.Contains(renderer))
                 continue;
 
-            UpdateRendererAlpha(state, 1f);
+            bool applied = UpdateRendererAlpha(state, 1f);
+
+            if (!applied)
+            {
+                removeBuffer.Add(renderer);
+                continue;
+            }
 
             if (state.CurrentAlpha >= 0.999f)
             {
@@ -302,12 +329,20 @@ public class CameraOcclusionFader : MonoBehaviour
 
         for (int i = 0; i < removeBuffer.Count; i++)
         {
-            fadeStates.Remove(removeBuffer[i]);
+            Renderer renderer = removeBuffer[i];
+
+            if (renderer == null)
+                continue;
+
+            fadeStates.Remove(renderer);
         }
     }
 
     private RendererFadeState GetOrCreateState(Renderer renderer)
     {
+        if (!IsValidRenderer(renderer))
+            return null;
+
         if (fadeStates.TryGetValue(renderer, out RendererFadeState state))
             return state;
 
@@ -317,10 +352,13 @@ public class CameraOcclusionFader : MonoBehaviour
         return state;
     }
 
-    private void UpdateRendererAlpha(RendererFadeState state, float targetAlpha)
+    private bool UpdateRendererAlpha(RendererFadeState state, float targetAlpha)
     {
-        if (state == null || state.Renderer == null)
-            return;
+        if (state == null)
+            return false;
+
+        if (!IsValidRenderer(state.Renderer))
+            return false;
 
         float deltaTime = Time.unscaledDeltaTime > 0f
             ? Time.unscaledDeltaTime
@@ -333,11 +371,15 @@ public class CameraOcclusionFader : MonoBehaviour
         );
 
         ApplyMaterialOverrideIfNeeded(state);
-        ApplyAlpha(state);
+
+        return ApplyAlpha(state);
     }
 
     private void ApplyMaterialOverrideIfNeeded(RendererFadeState state)
     {
+        if (state == null)
+            return;
+
         if (!useTransparentMaterialOverride)
             return;
 
@@ -345,6 +387,9 @@ public class CameraOcclusionFader : MonoBehaviour
             return;
 
         if (state.MaterialOverridden)
+            return;
+
+        if (!IsValidRenderer(state.Renderer))
             return;
 
         if (state.OriginalSharedMaterials == null || state.OriginalSharedMaterials.Length == 0)
@@ -361,24 +406,40 @@ public class CameraOcclusionFader : MonoBehaviour
         state.MaterialOverridden = true;
     }
 
-    private void ApplyAlpha(RendererFadeState state)
+    private bool ApplyAlpha(RendererFadeState state)
     {
-        runtimePropertyBlock.Clear();
-        state.Renderer.GetPropertyBlock(runtimePropertyBlock);
+        if (state == null)
+            return false;
 
-        Color color = GetRepresentativeColor(state.Renderer);
+        Renderer renderer = state.Renderer;
+
+        if (!IsValidRenderer(renderer))
+            return false;
+
+        MaterialPropertyBlock propertyBlock = EnsureRuntimePropertyBlock();
+
+        if (propertyBlock == null)
+            return false;
+
+        propertyBlock.Clear();
+
+        renderer.GetPropertyBlock(propertyBlock);
+
+        Color color = GetRepresentativeColor(renderer);
         color.a = state.CurrentAlpha;
 
-        runtimePropertyBlock.SetColor(BaseColorId, color);
-        runtimePropertyBlock.SetColor(ColorId, color);
-        runtimePropertyBlock.SetFloat(AlphaId, state.CurrentAlpha);
+        propertyBlock.SetColor(BaseColorId, color);
+        propertyBlock.SetColor(ColorId, color);
+        propertyBlock.SetFloat(AlphaId, state.CurrentAlpha);
 
-        state.Renderer.SetPropertyBlock(runtimePropertyBlock);
+        renderer.SetPropertyBlock(propertyBlock);
+
+        return true;
     }
 
     private Color GetRepresentativeColor(Renderer renderer)
     {
-        if (renderer == null)
+        if (!IsValidRenderer(renderer))
             return Color.white;
 
         Material[] materials = renderer.sharedMaterials;
@@ -405,15 +466,24 @@ public class CameraOcclusionFader : MonoBehaviour
 
     private void RestoreRenderer(RendererFadeState state)
     {
-        if (state == null || state.Renderer == null)
+        if (state == null)
+            return;
+
+        Renderer renderer = state.Renderer;
+
+        if (renderer == null)
             return;
 
         if (state.MaterialOverridden && state.OriginalSharedMaterials != null)
         {
-            state.Renderer.sharedMaterials = state.OriginalSharedMaterials;
+            renderer.sharedMaterials = state.OriginalSharedMaterials;
         }
 
-        state.Renderer.SetPropertyBlock(state.OriginalPropertyBlock);
+        if (state.OriginalPropertyBlock != null)
+            renderer.SetPropertyBlock(state.OriginalPropertyBlock);
+        else
+            renderer.SetPropertyBlock(null);
+
         state.CurrentAlpha = 1f;
         state.MaterialOverridden = false;
     }

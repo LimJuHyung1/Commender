@@ -19,7 +19,7 @@ public class DogHandler : AgentController
     [SerializeField] private float dogSpawnNavMeshSampleRadius = 2f;
 
     [Header("Target Visibility")]
-    [SerializeField] private bool registerSpawnedDogVisionToTargetVisibility = true;
+    [SerializeField] private bool registerDogVisionToTargetVisibility = true;
 
     [Header("Unlocked Skills")]
     [SerializeField] private bool treatUnlocked = false;
@@ -634,18 +634,15 @@ public class DogHandler : AgentController
         detectionDog.ApplyStats(stats);
         detectionDog.SetGuardInstinctMoveSpeedMultiplier(GuardInstinctMoveSpeedMultiplier);
 
-        RegisterSpawnedDogVisionToTargetVisibility();
+        RegisterDogVisionToTargetVisibility();
     }
 
-    private void RegisterSpawnedDogVisionToTargetVisibility()
+    private void RegisterDogVisionToTargetVisibility()
     {
-        if (!registerSpawnedDogVisionToTargetVisibility)
+        if (!registerDogVisionToTargetVisibility)
             return;
 
         if (detectionDog == null)
-            return;
-
-        if (detectionDog.transform.IsChildOf(transform))
             return;
 
         VisionSensor dogSensor = detectionDog.GetVisionSensor();
@@ -667,7 +664,7 @@ public class DogHandler : AgentController
         targetVisibility.RegisterSensor(dogSensor);
         registeredTargetVisibility = targetVisibility;
 
-        Debug.Log($"[DogHandler {AgentID}] 독립 생성된 탐지견 VisionSensor를 TargetVisibilityController에 등록했습니다.");
+        Debug.Log($"[DogHandler {AgentID}] 탐지견 VisionSensor를 TargetVisibilityController에 등록했습니다.");
     }
 
     private bool HasValidDog()
