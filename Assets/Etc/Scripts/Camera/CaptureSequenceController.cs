@@ -12,7 +12,12 @@ public class CaptureSequenceController : MonoBehaviour
         public float moveTime;
         public float holdTime;
 
-        public CameraShot(Vector3 position, Quaternion rotation, float cameraSize, float moveTime, float holdTime)
+        public CameraShot(
+            Vector3 position,
+            Quaternion rotation,
+            float cameraSize,
+            float moveTime,
+            float holdTime)
         {
             this.position = position;
             this.rotation = rotation;
@@ -45,6 +50,7 @@ public class CaptureSequenceController : MonoBehaviour
     [SerializeField] private Camera mainCamera;
     [SerializeField] private AgentCameraFollow cameraFollow;
     [SerializeField] private SkillCameraDirector skillCameraDirector;
+    [SerializeField] private CameraOcclusionFader cameraOcclusionFader;
 
     private bool isPlaying;
 
@@ -61,6 +67,7 @@ public class CaptureSequenceController : MonoBehaviour
 
     private void OnDisable()
     {
+        ClearOcclusionTarget();
         RestoreWorldTimeScale();
     }
 
@@ -95,6 +102,9 @@ public class CaptureSequenceController : MonoBehaviour
         if (cameraFollow != null)
             cameraFollow.enabled = false;
 
+        if (cameraOcclusionFader != null)
+            cameraOcclusionFader.SetManualTarget(capturedTarget.transform);
+
         if (catchingAgent == null)
             catchingAgent = FindNearestAgent(capturedTarget.transform.position);
 
@@ -118,6 +128,7 @@ public class CaptureSequenceController : MonoBehaviour
         }
 
         RestoreWorldTimeScale();
+        ClearOcclusionTarget();
 
         if (cameraFollow != null && wasCameraFollowEnabled)
             cameraFollow.enabled = true;
@@ -141,6 +152,12 @@ public class CaptureSequenceController : MonoBehaviour
 
         if (skillCameraDirector == null)
             skillCameraDirector = FindFirstObjectByType<SkillCameraDirector>();
+
+        if (cameraOcclusionFader == null && mainCamera != null)
+            cameraOcclusionFader = mainCamera.GetComponent<CameraOcclusionFader>();
+
+        if (cameraOcclusionFader == null)
+            cameraOcclusionFader = FindFirstObjectByType<CameraOcclusionFader>();
     }
 
     private void ApplyWorldSlowMotion()
@@ -166,6 +183,14 @@ public class CaptureSequenceController : MonoBehaviour
         Time.fixedDeltaTime = previousFixedDeltaTime;
 
         timeScaleChanged = false;
+    }
+
+    private void ClearOcclusionTarget()
+    {
+        if (cameraOcclusionFader == null)
+            return;
+
+        cameraOcclusionFader.ClearManualTarget();
     }
 
     private CameraShot[] BuildCameraShots(AgentController catchingAgent, Transform capturedTarget)
@@ -202,13 +227,38 @@ public class CaptureSequenceController : MonoBehaviour
 
         return new CameraShot[]
         {
-            CreateShot(overviewPosition, overviewLook, OverviewCameraSize, OverviewMoveTime, OverviewHoldTime),
-            CreateShot(targetPosition, targetLook, TargetCameraSize, TargetMoveTime, TargetHoldTime),
-            CreateShot(resultPosition, resultLook, ResultCameraSize, ResultMoveTime, ResultHoldTime)
+            CreateShot(
+                overviewPosition,
+                overviewLook,
+                OverviewCameraSize,
+                OverviewMoveTime,
+                OverviewHoldTime
+            ),
+
+            CreateShot(
+                targetPosition,
+                targetLook,
+                TargetCameraSize,
+                TargetMoveTime,
+                TargetHoldTime
+            ),
+
+            CreateShot(
+                resultPosition,
+                resultLook,
+                ResultCameraSize,
+                ResultMoveTime,
+                ResultHoldTime
+            )
         };
     }
 
-    private CameraShot CreateShot(Vector3 desiredPosition, Vector3 lookPoint, float cameraSize, float moveTime, float holdTime)
+    private CameraShot CreateShot(
+        Vector3 desiredPosition,
+        Vector3 lookPoint,
+        float cameraSize,
+        float moveTime,
+        float holdTime)
     {
         Vector3 resolvedPosition = ResolveCameraPosition(desiredPosition, lookPoint);
         Quaternion rotation = GetLookRotation(resolvedPosition, lookPoint);
@@ -238,9 +288,19 @@ public class CaptureSequenceController : MonoBehaviour
             float t = Mathf.Clamp01(elapsed / duration);
             float smoothT = t * t * (3f - 2f * t);
 
-            mainCamera.transform.position = Vector3.Lerp(startPosition, shot.position, smoothT);
-            mainCamera.transform.rotation = Quaternion.Slerp(startRotation, shot.rotation, smoothT);
-            SetCameraSize(Mathf.Lerp(startCameraSize, shot.cameraSize, smoothT));
+            mainCamera.transform.position =
+                Vector3.Lerp(startPosition, shot.position, smoothT);
+
+            mainCamera.transform.rotation =
+                Quaternion.Slerp(startRotation, shot.rotation, smoothT);
+
+            SetCameraSize(
+                Mathf.Lerp(
+                    startCameraSize,
+                    shot.cameraSize,
+                    smoothT
+                )
+            );
 
             yield return null;
         }
@@ -281,7 +341,11 @@ public class CaptureSequenceController : MonoBehaviour
         if (!blocked)
             return desiredPosition;
 
-        float adjustedDistance = Mathf.Max(MinimumCameraDistance, hit.distance - CameraWallPadding);
+        float adjustedDistance = Mathf.Max(
+            MinimumCameraDistance,
+            hit.distance - CameraWallPadding
+        );
+
         return lookPoint + normalizedDirection * adjustedDistance;
     }
 
@@ -417,7 +481,9 @@ public class CaptureSequenceController : MonoBehaviour
             if (agents[i] == null)
                 continue;
 
-            float distance = Vector3.SqrMagnitude(agents[i].transform.position - targetPosition);
+            float distance = Vector3.SqrMagnitude(
+                agents[i].transform.position - targetPosition
+            );
 
             if (distance < nearestDistance)
             {

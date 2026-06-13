@@ -46,6 +46,7 @@ public class SkillCameraDirector : MonoBehaviour
     [SerializeField] private Camera mainCamera;
     [SerializeField] private AgentCameraFollow cameraFollow;
     [SerializeField] private CaptureSequenceController captureSequenceController;
+    [SerializeField] private CameraOcclusionFader cameraOcclusionFader;
 
     [Header("Option")]
     [SerializeField] private bool enableSkillCamera = true;
@@ -151,6 +152,7 @@ public class SkillCameraDirector : MonoBehaviour
             currentRoutine = null;
         }
 
+        ClearOcclusionTarget();
         RestoreCameraFollow();
         RestoreWorldTimeScale();
 
@@ -426,6 +428,14 @@ public class SkillCameraDirector : MonoBehaviour
         if (cameraFollow != null)
             cameraFollow.enabled = false;
 
+        ApplyOcclusionTarget(
+            mode,
+            user,
+            objectTarget,
+            hasExplicitFocusPoint,
+            explicitFocusPoint
+        );
+
         float slowScale = GetSlowTimeScale(mode);
         float slowDuration = GetSlowDuration(mode);
 
@@ -618,6 +628,7 @@ public class SkillCameraDirector : MonoBehaviour
 
     private void FinishPlayback()
     {
+        ClearOcclusionTarget();
         RestoreCameraFollow();
         RestoreWorldTimeScale();
 
@@ -630,6 +641,69 @@ public class SkillCameraDirector : MonoBehaviour
     {
         if (cameraFollow != null && wasCameraFollowEnabledBeforePlay)
             cameraFollow.enabled = true;
+    }
+
+    private void ApplyOcclusionTarget(
+        SkillCameraFocusMode mode,
+        Transform user,
+        Transform objectTarget,
+        bool hasExplicitFocusPoint,
+        Vector3 explicitFocusPoint)
+    {
+        if (cameraOcclusionFader == null)
+            return;
+
+        if (hasExplicitFocusPoint)
+        {
+            cameraOcclusionFader.SetManualFocusPoint(explicitFocusPoint);
+            return;
+        }
+
+        switch (mode)
+        {
+            case SkillCameraFocusMode.UserOnly:
+            case SkillCameraFocusMode.FollowUser:
+            case SkillCameraFocusMode.StrongTargetEvent:
+                cameraOcclusionFader.SetManualTarget(user);
+                break;
+
+            case SkillCameraFocusMode.ObjectOnly:
+            case SkillCameraFocusMode.FollowObject:
+                cameraOcclusionFader.SetManualTarget(objectTarget);
+                break;
+
+            case SkillCameraFocusMode.UserAndObject:
+                if (user != null && objectTarget != null)
+                {
+                    Vector3 centerPoint = (GetFocusPoint(user) + GetFocusPoint(objectTarget)) * 0.5f;
+                    cameraOcclusionFader.SetManualFocusPoint(centerPoint);
+                }
+                else if (objectTarget != null)
+                {
+                    cameraOcclusionFader.SetManualTarget(objectTarget);
+                }
+                else if (user != null)
+                {
+                    cameraOcclusionFader.SetManualTarget(user);
+                }
+                else
+                {
+                    cameraOcclusionFader.ClearManualTarget();
+                }
+                break;
+
+            default:
+                cameraOcclusionFader.ClearManualTarget();
+                break;
+        }
+    }
+
+    private void ClearOcclusionTarget()
+    {
+        if (cameraOcclusionFader == null)
+            return;
+
+        cameraOcclusionFader.ClearManualTarget();
     }
 
     private bool IsObjectOnlyRequest(
@@ -973,6 +1047,12 @@ public class SkillCameraDirector : MonoBehaviour
 
         if (captureSequenceController == null)
             captureSequenceController = FindFirstObjectByType<CaptureSequenceController>();
+
+        if (cameraOcclusionFader == null && mainCamera != null)
+            cameraOcclusionFader = mainCamera.GetComponent<CameraOcclusionFader>();
+
+        if (cameraOcclusionFader == null)
+            cameraOcclusionFader = FindFirstObjectByType<CameraOcclusionFader>();
     }
 
     private void ApplyWorldSlowMotion(float timeScale)
@@ -1151,6 +1231,7 @@ public class SkillCameraDirector : MonoBehaviour
             currentRoutine = null;
         }
 
+        ClearOcclusionTarget();
         RestoreCameraFollow();
         RestoreWorldTimeScale();
 
@@ -1167,6 +1248,7 @@ public class SkillCameraDirector : MonoBehaviour
             currentRoutine = null;
         }
 
+        ClearOcclusionTarget();
         RestoreWorldTimeScale();
 
         isPlaying = false;

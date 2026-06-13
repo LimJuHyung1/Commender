@@ -13,7 +13,8 @@ public enum CommanderAgentType
     Observer,
     Engineer,
     Trickster,
-    Profiler
+    Profiler,
+    DogHandler
 }
 
 public enum CommanderTargetType
@@ -341,6 +342,11 @@ public class UpgradeDefinition : ScriptableObject
 
             case "profiler":
                 return CommanderAgentType.Profiler;
+
+            case "dog_handler":
+            case "doghandler":
+            case "detection_dog_handler":
+                return CommanderAgentType.DogHandler;
         }
 
         return CommanderAgentType.None;
@@ -364,6 +370,9 @@ public class UpgradeDefinition : ScriptableObject
 
             case CommanderAgentType.Profiler:
                 return "profiler";
+
+            case CommanderAgentType.DogHandler:
+                return "dog_handler";
         }
 
         return "";

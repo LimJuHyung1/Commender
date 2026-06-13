@@ -318,12 +318,29 @@ public class CommanderCommandProcessor : MonoBehaviour
                     Debug.Log("[Commander] 조커 카드는 마술사 게이지가 가득 차면 자동 발동되므로 직접 명령하지 않습니다.");
                     validatedSkill = "hold";
                 }
+                else if (commandValidator.IsGuardInstinctInstruction(originalInstruction))
+                {
+                    Debug.Log("[Commander] 경계 본능은 패시브 스킬이므로 직접 명령하지 않습니다.");
+                    validatedSkill = "hold";
+                }
                 else if (TryResolveSkillFromAgentDefinitionInstruction(
                              targetAgent,
                              originalInstruction,
                              out string resolvedSkillFromDefinition))
                 {
                     validatedSkill = resolvedSkillFromDefinition;
+                }
+                else if (commandValidator.IsDogDeployInstruction(originalInstruction))
+                {
+                    validatedSkill = "dogdeploy";
+                }
+                else if (commandValidator.IsTreatInstruction(originalInstruction))
+                {
+                    validatedSkill = "treat";
+                }
+                else if (commandValidator.IsOffLeashInstruction(originalInstruction))
+                {
+                    validatedSkill = "offleash";
                 }
                 else if (commandValidator.IsLookAroundInstruction(originalInstruction))
                 {
@@ -518,6 +535,26 @@ public class CommanderCommandProcessor : MonoBehaviour
                    $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"misdirection\" }} ] }}";
         }
 
+        if (targetAgent is DogHandler)
+        {
+            return commonRules +
+                   "11. Allowed skills for this agent are only \"dogdeploy\", \"treat\", and \"offleash\".\n" +
+                   "12. Use \"dogdeploy\" ONLY when the instruction explicitly asks for 탐지견 배치, 탐지견배치, 배치, dog deploy, detection dog deploy, or deploy dog. Dog deploy requires coordinates.\n" +
+                   "13. Use \"treat\" ONLY when the instruction explicitly asks for 간식, 탐지견 간식, treat, or dog treat. Treat does not require coordinates, so use pos {\"x\":0.0,\"z\":0.0}.\n" +
+                   "14. Use \"offleash\" ONLY when the instruction explicitly asks for 오프리쉬, offleash, off leash, or off-leash. Off leash does not require coordinates, so use pos {\"x\":0.0,\"z\":0.0}.\n" +
+                   "15. Guard Instinct is a passive skill. Never output \"guardinstinct\" as a command.\n" +
+                   "16. If the user asks to use Guard Instinct or 경계 본능, output skill \"hold\".\n\n" +
+                   "OUTPUT FORMAT:\n" +
+                   "{ \"commands\": [ { \"id\": 0, \"delaySeconds\": 0.0, \"pos\": {\"x\": 0.0, \"z\": 0.0}, \"skill\": \"\" } ] }\n\n" +
+                   "EXAMPLES:\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 10,5에 탐지견 배치\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 10.0, \"z\": 5.0}}, \"skill\": \"dogdeploy\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 간식\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"treat\" }} ] }}\n\n" +
+                   $"Input: Agent {targetAgent.AgentID} Instruction: 오프리쉬\n" +
+                   $"Output:\n{{ \"commands\": [ {{ \"id\": {targetAgent.AgentID}, \"delaySeconds\": 0.0, \"pos\": {{\"x\": 0.0, \"z\": 0.0}}, \"skill\": \"offleash\" }} ] }}";
+        }
+
         return commonRules;
     }
 
@@ -570,6 +607,15 @@ public class CommanderCommandProcessor : MonoBehaviour
             return skill == "fakebox" ||
                    (skill == "vanishing" && trickster != null && trickster.CanUseVanishingSkill) ||
                    (skill == "misdirection" && trickster != null && trickster.CanUseMisdirectionSkill);
+        }
+
+        if (agent is DogHandler)
+        {
+            DogHandler dogHandler = agent as DogHandler;
+
+            return skill == "dogdeploy" ||
+                   (skill == "treat" && dogHandler != null && dogHandler.IsTreatUnlocked) ||
+                   (skill == "offleash" && dogHandler != null && dogHandler.IsOffLeashUnlocked);
         }
 
         return true;
@@ -1272,6 +1318,18 @@ public class CommanderCommandProcessor : MonoBehaviour
         if (commandValidator.IsMisdirectionInstruction(source))
             return true;
 
+        if (commandValidator.IsDogDeployInstruction(source))
+            return true;
+
+        if (commandValidator.IsGuardInstinctInstruction(source))
+            return true;
+
+        if (commandValidator.IsTreatInstruction(source))
+            return true;
+
+        if (commandValidator.IsOffLeashInstruction(source))
+            return true;
+
         string normalized = source.Trim().ToLower();
 
         return ContainsAnyKeyword(
@@ -1418,7 +1476,38 @@ public class CommanderCommandProcessor : MonoBehaviour
 "misdirection",
 "mis direction",
 "미스디렉션",
-"미스 디렉션"
+"미스 디렉션",
+
+"dogdeploy",
+"dog_deploy",
+"dog deploy",
+"detectiondogdeploy",
+"detection dog deploy",
+"deploy dog",
+"탐지견 배치",
+"탐지견배치",
+"탐지견",
+"배치",
+
+"guardinstinct",
+"guard_instinct",
+"guard instinct",
+"dog guard instinct",
+"경계 본능",
+"경계본능",
+
+"treat",
+"dog treat",
+"dog_treat",
+"간식",
+"탐지견 간식",
+"탐지견간식",
+
+"offleash",
+"off_leash",
+"off leash",
+"off-leash",
+"오프리쉬"
         );
     }
 
@@ -1572,6 +1661,12 @@ public class CommanderCommandProcessor : MonoBehaviour
 
         if (validatedSkill == "observationsupport")
             return commandValidator.IsObservationSupportInstruction(originalInstruction);
+
+        if (validatedSkill == "treat")
+            return commandValidator.IsTreatInstruction(originalInstruction);
+
+        if (validatedSkill == "offleash")
+            return commandValidator.IsOffLeashInstruction(originalInstruction);
 
         return false;
     }

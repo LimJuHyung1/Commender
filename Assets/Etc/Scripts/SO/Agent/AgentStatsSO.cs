@@ -7,7 +7,8 @@ public enum AgentRole
     Observer,
     Engineer,
     Trickster,
-    Profiler
+    Profiler,
+    DogHandler
 }
 
 [CreateAssetMenu(fileName = "AgentStats", menuName = "Commander/Agent Stats")]
@@ -139,6 +140,46 @@ public class AgentStatsSO : ScriptableObject
     [Header("트릭스터 미스디렉션 설정")]
     public float misdirectionDuration = 10f;
 
+    [Header("탐지견 핸들러 스킬 게이지")]
+    public float treatSkillGaugeMax = 75f;
+    public float offLeashSkillGaugeMax = 100f;
+
+    [Header("탐지견 기본 설정")]
+    public float detectionDogMoveSpeed = 4.5f;
+    public float detectionDogViewRadius = 7.5f;
+
+    [Range(1f, 360f)]
+    public float detectionDogViewAngle = 90f;
+
+    [Header("탐지견 배치 설정")]
+    public float detectionDogFollowStartDistance = 2.5f;
+    public float detectionDogFollowStopDistance = 1.25f;
+    public float detectionDogArrivalDistance = 0.35f;
+    public float detectionDogGuardScanTurnSpeed = 120f;
+    public float detectionDogHowlingDuration = 1.25f;
+
+    [Header("탐지견 경계 본능 설정")]
+    public int dogGuardInstinctMaxStack = 5;
+    public float dogGuardInstinctSpeedBonusPerStack = 0.05f;
+    public bool resetDogGuardInstinctOnSkillGaugeReset = true;
+
+    [Header("탐지견 간식 설정")]
+    public float treatDuration = 20f;
+    public float treatMoveSpeedMultiplier = 1.5f;
+    public float treatViewRadiusMultiplier = 1.5f;
+    public float treatViewAngleBonus = 20f;
+
+    [Header("탐지견 오프리쉬 설정")]
+    public float offLeashDuration = 30f;
+    public float offLeashWaypointReachDistance = 0.7f;
+    public float offLeashFallbackSearchRadius = 25f;
+    public int offLeashPointSearchTries = 24;
+
+    [Header("탐지견 위치 공유 설정")]
+    public float dogReportCooldown = 0.5f;
+    public float dogSharedTargetMoveSpeedMultiplier = 1f;
+    public bool includeDogHandlerInDogReport = true;
+
     [Header("Legacy Trickster Settings")]
     [HideInInspector] public float decoyDuration = 5f;
     [HideInInspector] public float phantomDuration = 5f;
@@ -171,6 +212,7 @@ public class AgentStatsSO : ScriptableObject
         angularSpeed = Mathf.Max(0f, angularSpeed);
 
         viewRadius = Mathf.Max(0f, viewRadius);
+        viewAngle = Mathf.Clamp(viewAngle, 1f, 360f);
 
         spotLightIntensity = Mathf.Max(0f, spotLightIntensity);
         spotLightRange = Mathf.Max(0f, spotLightRange);
@@ -250,6 +292,39 @@ public class AgentStatsSO : ScriptableObject
         vanishingRecoveryLockSeconds = Mathf.Max(0f, vanishingRecoveryLockSeconds);
         misdirectionDuration = Mathf.Max(0f, misdirectionDuration);
 
+        treatSkillGaugeMax = Mathf.Max(0f, treatSkillGaugeMax);
+        offLeashSkillGaugeMax = Mathf.Max(0f, offLeashSkillGaugeMax);
+
+        detectionDogMoveSpeed = Mathf.Max(0.01f, detectionDogMoveSpeed);
+        detectionDogViewRadius = Mathf.Max(0.1f, detectionDogViewRadius);
+        detectionDogViewAngle = Mathf.Clamp(detectionDogViewAngle, 1f, 360f);
+
+        detectionDogFollowStartDistance = Mathf.Max(0.1f, detectionDogFollowStartDistance);
+        detectionDogFollowStopDistance = Mathf.Clamp(
+            detectionDogFollowStopDistance,
+            0.05f,
+            detectionDogFollowStartDistance
+        );
+        detectionDogArrivalDistance = Mathf.Max(0.01f, detectionDogArrivalDistance);
+        detectionDogGuardScanTurnSpeed = Mathf.Max(0f, detectionDogGuardScanTurnSpeed);
+        detectionDogHowlingDuration = Mathf.Max(0f, detectionDogHowlingDuration);
+
+        dogGuardInstinctMaxStack = Mathf.Max(0, dogGuardInstinctMaxStack);
+        dogGuardInstinctSpeedBonusPerStack = Mathf.Max(0f, dogGuardInstinctSpeedBonusPerStack);
+
+        treatDuration = Mathf.Max(0f, treatDuration);
+        treatMoveSpeedMultiplier = Mathf.Max(1f, treatMoveSpeedMultiplier);
+        treatViewRadiusMultiplier = Mathf.Max(1f, treatViewRadiusMultiplier);
+        treatViewAngleBonus = Mathf.Clamp(treatViewAngleBonus, -359f, 359f);
+
+        offLeashDuration = Mathf.Max(0f, offLeashDuration);
+        offLeashWaypointReachDistance = Mathf.Max(0.05f, offLeashWaypointReachDistance);
+        offLeashFallbackSearchRadius = Mathf.Max(1f, offLeashFallbackSearchRadius);
+        offLeashPointSearchTries = Mathf.Max(1, offLeashPointSearchTries);
+
+        dogReportCooldown = Mathf.Max(0f, dogReportCooldown);
+        dogSharedTargetMoveSpeedMultiplier = Mathf.Max(0.01f, dogSharedTargetMoveSpeedMultiplier);
+
         decoyDuration = Mathf.Max(0f, decoyDuration);
         phantomDuration = Mathf.Max(0f, phantomDuration);
         phantomThreatWeight = Mathf.Max(0f, phantomThreatWeight);
@@ -321,6 +396,12 @@ public class AgentStatsSO : ScriptableObject
         if (IsMisdirectionSkill(skill))
             return Mathf.Max(0f, misdirectionSkillGaugeMax);
 
+        if (IsTreatSkill(skill))
+            return Mathf.Max(0f, treatSkillGaugeMax);
+
+        if (IsOffLeashSkill(skill))
+            return Mathf.Max(0f, offLeashSkillGaugeMax);
+
         if (IsNoisemakerSkill(skill))
             return Mathf.Max(0f, noisemakerSkillGaugeMax);
 
@@ -374,6 +455,13 @@ public class AgentStatsSO : ScriptableObject
                     misdirectionSkillGaugeMax
                 );
 
+            case AgentRole.DogHandler:
+                return Mathf.Max(
+                    0f,
+                    treatSkillGaugeMax,
+                    offLeashSkillGaugeMax
+                );
+
             default:
                 return Mathf.Max(
                     0f,
@@ -391,6 +479,8 @@ public class AgentStatsSO : ScriptableObject
                     jokerCardSkillGaugeMax,
                     vanishingSkillGaugeMax,
                     misdirectionSkillGaugeMax,
+                    treatSkillGaugeMax,
+                    offLeashSkillGaugeMax,
                     noisemakerSkillGaugeMax,
                     hologramSkillGaugeMax
                 );
@@ -406,7 +496,9 @@ public class AgentStatsSO : ScriptableObject
 
         return IsPositionShareSkill(skill) ||
                IsEscapeBlockSkill(skill) ||
-               IsPatrolSkill(skill);
+               IsPatrolSkill(skill) ||
+               IsDogDeploySkill(skill) ||
+               IsDogGuardInstinctSkill(skill);
     }
 
     private string NormalizeSkillName(string skillName)
@@ -624,6 +716,61 @@ public class AgentStatsSO : ScriptableObject
                skill.Contains("mis direction") ||
                skill.Contains("미스디렉션") ||
                skill.Contains("미스 디렉션");
+    }
+
+    private bool IsDogDeploySkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("dogdeploy") ||
+               skill.Contains("dog_deploy") ||
+               skill.Contains("dog deploy") ||
+               skill.Contains("detectiondogdeploy") ||
+               skill.Contains("detection dog deploy") ||
+               skill.Contains("deploydog") ||
+               skill.Contains("deploy dog") ||
+               skill.Contains("탐지견배치") ||
+               skill.Contains("탐지견 배치") ||
+               skill == "배치";
+    }
+
+    private bool IsDogGuardInstinctSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("guardinstinct") ||
+               skill.Contains("guard_instinct") ||
+               skill.Contains("guard instinct") ||
+               skill.Contains("dogguardinstinct") ||
+               skill.Contains("dog guard instinct") ||
+               skill.Contains("경계본능") ||
+               skill.Contains("경계 본능");
+    }
+
+    private bool IsTreatSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("treat") ||
+               skill.Contains("dogtreat") ||
+               skill.Contains("dog_treat") ||
+               skill.Contains("dog treat") ||
+               skill.Contains("간식");
+    }
+
+    private bool IsOffLeashSkill(string skill)
+    {
+        if (string.IsNullOrWhiteSpace(skill))
+            return false;
+
+        return skill.Contains("offleash") ||
+               skill.Contains("off_leash") ||
+               skill.Contains("off-leash") ||
+               skill.Contains("off leash") ||
+               skill.Contains("오프리쉬");
     }
 
     private bool IsLegacySlowTrapSkill(string skill)

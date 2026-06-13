@@ -41,6 +41,11 @@ public sealed class CommandValidator
     private const string SkillBehaviorBriefing = "behavior_briefing";
     private const string SkillRouteIdentification = "route_identification";
 
+    private const string SkillDogDeploy = "dogdeploy";
+    private const string SkillGuardInstinct = "guardinstinct";
+    private const string SkillTreat = "treat";
+    private const string SkillOffLeash = "offleash";
+
     private static readonly Regex CoordinateRegex =
         new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
@@ -279,41 +284,88 @@ public sealed class CommandValidator
     };
 
     private static readonly string[] VanishingInstructionKeywords =
-{
-    "vanishing",
-    "vanish",
-    "배니싱"
-};
+    {
+        "vanishing",
+        "vanish",
+        "배니싱"
+    };
 
     private static readonly string[] MisdirectionInstructionKeywords =
     {
-    "misdirection",
-    "mis direction",
-    "미스디렉션",
-    "미스 디렉션"
-};
+        "misdirection",
+        "mis direction",
+        "미스디렉션",
+        "미스 디렉션"
+    };
 
     private static readonly string[] BehaviorBriefingInstructionKeywords =
-{
-    "behavior_briefing",
-    "behavior briefing",
-    "briefing",
-    "행동 브리핑",
-    "행동브리핑",
-    "브리핑"
-};
+    {
+        "behavior_briefing",
+        "behavior briefing",
+        "briefing",
+        "행동 브리핑",
+        "행동브리핑",
+        "브리핑"
+    };
 
     private static readonly string[] RouteIdentificationInstructionKeywords =
     {
-    "route_identification",
-    "route identification",
-    "route analysis",
-    "route scan",
-    "동선 파악",
-    "동선파악",
-    "동선 분석",
-    "동선분석"
+        "route_identification",
+        "route identification",
+        "route analysis",
+        "route scan",
+        "동선 파악",
+        "동선파악",
+        "동선 분석",
+        "동선분석"
+    };
+
+    private static readonly string[] DogDeployInstructionKeywords =
+{
+    "dogdeploy",
+    "dog_deploy",
+    "dog deploy",
+    "detectiondogdeploy",
+    "detection dog deploy",
+    "deploy dog",
+
+    "탐지견 배치",
+    "탐지견배치",
+    "탐지견 보내",
+    "탐지견보내",
+
+    "탐지견",
+    "배치"
 };
+
+    private static readonly string[] GuardInstinctInstructionKeywords =
+    {
+        "guardinstinct",
+        "guard_instinct",
+        "guard instinct",
+        "dog guard instinct",
+        "경계 본능",
+        "경계본능"
+    };
+
+    private static readonly string[] TreatInstructionKeywords =
+    {
+        "treat",
+        "dog treat",
+        "dog_treat",
+        "간식",
+        "탐지견 간식",
+        "탐지견간식"
+    };
+
+    private static readonly string[] OffLeashInstructionKeywords =
+    {
+        "offleash",
+        "off_leash",
+        "off leash",
+        "off-leash",
+        "오프리쉬"
+    };
 
     private static readonly string[] LookAroundInstructionKeywords =
     {
@@ -376,6 +428,21 @@ public sealed class CommandValidator
             Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
             return SkillHold;
         }
+
+        if (IsDogDeployInstruction(normalizedInstruction))
+            return SkillDogDeploy;
+
+        if (IsGuardInstinctInstruction(normalizedInstruction))
+        {
+            Debug.LogWarning("[Commander] 경계 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
+        if (IsTreatInstruction(normalizedInstruction))
+            return SkillTreat;
+
+        if (IsOffLeashInstruction(normalizedInstruction))
+            return SkillOffLeash;
 
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
@@ -446,6 +513,21 @@ public sealed class CommandValidator
             return SkillHold;
         }
 
+        if (ContainsAny(normalizedSkill, SkillDogDeploy, "dog_deploy", "dog deploy", "detection dog deploy", "deploy dog"))
+            return MatchOrHold(normalizedInstruction, DogDeployInstructionKeywords, SkillDogDeploy, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillGuardInstinct, "guard_instinct", "guard instinct", "dog guard instinct"))
+        {
+            Debug.LogWarning("[Commander] 경계 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
+        if (ContainsAny(normalizedSkill, SkillTreat, "dog_treat", "dog treat"))
+            return MatchOrHold(normalizedInstruction, TreatInstructionKeywords, SkillTreat, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillOffLeash, "off_leash", "off leash", "off-leash"))
+            return MatchOrHold(normalizedInstruction, OffLeashInstructionKeywords, SkillOffLeash, aiSkill, originalInstruction);
+
         if (ContainsAny(normalizedSkill, SkillDemolition, "demolish", "remove obstacle"))
             return MatchOrHold(normalizedInstruction, DemolitionInstructionKeywords, SkillDemolition, aiSkill, originalInstruction);
 
@@ -468,6 +550,7 @@ public sealed class CommandValidator
             return MatchOrHold(normalizedInstruction, MisdirectionInstructionKeywords, SkillMisdirection, aiSkill, originalInstruction);
 
         if (ContainsAny(normalizedSkill, SkillBehaviorBriefing, "behavior briefing"))
+        {
             return MatchOrHold(
                 normalizedInstruction,
                 BehaviorBriefingInstructionKeywords,
@@ -475,8 +558,10 @@ public sealed class CommandValidator
                 aiSkill,
                 originalInstruction
             );
+        }
 
         if (ContainsAny(normalizedSkill, SkillRouteIdentification, "route identification", "route analysis"))
+        {
             return MatchOrHold(
                 normalizedInstruction,
                 RouteIdentificationInstructionKeywords,
@@ -484,6 +569,7 @@ public sealed class CommandValidator
                 aiSkill,
                 originalInstruction
             );
+        }
 
         if (ContainsAny(normalizedSkill, SkillNoiseMaker, "noise"))
             return MatchOrHold(normalizedInstruction, NoiseMakerInstructionKeywords, SkillNoiseMaker, aiSkill, originalInstruction);
@@ -507,6 +593,21 @@ public sealed class CommandValidator
                 Debug.LogWarning("[Commander] 추적 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
                 return SkillHold;
             }
+
+            if (IsDogDeployInstruction(normalizedInstruction))
+                return SkillDogDeploy;
+
+            if (IsGuardInstinctInstruction(normalizedInstruction))
+            {
+                Debug.LogWarning("[Commander] 경계 본능은 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+                return SkillHold;
+            }
+
+            if (IsTreatInstruction(normalizedInstruction))
+                return SkillTreat;
+
+            if (IsOffLeashInstruction(normalizedInstruction))
+                return SkillOffLeash;
 
             if (IsReconnaissanceInstruction(normalizedInstruction))
                 return SkillReconnaissance;
@@ -572,6 +673,26 @@ public sealed class CommandValidator
         return ContainsAny(Normalize(source), TrackingInstinctInstructionKeywords);
     }
 
+    public bool IsDogDeployInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), DogDeployInstructionKeywords);
+    }
+
+    public bool IsGuardInstinctInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), GuardInstinctInstructionKeywords);
+    }
+
+    public bool IsTreatInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), TreatInstructionKeywords);
+    }
+
+    public bool IsOffLeashInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), OffLeashInstructionKeywords);
+    }
+
     public bool IsReconnaissanceInstruction(string source)
     {
         return ContainsAny(Normalize(source), ReconnaissanceInstructionKeywords);
@@ -620,6 +741,26 @@ public sealed class CommandValidator
     public bool IsJokerCardInstruction(string source)
     {
         return ContainsAny(Normalize(source), JokerCardInstructionKeywords);
+    }
+
+    public bool IsVanishingInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), VanishingInstructionKeywords);
+    }
+
+    public bool IsMisdirectionInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), MisdirectionInstructionKeywords);
+    }
+
+    public bool IsBehaviorBriefingInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), BehaviorBriefingInstructionKeywords);
+    }
+
+    public bool IsRouteIdentificationInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), RouteIdentificationInstructionKeywords);
     }
 
     public bool ContainsCoordinate(string source)
@@ -880,25 +1021,5 @@ public sealed class CommandValidator
         }
 
         return false;
-    }
-
-    public bool IsVanishingInstruction(string source)
-    {
-        return ContainsAny(Normalize(source), VanishingInstructionKeywords);
-    }
-
-    public bool IsMisdirectionInstruction(string source)
-    {
-        return ContainsAny(Normalize(source), MisdirectionInstructionKeywords);
-    }
-
-    public bool IsBehaviorBriefingInstruction(string source)
-    {
-        return ContainsAny(Normalize(source), BehaviorBriefingInstructionKeywords);
-    }
-
-    public bool IsRouteIdentificationInstruction(string source)
-    {
-        return ContainsAny(Normalize(source), RouteIdentificationInstructionKeywords);
     }
 }

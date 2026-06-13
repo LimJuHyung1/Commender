@@ -19,6 +19,9 @@ public class CommandExecutor
     private const string SkillBehaviorBriefing = "behavior_briefing";
     private const string SkillRouteIdentification = "route_identification";
 
+    private const string SkillTreat = "treat";
+    private const string SkillOffLeash = "offleash";
+
     private TargetSkillController targetSkillController;
 
     public CommandExecutor()
@@ -82,6 +85,8 @@ public class CommandExecutor
             case SkillMisdirection:
             case SkillBehaviorBriefing:
             case SkillRouteIdentification:
+            case SkillTreat:
+            case SkillOffLeash:
                 ExecuteNoPositionSkill(targetAgent, agentId, validatedSkill);
                 return;
 

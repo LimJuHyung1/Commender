@@ -19,6 +19,11 @@ public class AgentCameraFollow : MonoBehaviour
     [Header("Common Camera Settings")]
     [SerializeField] private float smoothSpeed = 5f;
 
+    [Header("Clip Plane")]
+    [SerializeField] private float topDownNearClipPlane = 0.01f;
+    [SerializeField] private float focusedNearClipPlane = -20f;
+    [SerializeField] private float cameraFarClipPlane = 1000f;
+
     [Header("Camera Smooth Damp")]
     [SerializeField] private float positionSmoothTime = 0.18f;
     [SerializeField] private float sizeSmoothTime = 0.15f;
@@ -157,6 +162,8 @@ public class AgentCameraFollow : MonoBehaviour
         cam = GetComponent<Camera>();
         cam.orthographic = true;
 
+        ApplyClipPlane(false);
+
         if (stageIntroController == null)
             stageIntroController = FindFirstObjectByType<StageIntroController>();
 
@@ -175,10 +182,19 @@ public class AgentCameraFollow : MonoBehaviour
         ResetCameraSmoothVelocity();
         ResetDragState();
         ResetFocusedOrbitDragState();
+        ApplyClipPlane(focusedAgent != null);
     }
 
     private void OnValidate()
     {
+        if (topDownNearClipPlane < 0.001f)
+            topDownNearClipPlane = 0.001f;
+
+        float highestNearClipPlane = Mathf.Max(topDownNearClipPlane, focusedNearClipPlane);
+
+        if (cameraFarClipPlane <= highestNearClipPlane)
+            cameraFarClipPlane = highestNearClipPlane + 1f;
+
         if (positionSmoothTime < 0.01f)
             positionSmoothTime = 0.01f;
 
@@ -233,10 +249,12 @@ public class AgentCameraFollow : MonoBehaviour
     {
         if (focusedAgent != null)
         {
+            ApplyClipPlane(true);
             UpdateFocusedAgentView();
             return;
         }
 
+        ApplyClipPlane(false);
         UpdateTopDownView();
     }
 
@@ -246,6 +264,7 @@ public class AgentCameraFollow : MonoBehaviour
 
         focusedAgent = agentTransform;
         CacheFocusedAgentData(agentTransform);
+        ApplyClipPlane(focusedAgent != null);
 
         if (focusChanged || resetOrbitOnFocusChanged)
             ResetFocusedOrbitAngles();
@@ -260,6 +279,7 @@ public class AgentCameraFollow : MonoBehaviour
         ClearFocusedAgentCache();
         ResetFocusedOrbitDragState();
         ResetCameraSmoothVelocity();
+        ApplyClipPlane(false);
     }
 
     public void ResetTopDownPan()
@@ -319,6 +339,21 @@ public class AgentCameraFollow : MonoBehaviour
     {
         cameraPositionVelocity = Vector3.zero;
         cameraSizeVelocity = 0f;
+    }
+
+    private void ApplyClipPlane(bool isFocusedView)
+    {
+        if (cam == null)
+            return;
+
+        cam.orthographic = true;
+
+        float nearClipPlane = isFocusedView
+            ? focusedNearClipPlane
+            : topDownNearClipPlane;
+
+        cam.nearClipPlane = nearClipPlane;
+        cam.farClipPlane = Mathf.Max(cameraFarClipPlane, nearClipPlane + 1f);
     }
 
     private void HandleLeftMouseInput(Mouse mouse, Vector2 mousePosition)
