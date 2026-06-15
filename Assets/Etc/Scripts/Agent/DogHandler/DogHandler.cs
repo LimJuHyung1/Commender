@@ -9,6 +9,19 @@ public class DogHandler : AgentController
     private const string SkillTreat = "treat";
     private const string SkillOffLeash = "offleash";
 
+    private const float TreatGaugeDogMoveMinimumDistance = 0.001f;
+
+    private const string UpgradeDogDeployScentPatrol = "dog_handler_dog_deploy_scent_patrol";
+    private const string UpgradeDogDeployHowlingSlow = "dog_handler_dog_deploy_howling_slow";
+    private const string UpgradeGuardInstinctHuntingStance = "dog_handler_guard_instinct_hunting_stance";
+    private const string UpgradeGuardInstinctBlind = "dog_handler_guard_instinct_blind";
+    private const string UpgradeUnlockTreat = "dog_handler_unlock_treat";
+    private const string UpgradeUnlockOffLeash = "dog_handler_unlock_off_leash";
+    private const string UpgradeTreatNosework = "dog_handler_treat_nosework";
+    private const string UpgradeTreatFastDigestion = "dog_handler_treat_fast_digestion";
+    private const string UpgradeOffLeashLongSearch = "dog_handler_off_leash_long_search";
+    private const string UpgradeOffLeashLiberatedSprint = "dog_handler_off_leash_liberated_sprint";
+
     [Header("Detection Dog")]
     [SerializeField] private DetectionDogController detectionDog;
     [SerializeField] private DetectionDogController detectionDogPrefab;
@@ -36,20 +49,55 @@ public class DogHandler : AgentController
     [SerializeField] private float offLeashGaugeRequirement = 100f;
     [SerializeField] private float offLeashDuration = 30f;
 
+    [Header("Dog Deploy Upgrades")]
+    [SerializeField] private bool dogDeployScentPatrolEnabled;
+    [SerializeField] private float dogDeployPatrolRadius = 4f;
+    [SerializeField] private int dogDeployPatrolPointCount = 4;
+    [SerializeField] private float dogDeployPatrolReachDistance = 0.7f;
+    [SerializeField] private bool dogDeployHowlingSlowEnabled;
+    [SerializeField] private float dogDeployHowlingTargetSlowMultiplier = 0.75f;
+    [SerializeField] private float dogDeployHowlingTargetSlowDuration = 6f;
+
+    [Header("Guard Instinct Upgrades")]
+    [SerializeField] private bool guardInstinctBlindEnabled;
+    [SerializeField] private float guardInstinctBlindViewRadiusMultiplier = 1.25f;
+    [SerializeField] private float guardInstinctBlindViewAngleOffset = 20f;
+
+    [Header("Treat Upgrades")]
+    [SerializeField] private bool treatNoseworkEnabled;
+
+    [Header("Off Leash Upgrades")]
+    [SerializeField] private bool offLeashLiberatedSprintEnabled;
+    [SerializeField] private float offLeashProgressiveSpeedInterval = 3f;
+    [SerializeField] private float offLeashProgressiveSpeedBonusPerStep = 0.05f;
+    [SerializeField] private float offLeashProgressiveSpeedMaxMultiplier = 1.75f;
+
     [Header("Guard Instinct")]
     [SerializeField] private int guardInstinctMaxStack = 5;
     [SerializeField] private float guardInstinctSpeedBonusPerStack = 0.05f;
     [SerializeField] private bool resetGuardInstinctOnSkillGaugeReset = true;
 
     [Header("Target Report")]
+    [SerializeField] private bool moveAgentsOnDogReport = false;
     [SerializeField] private bool includeSelfInDogReport = true;
     [SerializeField] private float dogReportCooldown = 0.5f;
     [SerializeField] private float sharedTargetMoveSpeedMultiplier = 1f;
     [SerializeField] private float agentCacheRefreshInterval = 0.5f;
     [SerializeField] private bool debugSharedTargetReceivers = false;
 
+    [Header("Dog Found Marker")]
+    [SerializeField] private GameObject dogFoundTargetMarkerPrefab;
+    [SerializeField] private float dogFoundTargetMarkerLifetime = 6f;
+    [SerializeField] private float dogFoundTargetMarkerYOffset = 0.05f;
+    [SerializeField] private float dogFoundTargetMarkerNavMeshSampleRadius = 2f;
+    [SerializeField] private bool destroyPreviousDogFoundTargetMarker = true;
+    [SerializeField] private bool requestCameraOnDogFoundMarker = true;
+
     [Header("Skill Gauge")]
     [SerializeField] private float skillGaugeChargeBlockSecondsOnUse = 0.05f;
+
+    [Header("Treat Gauge Charge")]
+    [SerializeField] private float treatGaugeChargePerDogMeter = 1f;
 
     private AgentController[] cachedAgents;
     private float lastAgentCacheRefreshTime = -999f;
@@ -59,6 +107,11 @@ public class DogHandler : AgentController
 
     private bool ownsSpawnedDetectionDog;
     private TargetVisibilityController registeredTargetVisibility;
+    private GameObject activeDogFoundTargetMarker;
+
+    private Vector3 lastTreatGaugeDogPosition;
+    private bool hasLastTreatGaugeDogPosition;
+    private float treatGaugeChargeBlockedUntil = -1f;
 
     public bool IsTreatUnlocked => treatUnlocked;
     public bool IsOffLeashUnlocked => offLeashUnlocked;
@@ -97,16 +150,21 @@ public class DogHandler : AgentController
     {
         StopDogActions(false);
         ClearSharedTargetPositionFromThisHandler();
+        ClearDogFoundTargetMarker();
 
         cachedAgents = null;
         lastAgentCacheRefreshTime = -999f;
         lastDogReportTime = -999f;
+        treatGaugeChargeBlockedUntil = -1f;
+        hasLastTreatGaugeDogPosition = false;
 
         base.OnDisable();
     }
 
     private void OnDestroy()
     {
+        ClearDogFoundTargetMarker();
+
         if (!ownsSpawnedDetectionDog)
             return;
 
@@ -136,7 +194,25 @@ public class DogHandler : AgentController
         sharedTargetMoveSpeedMultiplier = Mathf.Max(0.01f, sharedTargetMoveSpeedMultiplier);
         agentCacheRefreshInterval = Mathf.Max(0.05f, agentCacheRefreshInterval);
         skillGaugeChargeBlockSecondsOnUse = Mathf.Max(0f, skillGaugeChargeBlockSecondsOnUse);
+        treatGaugeChargePerDogMeter = Mathf.Max(0f, treatGaugeChargePerDogMeter);
         dogSpawnNavMeshSampleRadius = Mathf.Max(0.1f, dogSpawnNavMeshSampleRadius);
+
+        dogFoundTargetMarkerLifetime = Mathf.Max(0.01f, dogFoundTargetMarkerLifetime);
+        dogFoundTargetMarkerYOffset = Mathf.Max(0f, dogFoundTargetMarkerYOffset);
+        dogFoundTargetMarkerNavMeshSampleRadius = Mathf.Max(0.1f, dogFoundTargetMarkerNavMeshSampleRadius);
+
+        dogDeployPatrolRadius = Mathf.Max(0.1f, dogDeployPatrolRadius);
+        dogDeployPatrolPointCount = Mathf.Max(1, dogDeployPatrolPointCount);
+        dogDeployPatrolReachDistance = Mathf.Max(0.05f, dogDeployPatrolReachDistance);
+        dogDeployHowlingTargetSlowMultiplier = Mathf.Clamp(dogDeployHowlingTargetSlowMultiplier, 0.01f, 1f);
+        dogDeployHowlingTargetSlowDuration = Mathf.Max(0f, dogDeployHowlingTargetSlowDuration);
+
+        guardInstinctBlindViewRadiusMultiplier = Mathf.Max(1f, guardInstinctBlindViewRadiusMultiplier);
+        guardInstinctBlindViewAngleOffset = Mathf.Clamp(guardInstinctBlindViewAngleOffset, -359f, 359f);
+
+        offLeashProgressiveSpeedInterval = Mathf.Max(0.05f, offLeashProgressiveSpeedInterval);
+        offLeashProgressiveSpeedBonusPerStep = Mathf.Max(0f, offLeashProgressiveSpeedBonusPerStep);
+        offLeashProgressiveSpeedMaxMultiplier = Mathf.Max(1f, offLeashProgressiveSpeedMaxMultiplier);
 
         guardInstinctStack = Mathf.Clamp(guardInstinctStack, 0, guardInstinctMaxStack);
     }
@@ -161,15 +237,78 @@ public class DogHandler : AgentController
         offLeashGaugeRequirement = stats.offLeashSkillGaugeMax;
         offLeashDuration = stats.offLeashDuration;
 
+        dogDeployScentPatrolEnabled = false;
+        dogDeployPatrolRadius = stats.dogDeployPatrolRadius;
+        dogDeployPatrolPointCount = stats.dogDeployPatrolPointCount;
+        dogDeployPatrolReachDistance = stats.dogDeployPatrolReachDistance;
+        dogDeployHowlingSlowEnabled = false;
+        dogDeployHowlingTargetSlowMultiplier = stats.dogDeployHowlingTargetSlowMultiplier;
+        dogDeployHowlingTargetSlowDuration = stats.dogDeployHowlingTargetSlowDuration;
+
         guardInstinctMaxStack = stats.dogGuardInstinctMaxStack;
         guardInstinctSpeedBonusPerStack = stats.dogGuardInstinctSpeedBonusPerStack;
         resetGuardInstinctOnSkillGaugeReset = stats.resetDogGuardInstinctOnSkillGaugeReset;
+        guardInstinctBlindEnabled = false;
+        guardInstinctBlindViewRadiusMultiplier = stats.dogGuardInstinctBlindViewRadiusMultiplier;
+        guardInstinctBlindViewAngleOffset = stats.dogGuardInstinctBlindViewAngleBonus;
+
+        treatNoseworkEnabled = false;
+
+        offLeashLiberatedSprintEnabled = false;
+        offLeashProgressiveSpeedInterval = stats.offLeashProgressiveSpeedInterval;
+        offLeashProgressiveSpeedBonusPerStep = stats.offLeashProgressiveSpeedBonusPerStep;
+        offLeashProgressiveSpeedMaxMultiplier = stats.offLeashProgressiveSpeedMaxMultiplier;
 
         dogReportCooldown = stats.dogReportCooldown;
         sharedTargetMoveSpeedMultiplier = stats.dogSharedTargetMoveSpeedMultiplier;
         includeSelfInDogReport = stats.includeDogHandlerInDogReport;
 
+        ApplySelectedUpgrades();
+
         guardInstinctStack = Mathf.Clamp(guardInstinctStack, 0, guardInstinctMaxStack);
+    }
+
+    private void ApplySelectedUpgrades()
+    {
+        UpgradeManager upgradeManager = UpgradeManager.Instance;
+
+        if (upgradeManager == null)
+            return;
+
+        if (upgradeManager.HasAgentUpgrade(UpgradeUnlockTreat) || upgradeManager.HasUnlockedSkill("treat"))
+            treatUnlocked = true;
+
+        if (upgradeManager.HasAgentUpgrade(UpgradeUnlockOffLeash) || upgradeManager.HasUnlockedSkill("off_leash"))
+            offLeashUnlocked = true;
+
+        dogDeployScentPatrolEnabled = upgradeManager.HasAgentUpgrade(UpgradeDogDeployScentPatrol);
+        dogDeployHowlingSlowEnabled = upgradeManager.HasAgentUpgrade(UpgradeDogDeployHowlingSlow);
+
+        if (upgradeManager.HasAgentUpgrade(UpgradeGuardInstinctHuntingStance))
+        {
+            guardInstinctMaxStack = stats.upgradedDogGuardInstinctMaxStack;
+            guardInstinctSpeedBonusPerStack = stats.upgradedDogGuardInstinctSpeedBonusPerStack;
+        }
+
+        guardInstinctBlindEnabled = upgradeManager.HasAgentUpgrade(UpgradeGuardInstinctBlind);
+
+        treatNoseworkEnabled = upgradeManager.HasAgentUpgrade(UpgradeTreatNosework);
+
+        if (upgradeManager.HasAgentUpgrade(UpgradeTreatFastDigestion))
+            treatGaugeRequirement = stats.upgradedTreatSkillGaugeMax;
+
+        if (upgradeManager.HasAgentUpgrade(UpgradeOffLeashLongSearch))
+            offLeashDuration += stats.upgradedOffLeashDurationAdd;
+
+        offLeashLiberatedSprintEnabled = upgradeManager.HasAgentUpgrade(UpgradeOffLeashLiberatedSprint);
+    }
+
+    protected override void Update()
+    {
+        base.Update();
+
+        UpdateTreatGaugeChargeFromDogMovement();
+        TryAutoActivateTreatByNosework();
     }
 
     public override void ReapplyStats()
@@ -188,18 +327,33 @@ public class DogHandler : AgentController
     {
         base.ResetSkillGauge();
 
+        treatGaugeChargeBlockedUntil = -1f;
+        ResetTreatGaugeDogPosition();
+
         if (resetGuardInstinctOnSkillGaugeReset)
             SetGuardInstinctStack(0);
+    }
+
+    public override void FillSkillGauge()
+    {
+        base.FillSkillGauge();
+
+        float treatCapacity = GetSkillGaugeMaxForSkill(SkillTreat);
+
+        if (treatCapacity > 0f)
+            AddSkillGaugeForSkill(SkillTreat, treatCapacity);
+
+        ResetTreatGaugeDogPosition();
     }
 
     protected override string[] GetCurrentAgentGaugeKeys()
     {
         return new[]
         {
-            SkillTreat,
-            SkillOffLeash
-        };
+        SkillOffLeash
+    };
     }
+
 
     public override float GetSkillGaugeMaxForSkill(string skillName)
     {
@@ -333,6 +487,7 @@ public class DogHandler : AgentController
     {
         StopDogActions(true);
         ClearSharedTargetPositionFromThisHandler();
+        ClearDogFoundTargetMarker();
         base.StopAllMovementForStageResult();
     }
 
@@ -364,14 +519,17 @@ public class DogHandler : AgentController
         lastDogReportTime = Time.time;
 
         AddGuardInstinctStack(1);
-        ShareTargetPosition(targetPosition);
+        SpawnDogFoundTargetMarker(targetPosition);
+
+        if (moveAgentsOnDogReport)
+            ShareTargetPosition(targetPosition);
 
         if (detectionDog != null)
             detectionDog.ReturnToHandler();
 
         Debug.Log(
             $"[DogHandler {AgentID}] 탐지견이 타겟을 발견했습니다. " +
-            $"공유 위치: {targetPosition}, 경계 본능 스택: {guardInstinctStack}/{guardInstinctMaxStack}"
+            $"발견 마커 위치: {targetPosition}, 경계 본능 스택: {guardInstinctStack}/{guardInstinctMaxStack}"
         );
     }
 
@@ -396,17 +554,29 @@ public class DogHandler : AgentController
 
     private void ExecuteTreat()
     {
+        TryUseTreat(false);
+    }
+
+    private bool TryUseTreat(bool isAutoActivated)
+    {
         if (!treatUnlocked)
         {
-            Debug.LogWarning($"[DogHandler {AgentID}] 간식 스킬이 아직 해금되지 않았습니다.");
-            return;
+            if (!isAutoActivated)
+                Debug.LogWarning($"[DogHandler {AgentID}] 간식 스킬이 아직 해금되지 않았습니다.");
+
+            return false;
         }
 
         if (!HasValidDog())
-            return;
+            return false;
+
+        if (detectionDog.IsTreatActive)
+            return false;
 
         if (!TryConsumeSkillGaugeForSkill(SkillTreat, skillGaugeChargeBlockSecondsOnUse))
-            return;
+            return false;
+
+        BlockTreatGaugeChargeFromDogMovement(skillGaugeChargeBlockSecondsOnUse);
 
         detectionDog.ApplyTreat(
             treatDuration,
@@ -415,7 +585,104 @@ public class DogHandler : AgentController
             treatViewAngleOffset
         );
 
-        Debug.Log($"[DogHandler {AgentID}] 간식 스킬 실행");
+        Debug.Log(isAutoActivated
+            ? $"[DogHandler {AgentID}] 노즈워크로 간식 자동 발동"
+            : $"[DogHandler {AgentID}] 간식 스킬 실행");
+
+        return true;
+    }
+
+    private void UpdateTreatGaugeChargeFromDogMovement()
+    {
+        if (!treatUnlocked)
+        {
+            ResetTreatGaugeDogPosition();
+            return;
+        }
+
+        if (detectionDog == null)
+        {
+            hasLastTreatGaugeDogPosition = false;
+            return;
+        }
+
+        if (!detectionDog.gameObject.activeInHierarchy)
+        {
+            hasLastTreatGaugeDogPosition = false;
+            return;
+        }
+
+        if (treatGaugeChargePerDogMeter <= 0f)
+        {
+            ResetTreatGaugeDogPosition();
+            return;
+        }
+
+        Vector3 currentDogPosition = detectionDog.transform.position;
+
+        if (!hasLastTreatGaugeDogPosition)
+        {
+            lastTreatGaugeDogPosition = currentDogPosition;
+            hasLastTreatGaugeDogPosition = true;
+            return;
+        }
+
+        float movedDistance = Vector3.Distance(lastTreatGaugeDogPosition, currentDogPosition);
+        lastTreatGaugeDogPosition = currentDogPosition;
+
+        if (Time.time < treatGaugeChargeBlockedUntil)
+            return;
+
+        if (movedDistance <= TreatGaugeDogMoveMinimumDistance)
+            return;
+
+        float chargeAmount = movedDistance * treatGaugeChargePerDogMeter;
+        AddSkillGaugeForSkill(SkillTreat, chargeAmount);
+    }
+
+    private void ResetTreatGaugeDogPosition()
+    {
+        if (detectionDog == null)
+        {
+            hasLastTreatGaugeDogPosition = false;
+            return;
+        }
+
+        lastTreatGaugeDogPosition = detectionDog.transform.position;
+        hasLastTreatGaugeDogPosition = true;
+    }
+
+    private void BlockTreatGaugeChargeFromDogMovement(float seconds)
+    {
+        if (seconds <= 0f)
+            return;
+
+        treatGaugeChargeBlockedUntil = Mathf.Max(
+            treatGaugeChargeBlockedUntil,
+            Time.time + seconds
+        );
+
+        ResetTreatGaugeDogPosition();
+    }
+
+    private void TryAutoActivateTreatByNosework()
+    {
+        if (!treatNoseworkEnabled)
+            return;
+
+        if (!treatUnlocked)
+            return;
+
+        if (detectionDog == null)
+            return;
+
+        if (!detectionDog.CanAutoActivateTreat)
+            return;
+
+        if (!base.CanUseSkillGaugeForSkill(SkillTreat, false))
+            return;
+
+        TryUseTreat(true);
     }
 
     private void ExecuteOffLeash()
@@ -473,6 +740,66 @@ public class DogHandler : AgentController
             return;
 
         detectionDog.SetGuardInstinctMoveSpeedMultiplier(GuardInstinctMoveSpeedMultiplier);
+        detectionDog.SetGuardInstinctBlindVisionActive(
+            guardInstinctBlindEnabled && guardInstinctMaxStack > 0 && guardInstinctStack >= guardInstinctMaxStack
+        );
+    }
+
+    private void SpawnDogFoundTargetMarker(Vector3 targetPosition)
+    {
+        if (dogFoundTargetMarkerPrefab == null)
+        {
+            Debug.LogWarning($"[DogHandler {AgentID}] dogFoundTargetMarkerPrefab이 설정되지 않았습니다.");
+            return;
+        }
+
+        Vector3 spawnPosition = ResolveDogFoundTargetMarkerPosition(targetPosition);
+
+        if (destroyPreviousDogFoundTargetMarker && activeDogFoundTargetMarker != null)
+            Destroy(activeDogFoundTargetMarker);
+
+        Quaternion spawnRotation = dogFoundTargetMarkerPrefab.transform.rotation;
+        activeDogFoundTargetMarker = Instantiate(dogFoundTargetMarkerPrefab, spawnPosition, spawnRotation);
+
+        DogFoundTargetMarker marker = activeDogFoundTargetMarker.GetComponent<DogFoundTargetMarker>();
+
+        if (marker != null)
+        {
+            marker.Initialize(dogFoundTargetMarkerLifetime);
+        }
+        else
+        {
+            Destroy(activeDogFoundTargetMarker, dogFoundTargetMarkerLifetime);
+        }
+
+        if (requestCameraOnDogFoundMarker)
+            RequestInstalledObjectCamera(activeDogFoundTargetMarker.transform);
+    }
+
+    private Vector3 ResolveDogFoundTargetMarkerPosition(Vector3 rawPosition)
+    {
+        Vector3 spawnPosition = rawPosition;
+
+        if (NavMesh.SamplePosition(
+                rawPosition,
+                out NavMeshHit hit,
+                dogFoundTargetMarkerNavMeshSampleRadius,
+                NavMesh.AllAreas))
+        {
+            spawnPosition = hit.position;
+        }
+
+        spawnPosition.y += dogFoundTargetMarkerYOffset;
+        return spawnPosition;
+    }
+
+    private void ClearDogFoundTargetMarker()
+    {
+        if (activeDogFoundTargetMarker == null)
+            return;
+
+        Destroy(activeDogFoundTargetMarker);
+        activeDogFoundTargetMarker = null;
     }
 
     private void ShareTargetPosition(Vector3 targetPosition)
@@ -632,9 +959,45 @@ public class DogHandler : AgentController
 
         detectionDog.Initialize(this, followTarget, targetLayer);
         detectionDog.ApplyStats(stats);
+        ConfigureDetectionDogUpgrades();
         detectionDog.SetGuardInstinctMoveSpeedMultiplier(GuardInstinctMoveSpeedMultiplier);
+        detectionDog.SetGuardInstinctBlindVisionActive(
+            guardInstinctBlindEnabled && guardInstinctMaxStack > 0 && guardInstinctStack >= guardInstinctMaxStack
+        );
 
         RegisterDogVisionToTargetVisibility();
+    }
+
+    private void ConfigureDetectionDogUpgrades()
+    {
+        if (detectionDog == null)
+            return;
+
+        detectionDog.ConfigureDogDeployPatrol(
+            dogDeployScentPatrolEnabled,
+            dogDeployPatrolRadius,
+            dogDeployPatrolPointCount,
+            dogDeployPatrolReachDistance
+        );
+
+        detectionDog.ConfigureDogDeployHowlingSlow(
+            dogDeployHowlingSlowEnabled,
+            dogDeployHowlingTargetSlowMultiplier,
+            dogDeployHowlingTargetSlowDuration
+        );
+
+        detectionDog.ConfigureGuardInstinctBlindVision(
+            guardInstinctBlindEnabled,
+            guardInstinctBlindViewRadiusMultiplier,
+            guardInstinctBlindViewAngleOffset
+        );
+
+        detectionDog.ConfigureOffLeashProgressiveSpeed(
+            offLeashLiberatedSprintEnabled,
+            offLeashProgressiveSpeedInterval,
+            offLeashProgressiveSpeedBonusPerStep,
+            offLeashProgressiveSpeedMaxMultiplier
+        );
     }
 
     private void RegisterDogVisionToTargetVisibility()

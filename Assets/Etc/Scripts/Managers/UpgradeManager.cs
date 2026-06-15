@@ -563,7 +563,25 @@ public class UpgradeManager : MonoBehaviour
             return false;
 
         if (!upgrade.HasUnlockSkillId)
-            return true;
+            return false;
+
+        string candidateUnlockSkillId = NormalizeSkillId(upgrade.UnlockSkillId);
+
+        if (string.IsNullOrWhiteSpace(candidateUnlockSkillId))
+            return false;
+
+        // 이미 같은 스킬을 해금했다면 다시 나오면 안 된다.
+        if (HasSelectedUnlockUpgradeForSkill(candidateUnlockSkillId, alreadySelectedUpgradeIds))
+            return false;
+
+        // AgentDefinitionSO 연결이 없어도 같은 에이전트의 다른 신규 스킬 해금을 막는다.
+        if (HasSelectedDifferentUnlockSkillForSameAgent(
+                upgrade,
+                candidateUnlockSkillId,
+                alreadySelectedUpgradeIds))
+        {
+            return false;
+        }
 
         AgentDefinitionSO ownerDefinition =
             FindAgentDefinitionByUnlockableSkillId(upgrade.UnlockSkillId);
@@ -575,8 +593,6 @@ public class UpgradeManager : MonoBehaviour
 
         if (unlockableSkills == null || unlockableSkills.Count <= 0)
             return true;
-
-        string candidateUnlockSkillId = NormalizeSkillId(upgrade.UnlockSkillId);
 
         for (int i = 0; i < unlockableSkills.Count; i++)
         {
@@ -608,17 +624,25 @@ public class UpgradeManager : MonoBehaviour
             return false;
 
         if (!upgrade.HasTargetSkillId)
-            return true;
+            return false;
 
         string targetSkillId = NormalizeSkillId(upgrade.SkillId);
 
-        AgentDefinitionSO ownerDefinition = FindAgentDefinitionByUnlockableSkillId(targetSkillId);
+        if (string.IsNullOrWhiteSpace(targetSkillId))
+            return false;
 
-        if (ownerDefinition == null)
-            return true;
-
+        // 핵심 수정:
+        // 신규 스킬 강화는 해당 스킬을 해금한 UnlockSkill 업그레이드가 이미 선택되어 있어야만 등장한다.
         if (!HasSelectedUnlockUpgradeForSkill(targetSkillId, alreadySelectedUpgradeIds))
             return false;
+
+        AgentDefinitionSO ownerDefinition = FindAgentDefinitionByUnlockableSkillId(targetSkillId);
+
+        // AgentDefinitionSO 연결이 없더라도 여기서 true 처리하면 안 된다.
+        // 이미 위에서 "해당 스킬 해금 여부"를 검사했으므로,
+        // ownerDefinition은 같은 에이전트 내 다른 신규 스킬 차단용으로만 사용한다.
+        if (ownerDefinition == null)
+            return true;
 
         if (HasSelectedDifferentUnlockableSkillInSameAgent(
                 ownerDefinition,
@@ -706,6 +730,79 @@ public class UpgradeManager : MonoBehaviour
         return false;
     }
 
+    private bool HasSelectedDifferentUnlockSkillForSameAgent(
+    UpgradeDefinition candidateUpgrade,
+    string candidateUnlockSkillId,
+    List<string> alreadySelectedUpgradeIds)
+    {
+        if (candidateUpgrade == null)
+            return false;
+
+        if (upgradeDatabase == null)
+            return false;
+
+        if (alreadySelectedUpgradeIds == null)
+            return false;
+
+        string normalizedCandidateUnlockSkillId = NormalizeSkillId(candidateUnlockSkillId);
+
+        if (string.IsNullOrWhiteSpace(normalizedCandidateUnlockSkillId))
+            return false;
+
+        for (int i = 0; i < alreadySelectedUpgradeIds.Count; i++)
+        {
+            string selectedUpgradeId = alreadySelectedUpgradeIds[i];
+
+            if (string.IsNullOrWhiteSpace(selectedUpgradeId))
+                continue;
+
+            if (!upgradeDatabase.TryGetUpgrade(selectedUpgradeId, out UpgradeDefinition selectedUpgrade))
+                continue;
+
+            if (selectedUpgrade == null)
+                continue;
+
+            if (!selectedUpgrade.IsUnlockSkillUpgrade)
+                continue;
+
+            if (!IsSameAgentUpgradeOwner(candidateUpgrade, selectedUpgrade))
+                continue;
+
+            string selectedUnlockSkillId = NormalizeSkillId(selectedUpgrade.UnlockSkillId);
+
+            if (string.IsNullOrWhiteSpace(selectedUnlockSkillId))
+                continue;
+
+            if (selectedUnlockSkillId != normalizedCandidateUnlockSkillId)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsSameAgentUpgradeOwner(UpgradeDefinition first, UpgradeDefinition second)
+    {
+        if (first == null || second == null)
+            return false;
+
+        if (!first.IsAgentUpgrade || !second.IsAgentUpgrade)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(first.AgentId) &&
+            !string.IsNullOrWhiteSpace(second.AgentId))
+        {
+            return NormalizeAgentId(first.AgentId) == NormalizeAgentId(second.AgentId);
+        }
+
+        if (first.AgentType != CommanderAgentType.None &&
+            second.AgentType != CommanderAgentType.None)
+        {
+            return first.AgentType == second.AgentType;
+        }
+
+        return false;
+    }
+
     private AgentDefinitionSO FindAgentDefinitionByUnlockableSkillId(string skillId)
     {
         if (agentDefinitions == null)
@@ -774,6 +871,14 @@ public class UpgradeManager : MonoBehaviour
     }
 
     private string NormalizeSkillId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToLowerInvariant();
+    }
+
+    private string NormalizeAgentId(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return "";

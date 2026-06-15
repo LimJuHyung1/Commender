@@ -158,10 +158,23 @@ public class AgentStatsSO : ScriptableObject
     public float detectionDogGuardScanTurnSpeed = 120f;
     public float detectionDogHowlingDuration = 1.25f;
 
+    [Header("탐지견 배치 강화 기본값")]
+    public float dogDeployPatrolRadius = 4f;
+    public int dogDeployPatrolPointCount = 4;
+    public float dogDeployPatrolReachDistance = 0.7f;
+    public float dogDeployHowlingTargetSlowMultiplier = 0.75f;
+    public float dogDeployHowlingTargetSlowDuration = 6f;
+
     [Header("탐지견 경계 본능 설정")]
     public int dogGuardInstinctMaxStack = 5;
     public float dogGuardInstinctSpeedBonusPerStack = 0.05f;
     public bool resetDogGuardInstinctOnSkillGaugeReset = true;
+
+    [Header("탐지견 경계 본능 강화 기본값")]
+    public int upgradedDogGuardInstinctMaxStack = 10;
+    public float upgradedDogGuardInstinctSpeedBonusPerStack = 0.1f;
+    public float dogGuardInstinctBlindViewRadiusMultiplier = 1.25f;
+    public float dogGuardInstinctBlindViewAngleBonus = 20f;
 
     [Header("탐지견 간식 설정")]
     public float treatDuration = 20f;
@@ -169,11 +182,20 @@ public class AgentStatsSO : ScriptableObject
     public float treatViewRadiusMultiplier = 1.5f;
     public float treatViewAngleBonus = 20f;
 
+    [Header("탐지견 간식 강화 기본값")]
+    public float upgradedTreatSkillGaugeMax = 50f;
+
     [Header("탐지견 오프리쉬 설정")]
     public float offLeashDuration = 30f;
     public float offLeashWaypointReachDistance = 0.7f;
     public float offLeashFallbackSearchRadius = 25f;
     public int offLeashPointSearchTries = 24;
+
+    [Header("탐지견 오프리쉬 강화 기본값")]
+    public float upgradedOffLeashDurationAdd = 10f;
+    public float offLeashProgressiveSpeedInterval = 3f;
+    public float offLeashProgressiveSpeedBonusPerStep = 0.05f;
+    public float offLeashProgressiveSpeedMaxMultiplier = 1.75f;
 
     [Header("탐지견 위치 공유 설정")]
     public float dogReportCooldown = 0.5f;
@@ -309,18 +331,33 @@ public class AgentStatsSO : ScriptableObject
         detectionDogGuardScanTurnSpeed = Mathf.Max(0f, detectionDogGuardScanTurnSpeed);
         detectionDogHowlingDuration = Mathf.Max(0f, detectionDogHowlingDuration);
 
+        dogDeployPatrolRadius = Mathf.Max(0.1f, dogDeployPatrolRadius);
+        dogDeployPatrolPointCount = Mathf.Max(1, dogDeployPatrolPointCount);
+        dogDeployPatrolReachDistance = Mathf.Max(0.05f, dogDeployPatrolReachDistance);
+        dogDeployHowlingTargetSlowMultiplier = Mathf.Clamp(dogDeployHowlingTargetSlowMultiplier, 0.01f, 1f);
+        dogDeployHowlingTargetSlowDuration = Mathf.Max(0f, dogDeployHowlingTargetSlowDuration);
+
         dogGuardInstinctMaxStack = Mathf.Max(0, dogGuardInstinctMaxStack);
         dogGuardInstinctSpeedBonusPerStack = Mathf.Max(0f, dogGuardInstinctSpeedBonusPerStack);
+        upgradedDogGuardInstinctMaxStack = Mathf.Max(0, upgradedDogGuardInstinctMaxStack);
+        upgradedDogGuardInstinctSpeedBonusPerStack = Mathf.Max(0f, upgradedDogGuardInstinctSpeedBonusPerStack);
+        dogGuardInstinctBlindViewRadiusMultiplier = Mathf.Max(1f, dogGuardInstinctBlindViewRadiusMultiplier);
+        dogGuardInstinctBlindViewAngleBonus = Mathf.Clamp(dogGuardInstinctBlindViewAngleBonus, -359f, 359f);
 
         treatDuration = Mathf.Max(0f, treatDuration);
         treatMoveSpeedMultiplier = Mathf.Max(1f, treatMoveSpeedMultiplier);
         treatViewRadiusMultiplier = Mathf.Max(1f, treatViewRadiusMultiplier);
         treatViewAngleBonus = Mathf.Clamp(treatViewAngleBonus, -359f, 359f);
+        upgradedTreatSkillGaugeMax = Mathf.Max(0f, upgradedTreatSkillGaugeMax);
 
         offLeashDuration = Mathf.Max(0f, offLeashDuration);
         offLeashWaypointReachDistance = Mathf.Max(0.05f, offLeashWaypointReachDistance);
         offLeashFallbackSearchRadius = Mathf.Max(1f, offLeashFallbackSearchRadius);
         offLeashPointSearchTries = Mathf.Max(1, offLeashPointSearchTries);
+        upgradedOffLeashDurationAdd = Mathf.Max(0f, upgradedOffLeashDurationAdd);
+        offLeashProgressiveSpeedInterval = Mathf.Max(0.05f, offLeashProgressiveSpeedInterval);
+        offLeashProgressiveSpeedBonusPerStep = Mathf.Max(0f, offLeashProgressiveSpeedBonusPerStep);
+        offLeashProgressiveSpeedMaxMultiplier = Mathf.Max(1f, offLeashProgressiveSpeedMaxMultiplier);
 
         dogReportCooldown = Mathf.Max(0f, dogReportCooldown);
         dogSharedTargetMoveSpeedMultiplier = Mathf.Max(0.01f, dogSharedTargetMoveSpeedMultiplier);

@@ -16,6 +16,13 @@ public class ManholeWarp : MonoBehaviour
     [SerializeField] private GameObject usedVisual;
     [SerializeField] private ParticleSystem useEffect;
 
+    [Header("Warp Particle Prefab")]
+    [SerializeField] private GameObject warpParticlePrefab;
+    [SerializeField] private Transform particleSpawnPoint;
+    [SerializeField] private bool spawnParticleWhenUsed = true;
+    [SerializeField] private bool spawnParticleOnlyWhenCoverLaunch = false;
+    [SerializeField] private float particleDestroyDelay = 3.0f;
+
     [Header("Cover Launch Effect")]
     [SerializeField] private Transform coverVisual;
     [SerializeField] private GameObject coverLaunchPrefab;
@@ -98,6 +105,8 @@ public class ManholeWarp : MonoBehaviour
 
         if (useEffect != null)
             useEffect.Play();
+
+        SpawnWarpParticle(playCoverLaunch);
 
         if (playCoverLaunch)
             PlayCoverLaunchEffect();
@@ -218,6 +227,100 @@ public class ManholeWarp : MonoBehaviour
 
         if (ownMeshRenderer != null)
             ownMeshRenderer.enabled = false;
+    }
+
+    private void SpawnWarpParticle(bool playCoverLaunch)
+    {
+        if (!spawnParticleWhenUsed)
+            return;
+
+        if (spawnParticleOnlyWhenCoverLaunch && !playCoverLaunch)
+            return;
+
+        if (warpParticlePrefab == null)
+            return;
+
+        Vector3 spawnPosition = GetParticleSpawnPosition();
+        Quaternion spawnRotation = GetParticleSpawnRotation();
+
+        GameObject particleObject = Instantiate(warpParticlePrefab, spawnPosition, spawnRotation);
+        particleObject.name = $"{warpParticlePrefab.name}_ManholeWarp";
+
+        ParticleSystem[] particleSystems = particleObject.GetComponentsInChildren<ParticleSystem>(true);
+
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            ParticleSystem ps = particleSystems[i];
+
+            if (ps == null)
+                continue;
+
+            ps.Play(true);
+        }
+
+        float destroyDelay = GetParticleDestroyDelay(particleSystems);
+        Destroy(particleObject, destroyDelay);
+
+        if (showDebugLog)
+        {
+            Debug.Log(
+                $"[ManholeWarp] {name} Warp Particle »ý¼º: {particleObject.name}, DestroyDelay: {destroyDelay}",
+                particleObject
+            );
+        }
+    }
+
+    private Vector3 GetParticleSpawnPosition()
+    {
+        if (particleSpawnPoint != null)
+            return particleSpawnPoint.position;
+
+        if (coverLaunchPoint != null)
+            return coverLaunchPoint.position;
+
+        if (coverVisual != null)
+            return coverVisual.position;
+
+        return transform.position;
+    }
+
+    private Quaternion GetParticleSpawnRotation()
+    {
+        if (particleSpawnPoint != null)
+            return particleSpawnPoint.rotation;
+
+        if (coverLaunchPoint != null)
+            return coverLaunchPoint.rotation;
+
+        if (coverVisual != null)
+            return coverVisual.rotation;
+
+        return transform.rotation;
+    }
+
+    private float GetParticleDestroyDelay(ParticleSystem[] particleSystems)
+    {
+        float delay = Mathf.Max(0.1f, particleDestroyDelay);
+
+        if (particleSystems == null || particleSystems.Length <= 0)
+            return delay;
+
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            ParticleSystem ps = particleSystems[i];
+
+            if (ps == null)
+                continue;
+
+            ParticleSystem.MainModule main = ps.main;
+            float lifeTime = main.startLifetime.constantMax;
+            float totalTime = main.duration + lifeTime;
+
+            if (totalTime > delay)
+                delay = totalTime;
+        }
+
+        return delay;
     }
 
     private void PlayCoverLaunchEffect()
@@ -360,6 +463,9 @@ public class ManholeWarp : MonoBehaviour
         if (coverLaunchPoint == null && coverVisual != null)
             coverLaunchPoint = coverVisual;
 
+        if (particleSpawnPoint == null && coverLaunchPoint != null)
+            particleSpawnPoint = coverLaunchPoint;
+
         if (launchHeight < 0f)
             launchHeight = 0f;
 
@@ -371,6 +477,9 @@ public class ManholeWarp : MonoBehaviour
 
         if (shrinkDuration < 0.01f)
             shrinkDuration = 0.01f;
+
+        if (particleDestroyDelay < 0.1f)
+            particleDestroyDelay = 0.1f;
     }
 
     private void OnDrawGizmosSelected()
@@ -378,6 +487,7 @@ public class ManholeWarp : MonoBehaviour
         Vector3 exitPosition = exitPoint != null ? exitPoint.position : transform.position;
         Vector3 launchPosition = coverLaunchPoint != null ? coverLaunchPoint.position : transform.position;
         Vector3 launchEndPosition = launchPosition + Vector3.up * launchHeight + launchSideOffset;
+        Vector3 particlePosition = particleSpawnPoint != null ? particleSpawnPoint.position : transform.position;
 
         Gizmos.color = isUsed ? Color.gray : Color.cyan;
         Gizmos.DrawWireSphere(transform.position, 0.4f);
@@ -390,6 +500,9 @@ public class ManholeWarp : MonoBehaviour
         Gizmos.DrawWireSphere(launchPosition, 0.2f);
         Gizmos.DrawLine(launchPosition, launchEndPosition);
         Gizmos.DrawWireSphere(launchEndPosition, 0.25f);
+
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(particlePosition, 0.3f);
     }
 #endif
 }

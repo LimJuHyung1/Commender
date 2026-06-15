@@ -85,6 +85,39 @@ public class DetectionDogController : MonoBehaviour
     private float activeTreatViewRadiusMultiplier = 1f;
     private float activeTreatViewAngleOffset = 0f;
 
+    private readonly object treatVisionModifierKey = new object();
+    private readonly object guardInstinctBlindVisionModifierKey = new object();
+
+    private bool dogDeployPatrolEnabled;
+    private float dogDeployPatrolRadius = 3f;
+    private int dogDeployPatrolPointCount = 3;
+    private float dogDeployPatrolReachDistance = 0.5f;
+    private bool dogDeployPatrolActive;
+    private int dogDeployPatrolRemainingPointCount;
+    private bool hasDogDeployPatrolDestination;
+    private Vector3 dogDeployPatrolCenter;
+    private Vector3 dogDeployPatrolDestination;
+
+    private bool dogDeployHowlingSlowEnabled;
+    private float dogDeployHowlingTargetSlowMultiplier = 0.75f;
+    private float dogDeployHowlingTargetSlowDuration = 6f;
+
+    private bool guardInstinctBlindVisionEnabled;
+    private bool guardInstinctBlindVisionActive;
+    private float guardInstinctBlindViewRadiusMultiplier = 1.25f;
+    private float guardInstinctBlindViewAngleOffset = 20f;
+
+    private bool offLeashProgressiveSpeedEnabled;
+    private float offLeashProgressiveSpeedInterval = 3f;
+    private float offLeashProgressiveSpeedBonusPerStep = 0.05f;
+    private float offLeashProgressiveSpeedMaxMultiplier = 1.75f;
+    private float offLeashProgressiveSpeedMultiplier = 1f;
+    private float nextOffLeashProgressiveSpeedTime = -1f;
+
+    private Transform howlingTarget;
+    private Vector3 lastHowlingTargetPosition;
+    private bool hasLastHowlingTargetPosition;
+
     private Coroutine howlingRoutine;
     private bool movementSuspended;
 
@@ -102,6 +135,23 @@ public class DetectionDogController : MonoBehaviour
     public DetectionDogState CurrentState => currentState;
     public bool IsTreatActive => isTreatActive;
     public float TreatRemainingTime => isTreatActive ? Mathf.Max(0f, treatEndTime - Time.time) : 0f;
+
+    public bool CanAutoActivateTreat
+    {
+        get
+        {
+            if (movementSuspended)
+                return false;
+
+            if (isTreatActive)
+                return false;
+
+            return currentState == DetectionDogState.MoveToPoint ||
+                   currentState == DetectionDogState.GuardArea ||
+                   currentState == DetectionDogState.ReturnToHandler ||
+                   currentState == DetectionDogState.OffLeashSearch;
+        }
+    }
 
     private void Awake()
     {
@@ -167,6 +217,25 @@ public class DetectionDogController : MonoBehaviour
         activeTreatMoveSpeedMultiplier = Mathf.Max(1f, activeTreatMoveSpeedMultiplier);
         activeTreatViewRadiusMultiplier = Mathf.Max(1f, activeTreatViewRadiusMultiplier);
         activeTreatViewAngleOffset = Mathf.Clamp(activeTreatViewAngleOffset, -359f, 359f);
+
+        dogDeployPatrolRadius = Mathf.Max(0.1f, dogDeployPatrolRadius);
+        dogDeployPatrolPointCount = Mathf.Max(1, dogDeployPatrolPointCount);
+        dogDeployPatrolReachDistance = Mathf.Max(0.05f, dogDeployPatrolReachDistance);
+
+        dogDeployHowlingTargetSlowMultiplier = Mathf.Clamp(dogDeployHowlingTargetSlowMultiplier, 0.01f, 1f);
+        dogDeployHowlingTargetSlowDuration = Mathf.Max(0f, dogDeployHowlingTargetSlowDuration);
+
+        guardInstinctBlindViewRadiusMultiplier = Mathf.Max(1f, guardInstinctBlindViewRadiusMultiplier);
+        guardInstinctBlindViewAngleOffset = Mathf.Clamp(guardInstinctBlindViewAngleOffset, -359f, 359f);
+
+        offLeashProgressiveSpeedInterval = Mathf.Max(0.05f, offLeashProgressiveSpeedInterval);
+        offLeashProgressiveSpeedBonusPerStep = Mathf.Max(0f, offLeashProgressiveSpeedBonusPerStep);
+        offLeashProgressiveSpeedMaxMultiplier = Mathf.Max(1f, offLeashProgressiveSpeedMaxMultiplier);
+        offLeashProgressiveSpeedMultiplier = Mathf.Clamp(
+            offLeashProgressiveSpeedMultiplier,
+            1f,
+            offLeashProgressiveSpeedMaxMultiplier
+        );
 
         CacheReferences();
         CacheAnimatorParameters();
@@ -305,6 +374,10 @@ public class DetectionDogController : MonoBehaviour
         hasDeployDestination = true;
         deployDestination = resolvedPosition;
 
+        dogDeployPatrolActive = false;
+        hasDogDeployPatrolDestination = false;
+        dogDeployPatrolRemainingPointCount = 0;
+
         currentState = DetectionDogState.MoveToPoint;
         SetDestination(resolvedPosition);
 
@@ -338,6 +411,10 @@ public class DetectionDogController : MonoBehaviour
         hasDeployDestination = false;
         hasOffLeashDestination = false;
         nextOffLeashRepathTime = -999f;
+
+        offLeashProgressiveSpeedMultiplier = 1f;
+        nextOffLeashProgressiveSpeedTime = Time.time + offLeashProgressiveSpeedInterval;
+        ApplyMovementSpeed();
 
         bool started = TryMoveToNextOffLeashPoint(true);
 
@@ -384,6 +461,83 @@ public class DetectionDogController : MonoBehaviour
         ApplyMovementSpeed();
     }
 
+    public void SetGuardInstinctBlindVisionActive(bool active)
+    {
+        bool nextActive = active && guardInstinctBlindVisionEnabled;
+
+        if (guardInstinctBlindVisionActive == nextActive)
+            return;
+
+        guardInstinctBlindVisionActive = nextActive;
+
+        if (guardInstinctBlindVisionActive)
+            ApplyGuardInstinctBlindVisionModifiers();
+        else
+            RemoveGuardInstinctBlindVisionModifiers();
+    }
+
+    public void ConfigureDogDeployPatrol(
+        bool enabled,
+        float patrolRadius,
+        int patrolPointCount,
+        float patrolReachDistance)
+    {
+        dogDeployPatrolEnabled = enabled;
+        dogDeployPatrolRadius = Mathf.Max(0.1f, patrolRadius);
+        dogDeployPatrolPointCount = Mathf.Max(1, patrolPointCount);
+        dogDeployPatrolReachDistance = Mathf.Max(0.05f, patrolReachDistance);
+    }
+
+    public void ConfigureDogDeployHowlingSlow(
+        bool enabled,
+        float targetSlowMultiplier,
+        float targetSlowDuration)
+    {
+        dogDeployHowlingSlowEnabled = enabled;
+        dogDeployHowlingTargetSlowMultiplier = Mathf.Clamp(targetSlowMultiplier, 0.01f, 1f);
+        dogDeployHowlingTargetSlowDuration = Mathf.Max(0f, targetSlowDuration);
+    }
+
+    public void ConfigureGuardInstinctBlindVision(
+        bool enabled,
+        float viewRadiusMultiplier,
+        float viewAngleOffset)
+    {
+        guardInstinctBlindVisionEnabled = enabled;
+        guardInstinctBlindViewRadiusMultiplier = Mathf.Max(1f, viewRadiusMultiplier);
+        guardInstinctBlindViewAngleOffset = Mathf.Clamp(viewAngleOffset, -359f, 359f);
+
+        if (!guardInstinctBlindVisionEnabled)
+        {
+            guardInstinctBlindVisionActive = false;
+            RemoveGuardInstinctBlindVisionModifiers();
+            return;
+        }
+
+        if (guardInstinctBlindVisionActive)
+            ApplyGuardInstinctBlindVisionModifiers();
+    }
+
+    public void ConfigureOffLeashProgressiveSpeed(
+        bool enabled,
+        float interval,
+        float bonusPerStep,
+        float maxMultiplier)
+    {
+        offLeashProgressiveSpeedEnabled = enabled;
+        offLeashProgressiveSpeedInterval = Mathf.Max(0.05f, interval);
+        offLeashProgressiveSpeedBonusPerStep = Mathf.Max(0f, bonusPerStep);
+        offLeashProgressiveSpeedMaxMultiplier = Mathf.Max(1f, maxMultiplier);
+
+        offLeashProgressiveSpeedMultiplier = Mathf.Clamp(
+            offLeashProgressiveSpeedMultiplier,
+            1f,
+            offLeashProgressiveSpeedMaxMultiplier
+        );
+
+        ApplyMovementSpeed();
+    }
+
     public void ReturnToHandler()
     {
         movementSuspended = false;
@@ -392,6 +546,8 @@ public class DetectionDogController : MonoBehaviour
 
         hasDeployDestination = false;
         hasOffLeashDestination = false;
+        dogDeployPatrolActive = false;
+        hasDogDeployPatrolDestination = false;
 
         if (followTarget == null)
         {
@@ -411,11 +567,14 @@ public class DetectionDogController : MonoBehaviour
         StopHowlingRoutine();
         StopOffLeash();
         RemoveTreatModifiers();
+        RemoveGuardInstinctBlindVisionModifiers();
 
         hasDeployDestination = false;
         hasOffLeashDestination = false;
-        currentState = DetectionDogState.FollowHandler;
+        dogDeployPatrolActive = false;
+        hasDogDeployPatrolDestination = false;
 
+        currentState = DetectionDogState.FollowHandler;
         movementSuspended = resetPath;
 
         if (resetPath)
@@ -469,7 +628,11 @@ public class DetectionDogController : MonoBehaviour
     private void EnterGuardArea()
     {
         currentState = DetectionDogState.GuardArea;
-        StopPath(false);
+
+        if (dogDeployPatrolEnabled)
+            BeginDogDeployPatrol();
+        else
+            StopPath(false);
 
         if (debugLog)
             Debug.Log($"[{name}] 탐지견이 배치 지점에 도착하여 감시를 시작합니다.");
@@ -477,6 +640,12 @@ public class DetectionDogController : MonoBehaviour
 
     private void UpdateGuardArea()
     {
+        if (dogDeployPatrolActive)
+        {
+            UpdateDogDeployPatrol();
+            return;
+        }
+
         StopPath(false);
 
         if (!rotateWhileGuarding)
@@ -488,8 +657,79 @@ public class DetectionDogController : MonoBehaviour
         transform.Rotate(Vector3.up, guardScanTurnSpeed * Time.deltaTime, Space.World);
     }
 
+    private void BeginDogDeployPatrol()
+    {
+        dogDeployPatrolCenter = hasDeployDestination ? deployDestination : transform.position;
+        dogDeployPatrolRemainingPointCount = Mathf.Max(1, dogDeployPatrolPointCount);
+        hasDogDeployPatrolDestination = false;
+        dogDeployPatrolActive = TryMoveToNextDogDeployPatrolPoint();
+    }
+
+    private void UpdateDogDeployPatrol()
+    {
+        if (!hasDogDeployPatrolDestination)
+        {
+            if (!TryMoveToNextDogDeployPatrolPoint())
+            {
+                dogDeployPatrolActive = false;
+                StopPath(false);
+            }
+
+            return;
+        }
+
+        if (!HasArrived(dogDeployPatrolReachDistance))
+            return;
+
+        dogDeployPatrolRemainingPointCount--;
+
+        if (dogDeployPatrolRemainingPointCount <= 0)
+        {
+            dogDeployPatrolActive = false;
+            hasDogDeployPatrolDestination = false;
+            StopPath(false);
+            return;
+        }
+
+        if (!TryMoveToNextDogDeployPatrolPoint())
+        {
+            dogDeployPatrolActive = false;
+            hasDogDeployPatrolDestination = false;
+            StopPath(false);
+        }
+    }
+
+    private bool TryMoveToNextDogDeployPatrolPoint()
+    {
+        for (int i = 0; i < offLeashPointSearchTries; i++)
+        {
+            Vector2 randomCircle = Random.insideUnitCircle * dogDeployPatrolRadius;
+            Vector3 rawPoint = new Vector3(
+                dogDeployPatrolCenter.x + randomCircle.x,
+                dogDeployPatrolCenter.y,
+                dogDeployPatrolCenter.z + randomCircle.y
+            );
+
+            if (!TryResolveReachablePoint(rawPoint, out Vector3 resolvedPoint))
+                continue;
+
+            dogDeployPatrolDestination = resolvedPoint;
+            hasDogDeployPatrolDestination = true;
+            SetDestination(dogDeployPatrolDestination);
+            return true;
+        }
+
+        return false;
+    }
+
     private void UpdateHowling()
     {
+        if (howlingTarget != null)
+        {
+            lastHowlingTargetPosition = howlingTarget.position;
+            hasLastHowlingTargetPosition = true;
+        }
+
         if (stopWhileHowling)
             KeepStopped();
     }
@@ -525,6 +765,8 @@ public class DetectionDogController : MonoBehaviour
 
     private void UpdateOffLeashSearch()
     {
+        UpdateOffLeashProgressiveSpeed();
+
         if (Time.time >= offLeashEndTime)
         {
             ReturnToHandler();
@@ -542,6 +784,28 @@ public class DetectionDogController : MonoBehaviour
 
         if (hasOffLeashDestination && !navAgent.pathPending && !navAgent.hasPath)
             TryMoveToNextOffLeashPoint(false);
+    }
+
+    private void UpdateOffLeashProgressiveSpeed()
+    {
+        if (!offLeashProgressiveSpeedEnabled)
+            return;
+
+        if (Time.time < nextOffLeashProgressiveSpeedTime)
+            return;
+
+        nextOffLeashProgressiveSpeedTime = Time.time + offLeashProgressiveSpeedInterval;
+
+        float nextMultiplier = Mathf.Min(
+            offLeashProgressiveSpeedMaxMultiplier,
+            offLeashProgressiveSpeedMultiplier + offLeashProgressiveSpeedBonusPerStep
+        );
+
+        if (Mathf.Approximately(nextMultiplier, offLeashProgressiveSpeedMultiplier))
+            return;
+
+        offLeashProgressiveSpeedMultiplier = nextMultiplier;
+        ApplyMovementSpeed();
     }
 
     private bool TryMoveToNextOffLeashPoint(bool force)
@@ -645,7 +909,7 @@ public class DetectionDogController : MonoBehaviour
         if (seenTarget == null)
             return;
 
-        StartHowling(seenTarget.position);
+        StartHowling(seenTarget);
     }
 
     private bool CanReportTargetInCurrentState()
@@ -666,18 +930,25 @@ public class DetectionDogController : MonoBehaviour
         if (!CanReportTargetInCurrentState())
             return;
 
-        StartHowling(target.position);
+        StartHowling(target);
     }
 
-    private void StartHowling(Vector3 targetPosition)
+    private void StartHowling(Transform target)
     {
+        if (target == null)
+            return;
+
         if (currentState == DetectionDogState.Howling)
             return;
+
+        Vector3 targetPosition = target.position;
 
         StopOffLeash();
 
         hasDeployDestination = false;
         hasOffLeashDestination = false;
+        dogDeployPatrolActive = false;
+        hasDogDeployPatrolDestination = false;
 
         currentState = DetectionDogState.Howling;
 
@@ -687,24 +958,55 @@ public class DetectionDogController : MonoBehaviour
         TriggerHowlAnimation();
 
         StopHowlingRoutine();
-        howlingRoutine = StartCoroutine(HowlingRoutine(targetPosition));
+
+        howlingTarget = target;
+        lastHowlingTargetPosition = targetPosition;
+        hasLastHowlingTargetPosition = true;
+        howlingRoutine = StartCoroutine(HowlingRoutine(target, targetPosition));
 
         if (debugLog)
             Debug.Log($"[{name}] 타겟 발견. 하울링 시작. 위치={targetPosition}");
     }
 
-    private IEnumerator HowlingRoutine(Vector3 targetPosition)
+    private IEnumerator HowlingRoutine(Transform target, Vector3 fallbackTargetPosition)
     {
         if (howlingDuration > 0f)
             yield return new WaitForSeconds(howlingDuration);
 
+        Vector3 reportPosition = ResolveHowlingReportPosition(target, fallbackTargetPosition);
+
+        ApplyDogDeployHowlingSlow(target);
+
         if (handler != null)
-            handler.NotifyDogFoundTargetPosition(targetPosition);
+            handler.NotifyDogFoundTargetPosition(reportPosition);
 
         howlingRoutine = null;
+        howlingTarget = null;
 
         if (currentState == DetectionDogState.Howling)
             ReturnToHandler();
+    }
+
+    private Vector3 ResolveHowlingReportPosition(Transform target, Vector3 fallbackTargetPosition)
+    {
+        if (target != null)
+        {
+            lastHowlingTargetPosition = target.position;
+            hasLastHowlingTargetPosition = true;
+            return target.position;
+        }
+
+        if (howlingTarget != null)
+        {
+            lastHowlingTargetPosition = howlingTarget.position;
+            hasLastHowlingTargetPosition = true;
+            return howlingTarget.position;
+        }
+
+        if (hasLastHowlingTargetPosition)
+            return lastHowlingTargetPosition;
+
+        return fallbackTargetPosition;
     }
 
     private void StopHowlingRoutine()
@@ -714,6 +1016,7 @@ public class DetectionDogController : MonoBehaviour
 
         StopCoroutine(howlingRoutine);
         howlingRoutine = null;
+        howlingTarget = null;
     }
 
     private void StopOffLeash()
@@ -721,6 +1024,10 @@ public class DetectionDogController : MonoBehaviour
         offLeashEndTime = -1f;
         hasOffLeashDestination = false;
         nextOffLeashRepathTime = 0f;
+
+        offLeashProgressiveSpeedMultiplier = 1f;
+        nextOffLeashProgressiveSpeedTime = -1f;
+        ApplyMovementSpeed();
     }
 
     private void UpdateTreatTimer()
@@ -739,8 +1046,8 @@ public class DetectionDogController : MonoBehaviour
         if (visionSensor == null)
             return;
 
-        visionSensor.SetExternalViewRadiusMultiplier(this, activeTreatViewRadiusMultiplier);
-        visionSensor.SetExternalViewAngleOffset(this, activeTreatViewAngleOffset);
+        visionSensor.SetExternalViewRadiusMultiplier(treatVisionModifierKey, activeTreatViewRadiusMultiplier);
+        visionSensor.SetExternalViewAngleOffset(treatVisionModifierKey, activeTreatViewAngleOffset);
     }
 
     private void RemoveTreatModifiers()
@@ -757,14 +1064,67 @@ public class DetectionDogController : MonoBehaviour
 
         if (visionSensor != null)
         {
-            visionSensor.RemoveExternalViewRadiusMultiplier(this);
-            visionSensor.RemoveExternalViewAngleOffset(this);
+            visionSensor.RemoveExternalViewRadiusMultiplier(treatVisionModifierKey);
+            visionSensor.RemoveExternalViewAngleOffset(treatVisionModifierKey);
         }
 
         ApplyMovementSpeed();
 
         if (debugLog)
             Debug.Log($"[{name}] 간식 효과 종료");
+    }
+
+    private void ApplyGuardInstinctBlindVisionModifiers()
+    {
+        if (visionSensor == null)
+            return;
+
+        visionSensor.SetExternalViewRadiusMultiplier(
+            guardInstinctBlindVisionModifierKey,
+            guardInstinctBlindViewRadiusMultiplier
+        );
+
+        visionSensor.SetExternalViewAngleOffset(
+            guardInstinctBlindVisionModifierKey,
+            guardInstinctBlindViewAngleOffset
+        );
+    }
+
+    private void RemoveGuardInstinctBlindVisionModifiers()
+    {
+        if (visionSensor == null)
+            return;
+
+        visionSensor.RemoveExternalViewRadiusMultiplier(guardInstinctBlindVisionModifierKey);
+        visionSensor.RemoveExternalViewAngleOffset(guardInstinctBlindVisionModifierKey);
+    }
+
+    private void ApplyDogDeployHowlingSlow(Transform target)
+    {
+        if (!dogDeployHowlingSlowEnabled)
+            return;
+
+        if (target == null)
+            return;
+
+        if (dogDeployHowlingTargetSlowDuration <= 0f)
+            return;
+
+        if (dogDeployHowlingTargetSlowMultiplier >= 1f)
+            return;
+
+        TargetController targetController = target.GetComponentInParent<TargetController>();
+
+        if (targetController == null)
+            targetController = target.GetComponentInChildren<TargetController>();
+
+        if (targetController == null)
+            return;
+
+        targetController.ApplySlow(
+            dogDeployHowlingTargetSlowMultiplier,
+            dogDeployHowlingTargetSlowDuration
+        );
     }
 
     private void ApplyMovementSpeed()
@@ -776,6 +1136,8 @@ public class DetectionDogController : MonoBehaviour
 
         if (isTreatActive)
             speedMultiplier *= activeTreatMoveSpeedMultiplier;
+
+        speedMultiplier *= offLeashProgressiveSpeedMultiplier;
 
         navAgent.speed = baseMoveSpeed * Mathf.Max(MinMoveSpeedMultiplier, speedMultiplier);
     }
@@ -890,6 +1252,12 @@ public class DetectionDogController : MonoBehaviour
 
         if (disableAutoChaseOnDogVision)
             visionSensor.autoChaseOnSight = false;
+
+        if (isTreatActive)
+            ApplyTreatVisionModifiers();
+
+        if (guardInstinctBlindVisionActive)
+            ApplyGuardInstinctBlindVisionModifiers();
 
         visionSensor.ForceEvaluateVision();
     }

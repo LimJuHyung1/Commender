@@ -493,11 +493,6 @@ public class CameraOcclusionFader : MonoBehaviour
         if (root == null)
             return Vector3.zero;
 
-        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-
-        if (TryGetCombinedBounds(renderers, out Bounds rendererBounds))
-            return rendererBounds.center;
-
         Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
 
         if (TryGetCombinedBounds(colliders, out Bounds colliderBounds))
@@ -506,33 +501,19 @@ public class CameraOcclusionFader : MonoBehaviour
         return root.position + Vector3.up;
     }
 
-    private bool TryGetCombinedBounds(Renderer[] renderers, out Bounds bounds)
+    private bool TryGetTargetBounds(Transform root, out Bounds bounds)
     {
         bounds = default;
-        bool hasBounds = false;
 
-        if (renderers == null)
+        if (root == null)
             return false;
 
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer renderer = renderers[i];
+        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
 
-            if (renderer == null)
-                continue;
+        if (TryGetCombinedBounds(colliders, out bounds))
+            return true;
 
-            if (!hasBounds)
-            {
-                bounds = renderer.bounds;
-                hasBounds = true;
-            }
-            else
-            {
-                bounds.Encapsulate(renderer.bounds);
-            }
-        }
-
-        return hasBounds;
+        return false;
     }
 
     private bool TryGetCombinedBounds(Collider[] colliders, out Bounds bounds)
