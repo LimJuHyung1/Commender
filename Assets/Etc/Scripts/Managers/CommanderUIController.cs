@@ -12,9 +12,6 @@ public class CommanderUIController : MonoBehaviour
     [SerializeField] private Button submitButton;
     [SerializeField] private AgentCameraFollow agentCameraFollow;
 
-    [Header("Hotkeys")]
-    [SerializeField] private bool enableFunctionKeyFocus = true;
-
     [Header("Skill Name Paste")]
     [SerializeField] private bool addSpaceBeforePastedSkillName = true;
     [SerializeField] private bool clearFocusAfterPastedSkillName = true;
@@ -114,27 +111,12 @@ public class CommanderUIController : MonoBehaviour
         if (EventSystem.current != null)
             EventSystem.current.SetSelectedGameObject(inputField.gameObject);
 
-        ApplyFocusedAgentImmediately(inputIndex, inputField, targetAgent, false);
+        ApplyFocusedAgentImmediately(inputIndex, inputField, targetAgent, false, false);
     }
 
     public void FocusAgentByInputIndex(int inputIndex)
     {
-        if (!uiInteractable)
-            return;
-
-        if (!CanFocusInputIndex(inputIndex))
-            return;
-
-        InputField inputField = agentInputs[inputIndex];
-
-        if (inputField == null)
-            return;
-
-        if (!TryGetAgentFromInputField(inputField, inputIndex, out AgentController targetAgent))
-            return;
-
-        pendingRefocusAfterOrbit = false;
-        ApplyFocusedAgentImmediately(inputIndex, inputField, targetAgent, true);
+        FocusInputField(inputIndex, true);
     }
 
     public void SetUIInteractable(bool state)
@@ -261,7 +243,7 @@ public class CommanderUIController : MonoBehaviour
         if (clearFocusAfterPastedSkillName)
             ClearCurrentInputFocus();
         else
-            FocusInputField(inputIndex);
+            FocusInputField(inputIndex, false);
 
         return true;
     }
@@ -526,9 +508,6 @@ public class CommanderUIController : MonoBehaviour
 
     private void HandleFunctionKeyFocus()
     {
-        if (!enableFunctionKeyFocus)
-            return;
-
         if (agentInputs == null || agentInputs.Count == 0)
             return;
 
@@ -539,47 +518,38 @@ public class CommanderUIController : MonoBehaviour
 
         if (keyboard.f1Key.wasPressedThisFrame)
         {
-            FocusInputFieldByFunctionKey(0);
+            ToggleAgentFocusShortcut(0);
             return;
         }
 
         if (keyboard.f2Key.wasPressedThisFrame)
         {
-            FocusInputFieldByFunctionKey(1);
+            ToggleAgentFocusShortcut(1);
             return;
         }
 
         if (keyboard.f3Key.wasPressedThisFrame)
         {
-            FocusInputFieldByFunctionKey(2);
+            ToggleAgentFocusShortcut(2);
             return;
         }
 
         if (keyboard.f4Key.wasPressedThisFrame)
         {
-            FocusInputFieldByFunctionKey(3);
+            ToggleAgentFocusShortcut(3);
             return;
         }
     }
 
-    private void FocusInputFieldByFunctionKey(int inputIndex)
+    private void ToggleAgentFocusShortcut(int inputIndex)
     {
-        if (agentInputs == null)
-            return;
-
-        if (inputIndex < 0 || inputIndex >= agentInputs.Count)
-            return;
-
-        if (IsInputIndexJammed(inputIndex))
-            return;
-
         if (IsInputIndexCurrentlyFocused(inputIndex))
         {
             ClearCurrentInputFocus();
             return;
         }
 
-        FocusInputField(inputIndex);
+        FocusInputField(inputIndex, true);
     }
 
     private bool IsInputIndexCurrentlyFocused(int inputIndex)
@@ -670,13 +640,6 @@ public class CommanderUIController : MonoBehaviour
         if (keyboard == null)
             return;
 
-        bool ctrlPressed =
-            keyboard.leftCtrlKey.isPressed ||
-            keyboard.rightCtrlKey.isPressed;
-
-        if (!ctrlPressed)
-            return;
-
         bool enterPressedThisFrame =
             keyboard.enterKey.wasPressedThisFrame ||
             keyboard.numpadEnterKey.wasPressedThisFrame;
@@ -685,12 +648,6 @@ public class CommanderUIController : MonoBehaviour
             return;
 
         if (IsImeComposing())
-            return;
-
-        int selectedIndex = GetSelectedInputIndex();
-        int focusedIndex = GetEffectiveFocusedInputIndex();
-
-        if (selectedIndex < 0 && focusedIndex < 0 && jammedAgentIds.Count == 0)
             return;
 
         ClearInputFocusBeforeSubmit();
@@ -734,7 +691,7 @@ public class CommanderUIController : MonoBehaviour
 
         yield return null;
 
-        FocusInputField(nextIndex);
+        FocusInputField(nextIndex, false);
         tabMoveRoutine = null;
     }
 
@@ -1001,7 +958,7 @@ public class CommanderUIController : MonoBehaviour
             return;
         }
 
-        FocusInputField(currentFocusedInputIndex);
+        FocusInputField(currentFocusedInputIndex, false);
         pendingRefocusAfterOrbit = false;
     }
 
@@ -1047,10 +1004,10 @@ public class CommanderUIController : MonoBehaviour
         if (inputField == null)
             return;
 
-        ApplyFocusedAgentImmediately(focusedIndex, inputField, targetAgent, false);
+        ApplyFocusedAgentImmediately(focusedIndex, inputField, targetAgent, false, false);
     }
 
-    private void FocusInputField(int index)
+    private void FocusInputField(int index, bool focusCamera)
     {
         if (agentInputs == null)
             return;
@@ -1071,14 +1028,15 @@ public class CommanderUIController : MonoBehaviour
 
         pendingRefocusAfterOrbit = false;
 
-        ApplyFocusedAgentImmediately(index, inputField, targetAgent, true);
+        ApplyFocusedAgentImmediately(index, inputField, targetAgent, true, focusCamera);
     }
 
     private void ApplyFocusedAgentImmediately(
         int inputIndex,
         InputField inputField,
         AgentController targetAgent,
-        bool activateInputField)
+        bool activateInputField,
+        bool focusCamera)
     {
         if (inputField == null || targetAgent == null)
             return;
@@ -1102,7 +1060,7 @@ public class CommanderUIController : MonoBehaviour
         if (!IsInputIndexJammed(inputIndex))
             ApplyFocusedInputSkillPlaceholder(inputIndex, targetAgent);
 
-        if (agentCameraFollow != null)
+        if (focusCamera && agentCameraFollow != null)
             agentCameraFollow.FocusAgent(targetAgent.transform);
 
         AgentOutline outline = targetAgent.GetComponent<AgentOutline>();
@@ -1129,7 +1087,7 @@ public class CommanderUIController : MonoBehaviour
 
         if (nextIndex >= 0 && nextIndex != startIndex)
         {
-            FocusInputField(nextIndex);
+            FocusInputField(nextIndex, false);
             return;
         }
 
