@@ -22,6 +22,9 @@ public class CommandExecutor
     private const string SkillTreat = "treat";
     private const string SkillOffLeash = "offleash";
 
+    private const string SkillSceneStealer = "scene_stealer";
+    private const string SkillAction = "action";
+
     private TargetSkillController targetSkillController;
 
     public CommandExecutor()
@@ -87,6 +90,8 @@ public class CommandExecutor
             case SkillRouteIdentification:
             case SkillTreat:
             case SkillOffLeash:
+            case SkillSceneStealer:
+            case SkillAction:
                 ExecuteNoPositionSkill(targetAgent, agentId, validatedSkill);
                 return;
 

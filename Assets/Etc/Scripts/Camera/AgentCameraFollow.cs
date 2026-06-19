@@ -143,8 +143,10 @@ public class AgentCameraFollow : MonoBehaviour
     public bool HasClickedGroundPoint => hasClickedGroundPoint;
 
     public bool HasFocusedAgent => focusedAgent != null;
+    public Transform FocusedAgent => focusedAgent;
     public bool IsFocusedOrbitInputActive => focusedAgent != null && isRightMouseHeld;
     public bool IsFocusedOrbitDragging => focusedAgent != null && isOrbitDragging;
+
 
     public bool TryGetFocusedAgentFocusPoint(out Vector3 focusPoint)
     {

@@ -8,7 +8,8 @@ public enum AgentRole
     Engineer,
     Trickster,
     Profiler,
-    DogHandler
+    DogHandler,
+    Actor
 }
 
 [CreateAssetMenu(fileName = "AgentStats", menuName = "Commander/Agent Stats")]

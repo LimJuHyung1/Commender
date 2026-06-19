@@ -18,8 +18,10 @@ public class TargetVisibilityController : MonoBehaviour
     public bool autoFindSceneSensors = true;
     public bool debugVisibility = false;
 
+    private readonly HashSet<object> forceVisibleSources = new HashSet<object>();
+
+    private bool legacyForceVisible;
     private bool isCurrentlyVisible = true;
-    private bool forceVisible;
     private Transform targetRoot;
     private string lastVisibleReason = "None";
 
@@ -129,7 +131,7 @@ public class TargetVisibilityController : MonoBehaviour
         if (targetRoot == null)
             return false;
 
-        if (forceVisible)
+        if (legacyForceVisible || forceVisibleSources.Count > 0)
         {
             visibleReason = "ForceVisible";
             return true;
@@ -223,7 +225,25 @@ public class TargetVisibilityController : MonoBehaviour
 
     public void SetForceVisible(bool visible)
     {
-        forceVisible = visible;
+        legacyForceVisible = visible;
+        RefreshVisibilityImmediate();
+    }
+
+    public void SetForceVisible(object source, bool visible)
+    {
+        if (source == null)
+            return;
+
+        bool changed;
+
+        if (visible)
+            changed = forceVisibleSources.Add(source);
+        else
+            changed = forceVisibleSources.Remove(source);
+
+        if (!changed)
+            return;
+
         RefreshVisibilityImmediate();
     }
 
@@ -237,9 +257,16 @@ public class TargetVisibilityController : MonoBehaviour
         SetForceVisible(false);
     }
 
+    public void ClearForceVisible(object source)
+    {
+        SetForceVisible(source, false);
+    }
+
     public void ResetRuntimeState()
     {
-        forceVisible = false;
+        legacyForceVisible = false;
+        forceVisibleSources.Clear();
+
         CollectSceneSensorsIfNeeded();
         RefreshVisibilityImmediate();
     }

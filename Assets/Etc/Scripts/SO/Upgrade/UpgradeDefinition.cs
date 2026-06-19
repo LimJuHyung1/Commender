@@ -14,7 +14,8 @@ public enum CommanderAgentType
     Engineer,
     Trickster,
     Profiler,
-    DogHandler
+    DogHandler,
+    Actor
 }
 
 public enum CommanderTargetType

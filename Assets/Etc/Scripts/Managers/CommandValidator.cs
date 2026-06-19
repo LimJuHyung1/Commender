@@ -46,6 +46,11 @@ public sealed class CommandValidator
     private const string SkillTreat = "treat";
     private const string SkillOffLeash = "offleash";
 
+    private const string SkillSceneStealer = "scene_stealer";
+    private const string SkillAdLib = "ad_lib";
+    private const string SkillAction = "action";
+    private const string SkillMethodActing = "method_acting";
+
     private static readonly Regex CoordinateRegex =
         new Regex(@"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
@@ -367,6 +372,38 @@ public sealed class CommandValidator
         "오프리쉬"
     };
 
+    private static readonly string[] SceneStealerInstructionKeywords =
+{
+    "scene_stealer",
+    "scenestealer",
+    "scene stealer",
+    "씬 스틸러",
+    "씬스틸러"
+};
+
+    private static readonly string[] AdLibInstructionKeywords =
+    {
+    "ad_lib",
+    "adlib",
+    "ad lib",
+    "애드리브"
+};
+
+    private static readonly string[] ActionInstructionKeywords =
+    {
+    "action",
+    "액션"
+};
+
+    private static readonly string[] MethodActingInstructionKeywords =
+    {
+    "method_acting",
+    "methodacting",
+    "method acting",
+    "메소드 연기",
+    "메소드연기"
+};
+
     private static readonly string[] LookAroundInstructionKeywords =
     {
         "주변",
@@ -443,6 +480,24 @@ public sealed class CommandValidator
 
         if (IsOffLeashInstruction(normalizedInstruction))
             return SkillOffLeash;
+
+        if (IsSceneStealerInstruction(normalizedInstruction))
+            return SkillSceneStealer;
+
+        if (IsAdLibInstruction(normalizedInstruction))
+        {
+            Debug.LogWarning("[Commander] 애드리브는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
+        if (IsActionInstruction(normalizedInstruction))
+            return SkillAction;
+
+        if (IsMethodActingInstruction(normalizedInstruction))
+        {
+            Debug.LogWarning("[Commander] 메소드 연기는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
 
         if (ShouldForceLookAroundFromInstruction(normalizedInstruction))
             return SkillLookAround;
@@ -528,6 +583,24 @@ public sealed class CommandValidator
         if (ContainsAny(normalizedSkill, SkillOffLeash, "off_leash", "off leash", "off-leash"))
             return MatchOrHold(normalizedInstruction, OffLeashInstructionKeywords, SkillOffLeash, aiSkill, originalInstruction);
 
+        if (ContainsAny(normalizedSkill, SkillSceneStealer, "scenestealer", "scene stealer"))
+            return MatchOrHold(normalizedInstruction, SceneStealerInstructionKeywords, SkillSceneStealer, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillAdLib, "adlib", "ad lib"))
+        {
+            Debug.LogWarning("[Commander] 애드리브는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
+        if (ContainsAny(normalizedSkill, SkillAction))
+            return MatchOrHold(normalizedInstruction, ActionInstructionKeywords, SkillAction, aiSkill, originalInstruction);
+
+        if (ContainsAny(normalizedSkill, SkillMethodActing, "methodacting", "method acting"))
+        {
+            Debug.LogWarning("[Commander] 메소드 연기는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+            return SkillHold;
+        }
+
         if (ContainsAny(normalizedSkill, SkillDemolition, "demolish", "remove obstacle"))
             return MatchOrHold(normalizedInstruction, DemolitionInstructionKeywords, SkillDemolition, aiSkill, originalInstruction);
 
@@ -608,6 +681,24 @@ public sealed class CommandValidator
 
             if (IsOffLeashInstruction(normalizedInstruction))
                 return SkillOffLeash;
+
+            if (IsSceneStealerInstruction(normalizedInstruction))
+                return SkillSceneStealer;
+
+            if (IsAdLibInstruction(normalizedInstruction))
+            {
+                Debug.LogWarning("[Commander] 애드리브는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+                return SkillHold;
+            }
+
+            if (IsActionInstruction(normalizedInstruction))
+                return SkillAction;
+
+            if (IsMethodActingInstruction(normalizedInstruction))
+            {
+                Debug.LogWarning("[Commander] 메소드 연기는 패시브 스킬이므로 명령으로 직접 사용할 수 없습니다.");
+                return SkillHold;
+            }
 
             if (IsReconnaissanceInstruction(normalizedInstruction))
                 return SkillReconnaissance;
@@ -691,6 +782,26 @@ public sealed class CommandValidator
     public bool IsOffLeashInstruction(string source)
     {
         return ContainsAny(Normalize(source), OffLeashInstructionKeywords);
+    }
+
+    public bool IsSceneStealerInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), SceneStealerInstructionKeywords);
+    }
+
+    public bool IsAdLibInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), AdLibInstructionKeywords);
+    }
+
+    public bool IsActionInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), ActionInstructionKeywords);
+    }
+
+    public bool IsMethodActingInstruction(string source)
+    {
+        return ContainsAny(Normalize(source), MethodActingInstructionKeywords);
     }
 
     public bool IsReconnaissanceInstruction(string source)
